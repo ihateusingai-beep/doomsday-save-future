@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000">
+<title>末日救未來 — Doomsday Save the Future</title>
+<style>
+  /* === reset + fullscreen === */
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body {
+    width:100%; height:100%;
+    overflow:hidden;
+    background:#000;
+    overscroll-behavior:none;
+  }
+  body {
+    display:flex; align-items:center; justify-content:center;
+    font-family:-apple-system, BlinkMacSystemFont, "Helvetica Neue", monospace;
+    color:#0ff;
+    -webkit-tap-highlight-color:transparent;
+    -webkit-user-select:none; user-select:none;
+    -webkit-touch-callout:none;
+    touch-action:none;
+  }
+  /* === canvas (PLAN v2 #10-12, CSS-scaled, image-rendering pixelated) === */
+  canvas {
+    display:block;
+    image-rendering:pixelated;
+    image-rendering:-moz-crisp-edges;
+    background:#000;
+    touch-action:none;
+    cursor:crosshair;
+  }
+  /* === HUD === */
+  #hud {
+    position:fixed; top:8px; left:8px;
+    font:12px ui-monospace, monospace;
+    pointer-events:none;
+    color:#0ff;
+    line-height:1.4;
+    text-shadow:0 0 4px #000;
+  }
+  #hud .row { white-space:nowrap; }
+  #hud .accent { color:#ff6; }
+  #hud .warn { color:#f06; }
+</style>
+</head>
+<body>
+  <canvas id="game" width="320" height="480" aria-label="Doomsday Save the Future game canvas"></canvas>
+  <div id="hud" aria-live="polite">
+    <div class="row" id="hud-state">STATE: --</div>
+    <div class="row" id="hud-time">TIME: 0.0s</div>
+    <div class="row" id="hud-hp">HP: --  SHIELD: --</div>
+    <div class="row" id="hud-paused"></div>
+    <div class="row accent" id="hud-tip">tap canvas to begin</div>
+  </div>
+<script>
+'use strict';
+/* ============================================================
+ * 末日救未來 — S0 scaffold (PLAN v2 2026-10-17)
+ * coverage:
+ *   S0-1 canvas 320×480 + DPR-aware backing store + CSS fit
+ *   S0-2 frozen FSM (TITLE/SHIP_SELECT/STAGE_n/CHOICE/PAUSED/GAMEOVER/VICTORY)
+ *   S0-3 1 ship (drag + arrow/WASD + autofire)
+ *   S0-4 1 enemy (8-way spiral + ship bullets hit/damage)
+ *   S0-5 tab visibilitychange → state=PAUSED + timer freeze
+ *
+ * follow PLAN v2 §Reference #11 (Canvas 2D / 320×480 internal coords),
+ *                        #13 (fixed 60 FPS accumulator),
+ *                        #15 (Pointer Events + keyboard proxy),
+ *                        #16 (FSM with reset hook),
+ *                        #17 (tab visibility pause)
+ * ============================================================ */
+
+/* ---------- 1. CONSTANTS ---------- */
+const VIEW_W = 320;
+const VIEW_H = 480;
+const FIXED_DT_MS = 1000 / 60;             // 60 FPS logic step
+const MAX_FRAME_MS = 100;                  // cap huge tab-blur gap
+
+/* FSM enum (PLAN v2 #16) */
+const STATE = Object.freeze({
+  TITLE:       'TITLE',
+  SHIP_SELECT: 'SHIP_SELECT',
+  STAGE_1:     'STAGE_1',
+  STAGE_2:     'STAGE_2',
+  STAGE_3:     'STAGE_3',
+  STAGE_4:     'STAGE_4',
+  STAGE_5:     'STAGE_5',
+  CHOICE:      'CHOICE',
+  GAMEOVER:    'GAMEOVER',
+  VICTORY:     'VICTORY',
+  PAUSED:      'PAUSED',
+});
+
+/* SHIPS (PLAN v2 #1: 1 ship × 3 chassis A/B/C) */
+const SHIPS = Object.freeze({
+  A: { id:'A', name:'速', speed:3.2, shield:1, fireRate:10 },
+  B: { id:'B', name:'盾', speed:2.4, shield:3, fireRate:14 },
+  C: { id:'C', name:'火', speed:2.0, shield:1, fireRate:6  },
+});
+
+const isStage = (s) => s && s.indexOf('STAGE_') === 0;
+const STAGES = [STATE.STAGE_1, STATE.STAGE_2, STATE.STAGE_3, STATE.STAGE_4, STATE.STAGE_5];
+
+/* ---------- 2. INPUT LAYER (PLAN v2 #15, #18-19) ---------- */
+const InputState = {
+  /* last-write-wins target (drag OR WASD converge here) */
+  targetX: VIEW_W / 2,
+  targetY: VIEW_H - 60,
+
+  /* keyboard proxy */
+  keys: { up:false, down:false, left:false, right:false },
+
+  /* single-action flags (consume-on-read) */
+  focus: false,           // PLAN #6 focus toggle
+  bomb:  false,           // PLAN #7 bomb trigger
+
+  /* drag bookkeeping */
+  dragId: null,
+  dragOrigin: { x:0, y:0 },
+  shipOrigin: { x:0, y:0 },
+  touchMoved: false,
+};
+
+/* 8px tolerance for Smart Board dedup — PLAN v2 #19 */
+const DRAG_TOLERANCE_PX = 8;
+
+/* ---------- 3. DOM refs ---------- */
+const canvas = document.getElementById('game');
+const ctx    = canvas.getContext('2d');
+const hudEl  = {
+  state:  document.getElementById('hud-state'),
+  time:   document.getElementById('hud-time'),
+  hp:     document.getElementById('hud-hp'),
+  paused: document.getElementById('hud-paused'),
+  tip:    document.getElementById('hud-tip'),
+};
+
+/* ---------- 4. Canvas DPR (PLAN v2 #12) ---------- */
+function setupCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width  = VIEW_W * dpr;
+  canvas.height = VIEW_H * dpr;
+  /* fit while preserving 320×480 aspect */
+  const aspect = VIEW_W / VIEW_H;
+  const winAspect = window.innerWidth / window.innerHeight;
+  let cssW, cssH;
+  if (winAspect > aspect) {
+    cssH = Math.min(window.innerHeight, window.innerWidth * (1/aspect));
+    cssW = cssH * aspect;
+  } else {
+    cssW = Math.min(window.innerWidth, window.innerHeight * aspect);
+    cssH = cssW / aspect;
+  }
+  canvas.style.width  = Math.floor(cssW) + 'px';
+  canvas.style.height = Math.floor(cssH) + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);    // logical coords = internal 320×480
+}
+setupCanvas();
+window.addEventListener('resize', setupCanvas);
+window.addEventListener('orientationchange', () => setTimeout(setupCanvas, 120));
+
+/* ---------- 5. FSM ---------- */
+const fsm = {
+  cur: STATE.TITLE,
+  prev: null,                 // remember pre-PAUSED state for resume
+  transitions: [],            // for S0-2: log to console
+
+  set(next) {
+    if (next === this.cur) return;
+    const from = this.cur;
+    this.prev = this.cur;
+    this.cur  = next;
+    this.transitions.push({ from, to: next, at: performance.now() });
+    /* F2 reset-on-render: per-state entry reset (PLAN v2 #16) */
+    onStateEnter(next, from);
+    /* S0-2 log */
+    console.log(`[FSM] ${from} → ${next} @ ${(performance.now()/1000).toFixed(2)}s`);
+    hudEl.state.textContent = `STATE: ${next}`;
+  },
+};
+
+function onStateEnter(s, from) {
+  if (s === STATE.STAGE_1 || isStage(s)) {
+    /* reset enemies + bullets + run timer */
+    bullets.length = 0;
+    enemies.length = 0;
+    if (!ship) pickShip('A');                 // S0 default ship = A
+    else { ship.x = VIEW_W/2; ship.y = VIEW_H - 60; ship.hp = 3; ship.shield = SHIPS[ship.chassis].shield; }
+    /* spawn S0-4 enemy (8-way spiral) */
+    enemies.push({
+      kind: 'spiral',
+      x: VIEW_W / 2, y: 60,
+      hp: 30,
+      t: 0,                    // ms since spawn
+      lastShot: 0,             // last fired ms
+      ang0: 0,
+    });
+    runStartMs = performance.now();
+    hudEl.tip.textContent = 'WASD/Drag to move · SPACE focus · SHIFT bomb';
+  } else if (s === STATE.GAMEOVER) {
+    hudEl.tip.textContent = 'Tap to retry';
+  } else if (s === STATE.VICTORY) {
+    hudEl.tip.textContent = 'Mission complete';
+  } else if (s === STATE.PAUSED) {
+    hudEl.tip.textContent = 'PAUSED — tab hidden';
+  } else if (s === STATE.TITLE) {
+    hudEl.tip.textContent = 'tap canvas to begin';
+    bullets.length = 0; enemies.length = 0; ship = null;
+  } else if (s === STATE.SHIP_SELECT) {
+    hudEl.tip.textContent = 'A / B / C (or tap a ship card)';
+  } else if (s === STATE.CHOICE) {
+    hudEl.tip.textContent = 'CHOICE modal (S0 placeholder) — press A/B/C to continue';
+  }
+}
+
+/* ---------- 6. ENTITIES ---------- */
+let ship = null;            /* { chassis, x, y, hp, shield, speed, fireRate, fireCD } */
+let bullets = [];           /* { x, y, vx, vy, owner:'player' } */
+let enemies = [];           /* spiral | bullet | (boss later) */
+
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+function pickShip(id) {
+  const c = SHIPS[id];
+  ship = {
+    chassis: id,
+    x: VIEW_W / 2,
+    y: VIEW_H - 60,
+    hp: 3,
+    shield: c.shield,
+    speed: c.speed,
+    fireRate: c.fireRate,
+    fireCD: 0,
+  };
+}
+
+/* ---------- 7. INPUT — Pointer Events + Keyboard ---------- */
+canvas.addEventListener('pointerdown', (e) => {
+  /* onTap dispatch by state */
+  const rect = canvas.getBoundingClientRect();
+  const cx = e.clientX, cy = e.clientY;
+  const px = (cx - rect.left) * VIEW_W / rect.width;
+  const py = (cy - rect.top)  * VIEW_H / rect.height;
+  if (fsm.cur === STATE.TITLE) { fsm.set(STATE.SHIP_SELECT); return; }
+  if (fsm.cur === STATE.SHIP_SELECT) {
+    /* 64×64 cards at y = VIEW_H/2 ± 32; three columns x ∈ {60,160,260} ± 32 */
+    if (py > VIEW_H/2 - 32 && py < VIEW_H/2 + 32) {
+      if (px > 28  && px < 92 ) return pickShipAndStart('A');
+      if (px > 128 && px < 192) return pickShipAndStart('B');
+      if (px > 228 && px < 292) return pickShipAndStart('C');
+    }
+    return;
+  }
+  if (fsm.cur === STATE.GAMEOVER) {
+    /* restart fresh */
+    runStartMs = null;
+    fsm.set(STATE.SHIP_SELECT);
+    return;
+  }
+  if (fsm.cur === STATE.CHOICE) {
+    /* S0 placeholder: A/B/C advance */
+    return;
+  }
+  /* STAGE_n: start drag bookkeeping */
+  if (isStage(fsm.cur)) {
+    InputState.dragId = e.pointerId;
+    InputState.dragOrigin = { x: cx, y: cy };
+    InputState.shipOrigin = { x: ship.x, y: ship.y };
+    InputState.touchMoved = false;
+  }
+});
+
+canvas.addEventListener('pointermove', (e) => {
+  if (e.pointerId !== InputState.dragId) return;
+  const rect = canvas.getBoundingClientRect();
+  const cx = e.clientX, cy = e.clientY;
+  const dxCss = cx - InputState.dragOrigin.x;
+  const dyCss = cy - InputState.dragOrigin.y;
+  const distCss = Math.hypot(dxCss, dyCss);
+  if (!InputState.touchMoved && distCss > DRAG_TOLERANCE_PX) {
+    InputState.touchMoved = true;
+  }
+  if (InputState.touchMoved && ship) {
+    /* convert CSS delta to internal-coord delta using canvas rect */
+    const newX = InputState.shipOrigin.x + dxCss * VIEW_W / rect.width;
+    const newY = InputState.shipOrigin.y + dyCss * VIEW_H / rect.height;
+    InputState.targetX = clamp(newX, 8, VIEW_W - 8);
+    InputState.targetY = clamp(newY, 8, VIEW_H - 8);
+  }
+});
+
+function endDrag(e) {
+  if (e.pointerId === InputState.dragId) {
+    InputState.dragId = null;
+    /* if never crossed tolerance, treat as tap (already handled in pointerdown) */
+  }
+}
+canvas.addEventListener('pointerup',    endDrag);
+canvas.addEventListener('pointercancel', endDrag);
+
+/* prevent iPad scroll/zoom */
+canvas.addEventListener('touchmove', (e) => e.preventDefault(), { passive:false });
+
+/* keyboard proxy */
+window.addEventListener('keydown', (e) => {
+  const k = e.key.toLowerCase();
+  if (k === 'arrowup'    || k === 'w') { InputState.keys.up = true; e.preventDefault(); }
+  if (k === 'arrowdown'  || k === 's') { InputState.keys.down = true; e.preventDefault(); }
+  if (k === 'arrowleft'  || k === 'a') { InputState.keys.left = true; }
+  if (k === 'arrowright' || k === 'd') { InputState.keys.right = true; }
+  if (k === ' ')  { InputState.focus = !InputState.focus; e.preventDefault(); }
+  if (k === 'shift') { InputState.bomb  = true; e.preventDefault(); }
+  /* ship select via keyboard */
+  if (fsm.cur === STATE.SHIP_SELECT) {
+    if (k === 'a') pickShipAndStart('A');
+    if (k === 'b') pickShipAndStart('B');
+    if (k === 'c') pickShipAndStart('C');
+  }
+  if (fsm.cur === STATE.CHOICE) {
+    /* placeholder: any key advances */
+    advanceStage();
+  }
+});
+window.addEventListener('keyup', (e) => {
+  const k = e.key.toLowerCase();
+  if (k === 'arrowup'    || k === 'w') InputState.keys.up    = false;
+  if (k === 'arrowdown'  || k === 's') InputState.keys.down  = false;
+  if (k === 'arrowleft'  || k === 'a') InputState.keys.left  = false;
+  if (k === 'arrowright' || k === 'd') InputState.keys.right = false;
+});
+
+function pickShipAndStart(id) {
+  pickShip(id);
+  fsm.set(STATE.STAGE_1);
+}
+
+/* ---------- 8. TAB VISIBILITY (PLAN v2 #17) ---------- */
+let runStartMs = null;
+let pausedAtMs = null;        /* performance.now() when paused; null = not paused */
+function shiftRunStartByPause() {
+  /* PLAN v2 #17: resume MUST NOT replay lost time.
+     shift runStartMs forward by the pause duration so HUD timer stays consistent. */
+  if (pausedAtMs !== null && runStartMs !== null) {
+    runStartMs += (performance.now() - pausedAtMs);
+    pausedAtMs = null;
+  }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    /* pause iff in STAGE_n — don't pause TITLE/SHIP_SELECT/GAMEOVER/VICTORY/CHOICE */
+    if (isStage(fsm.cur) && fsm.cur !== STATE.PAUSED) {
+      pausedAtMs = performance.now();
+      fsm.prev = fsm.cur;
+      fsm.set(STATE.PAUSED);
+      hudEl.paused.textContent = '⏸ hidden';
+    }
+  } else {
+    /* resume iff PAUSED */
+    if (fsm.cur === STATE.PAUSED) {
+      const resumeTo = fsm.prev || STATE.STAGE_1;
+      /* bypass fsm.set() to avoid onStateEnter reset wiping live bullets/enemies */
+      fsm.cur = resumeTo;
+      fsm.prev = STATE.PAUSED;
+      shiftRunStartByPause();          /* freeze HUD timer across pause gap */
+      hudEl.state.textContent = `STATE: ${resumeTo}`;
+      hudEl.paused.textContent = '';
+      console.log(`[FSM] PAUSED → ${resumeTo} @ ${(performance.now()/1000).toFixed(2)}s (no time replay)`);
+    }
+  }
+});
+
+/* ---------- 9. STAGE FLOW ---------- */
+function advanceStage() {
+  const idx = STAGES.indexOf(fsm.cur);
+  if (idx >= 0 && idx < STAGES.length - 1) {
+    fsm.set(STAGES[idx + 1]);
+  } else if (idx === STAGES.length - 1) {
+    fsm.set(STATE.VICTORY);
+  } else {
+    fsm.set(STATE.STAGE_1);
+  }
+}
+
+/* ---------- 10. TICK (PLAN v2 #13 fixed 60 FPS) ---------- */
+function tick(dtMs) {
+  /* freeze during non-play states */
+  if (!isStage(fsm.cur)) return;
+
+  /* ---- ship movement (drag-first, then keys converge on target) ---- */
+  let vx = 0, vy = 0;
+  if (InputState.keys.left)  vx -= 1;
+  if (InputState.keys.right) vx += 1;
+  if (InputState.keys.up)    vy -= 1;
+  if (InputState.keys.down)  vy += 1;
+  if (vx || vy) {
+    const len = Math.hypot(vx, vy);
+    const step = ship.speed * (dtMs / 16.67);  /* ship.speed is per-frame @60fps */
+    ship.x = clamp(ship.x + (vx/len) * step, 8, VIEW_W - 8);
+    ship.y = clamp(ship.y + (vy/len) * step, 8, VIEW_H - 8);
+    InputState.targetX = ship.x;
+    InputState.targetY = ship.y;
+  } else {
+    /* smooth toward InputState.target (drag-set or last-keyframe) */
+    ship.x += (InputState.targetX - ship.x) * 0.30;
+    ship.y += (InputState.targetY - ship.y) * 0.30;
+    /* hard clamp */
+    ship.x = clamp(ship.x, 8, VIEW_W - 8);
+    ship.y = clamp(ship.y, 8, VIEW_H - 8);
+  }
+
+  /* ---- autofire ---- */
+  ship.fireCD -= dtMs;
+  if (ship.fireCD <= 0) {
+    bullets.push({ x: ship.x - 4, y: ship.y - 8, vx: 0, vy: -0.30, owner: 'player' });
+    bullets.push({ x: ship.x + 4, y: ship.y - 8, vx: 0, vy: -0.30, owner: 'player' });
+    ship.fireCD = 1000 / ship.fireRate;
+  }
+
+  /* ---- bomb trigger (PLAN v2 #7) ---- */
+  if (InputState.bomb) {
+    InputState.bomb = false;
+    /* wipe enemy bullets only — S0 placeholder for i-frame via shield grace */
+    for (let i = enemies.length - 1; i >= 0; i--) {
+      if (enemies[i].kind === 'bullet') enemies.splice(i, 1);
+    }
+    ship.shield = Math.max(ship.shield, 1);
+  }
+
+  /* ---- enemy update ---- */
+  for (const e of enemies) {
+    if (e.kind === 'spiral') {
+      e.t += dtMs;
+      /* figure-8 path */
+      e.x = VIEW_W/2 + Math.cos(e.t / 600) * 80;
+      e.y = 80       + Math.sin(e.t / 400) * 30;
+      e.ang0 = e.t / 1000;
+      /* fire 8-way every 1s */
+      const sec = Math.floor(e.t / 1000);
+      if (sec !== Math.floor((e.t - dtMs) / 1000)) {
+        for (let i = 0; i < 8; i++) {
+          const a = e.ang0 + i * (Math.PI * 2 / 8);
+          enemies.push({
+            kind: 'bullet',
+            x: e.x, y: e.y,
+            vx: Math.cos(a) * 0.06,
+            vy: Math.sin(a) * 0.06,
+          });
+        }
+      }
+    } else if (e.kind === 'bullet') {
+      e.x += e.vx * dtMs;
+      e.y += e.vy * dtMs;
+    }
+  }
+
+  /* ---- collision: player bullets vs spiral ---- */
+  for (const e of enemies) {
+    if (e.kind !== 'spiral') continue;
+    for (let i = bullets.length - 1; i >= 0; i--) {
+      const b = bullets[i];
+      if (b.owner !== 'player') continue;
+      if (Math.abs(b.x - e.x) < 12 && Math.abs(b.y - e.y) < 12) {
+        bullets.splice(i, 1);
+        e.hp -= 1;
+        if (e.hp <= 0) {
+          console.log('[enemy] spiral defeated @', (performance.now()/1000).toFixed(2));
+          /* S0 shortcut: spiral defeated → CHOICE modal */
+          fsm.set(STATE.CHOICE);
+          return;
+        }
+        break;
+      }
+    }
+  }
+
+  /* ---- collision: enemy bullets vs ship ---- */
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const e = enemies[i];
+    if (e.kind !== 'bullet') continue;
+    if (Math.abs(e.x - ship.x) < 6 && Math.abs(e.y - ship.y) < 6) {
+      enemies.splice(i, 1);
+      if (ship.shield > 0) {
+        ship.shield -= 1;
+      } else {
+        ship.hp -= 1;
+        if (ship.hp <= 0) {
+          console.log('[ship] destroyed');
+          fsm.set(STATE.GAMEOVER);
+          return;
+        }
+      }
+    }
+  }
+
+  /* ---- cull off-screen ---- */
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const e = enemies[i];
+    if (e.kind === 'bullet' && (e.x < -16 || e.x > VIEW_W + 16 || e.y < -16 || e.y > VIEW_H + 16)) {
+      enemies.splice(i, 1);
+    }
+  }
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+    if (b.y < -8 || b.y > VIEW_H + 8 || b.x < -8 || b.x > VIEW_W + 8) {
+      bullets.splice(i, 1);
+    }
+  }
+
+  /* ---- HUD ---- */
+  hudEl.hp.textContent = `HP: ${ship.hp}  SHIELD: ${ship.shield}`;
+}
+
+/* ---------- 11. RENDER ---------- */
+function render() {
+  /* clear */
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+
+  /* faint hex-grid background hint */
+  ctx.strokeStyle = 'rgba(0,255,255,0.06)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x <= VIEW_W; x += 32) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, VIEW_H); ctx.stroke();
+  }
+  for (let y = 0; y <= VIEW_H; y += 32) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(VIEW_W, y); ctx.stroke();
+  }
+
+  /* non-play overlays */
+  if (fsm.cur === STATE.PAUSED) {
+    ctx.fillStyle = 'rgba(0,0,0,0.65)';
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    ctx.fillStyle = '#0ff';
+    ctx.font = 'bold 28px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('PAUSED', VIEW_W/2, VIEW_H/2 - 8);
+    ctx.font = '12px monospace';
+    ctx.fillStyle = '#fff';
+    ctx.fillText('(tab hidden — return to resume)', VIEW_W/2, VIEW_H/2 + 16);
+    return;
+  }
+
+  if (fsm.cur === STATE.TITLE) {
+    ctx.fillStyle = '#0ff';
+    ctx.font = 'bold 22px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('末日救未來', VIEW_W/2, VIEW_H/2 - 24);
+    ctx.font = '11px monospace';
+    ctx.fillStyle = '#fff';
+    ctx.fillText('Doomsday · Save · the · Future', VIEW_W/2, VIEW_H/2);
+    ctx.fillText('v0.2.0 · S0 scaffold', VIEW_W/2, VIEW_H/2 + 18);
+    ctx.fillText('→ TAP TO BEGIN ←', VIEW_W/2, VIEW_H - 64);
+    return;
+  }
+
+  if (fsm.cur === STATE.SHIP_SELECT) {
+    ctx.fillStyle = '#0ff';
+    ctx.font = 'bold 16px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('CHOOSE CHASSIS', VIEW_W/2, 56);
+    const labels = [
+      { id:'A', n:'速', sub:'fireRate 10' },
+      { id:'B', n:'盾', sub:'shield 3' },
+      { id:'C', n:'火', sub:'fireRate 6' },
+    ];
+    labels.forEach((lab, i) => {
+      const x = 60 + i * 100;
+      const y = VIEW_H/2;
+      ctx.strokeStyle = '#0ff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x - 32, y - 32, 64, 64);
+      ctx.fillStyle = '#0ff';
+      ctx.font = 'bold 22px monospace';
+      ctx.fillText(lab.id, x, y - 4);
+      ctx.font = '12px monospace';
+      ctx.fillStyle = '#fff';
+      ctx.fillText(lab.n + ' · ' + lab.sub, x, y + 44);
+    });
+    ctx.fillStyle = '#ff6';
+    ctx.font = '12px monospace';
+    ctx.fillText('A / B / C key or tap card', VIEW_W/2, VIEW_H - 64);
+    return;
+  }
+
+  if (fsm.cur === STATE.GAMEOVER) {
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    ctx.fillStyle = '#f06';
+    ctx.font = 'bold 28px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('GAME OVER', VIEW_W/2, VIEW_H/2 - 8);
+    ctx.font = '12px monospace';
+    ctx.fillStyle = '#fff';
+    ctx.fillText('Tap to retry', VIEW_W/2, VIEW_H/2 + 16);
+    return;
+  }
+
+  if (fsm.cur === STATE.VICTORY) {
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    ctx.fillStyle = '#0f6';
+    ctx.font = 'bold 28px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('VICTORY', VIEW_W/2, VIEW_H/2 - 8);
+    ctx.font = '12px monospace';
+    ctx.fillStyle = '#fff';
+    ctx.fillText('escaped · ' + ((performance.now() - runStartMs)/1000).toFixed(1) + 's', VIEW_W/2, VIEW_H/2 + 16);
+    return;
+  }
+
+  if (fsm.cur === STATE.CHOICE) {
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    ctx.fillStyle = '#ff6';
+    ctx.font = 'bold 14px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('CHOICE — v2 reward pool empty', VIEW_W/2, VIEW_H/2 - 8);
+    ctx.font = '11px monospace';
+    ctx.fillStyle = '#fff';
+    ctx.fillText('S0 placeholder · press any key to advance', VIEW_W/2, VIEW_H/2 + 14);
+    return;
+  }
+
+  /* ---- gameplay render ---- */
+  /* bullets */
+  for (const b of bullets) {
+    if (b.owner === 'player') {
+      ctx.fillStyle = '#0ff';
+      ctx.fillRect(b.x - 1, b.y - 4, 2, 8);
+    }
+  }
+  /* enemies */
+  for (const e of enemies) {
+    if (e.kind === 'bullet') {
+      ctx.fillStyle = '#f6c';
+      ctx.fillRect(e.x - 2, e.y - 2, 4, 4);
+    } else if (e.kind === 'spiral') {
+      ctx.fillStyle = '#f06';
+      ctx.beginPath(); ctx.arc(e.x, e.y, 12, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#f06';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(e.x, e.y, 16, 0, Math.PI * 2); ctx.stroke();
+    }
+  }
+  /* ship */
+  if (ship) {
+    if (ship.shield > 0) {
+      ctx.strokeStyle = 'rgba(0,255,255,0.5)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(ship.x, ship.y, 11, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.fillStyle = '#0ff';
+    ctx.beginPath();
+    ctx.moveTo(ship.x, ship.y - 8);
+    ctx.lineTo(ship.x - 6, ship.y + 6);
+    ctx.lineTo(ship.x + 6, ship.y + 6);
+    ctx.closePath();
+    ctx.fill();
+    /* engine flame */
+    ctx.fillStyle = '#ff6';
+    ctx.fillRect(ship.x - 2, ship.y + 6, 4, 4 + (Math.sin(performance.now() / 50) * 2));
+  }
+}
+
+/* ---------- 12. LOOP (PLAN v2 #13 fixed-timestep accumulator) ---------- */
+let lastFrame = performance.now();
+let accMs = 0;
+function loop(nowMs) {
+  let dt = nowMs - lastFrame;
+  if (dt > MAX_FRAME_MS) dt = MAX_FRAME_MS;       /* cap huge gap (e.g., un-blur) */
+  lastFrame = nowMs;
+  accMs += dt;
+  while (accMs >= FIXED_DT_MS) {
+    tick(FIXED_DT_MS);
+    accMs -= FIXED_DT_MS;
+  }
+  /* HUD timer (only count during STAGE_n; PAUSED freezes runStartMs) */
+  if (isStage(fsm.cur) && runStartMs) {
+    const sec = (nowMs - runStartMs) / 1000;
+    hudEl.time.textContent = `TIME: ${sec.toFixed(1)}s`;
+  }
+  render();
+  requestAnimationFrame(loop);
+}
+
+/* ---------- 13. INIT ---------- */
+hudEl.state.textContent = `STATE: ${fsm.cur}`;
+console.log('[init] PLAN v2 S0 scaffold loaded');
+console.log('[init] FSM cur =', fsm.cur);
+console.log('[init] viewport =', window.innerWidth, 'x', window.innerHeight, 'dpr =', window.devicePixelRatio);
+hudEl.tip.textContent = 'tap canvas to begin';
+requestAnimationFrame(loop);
+
+/* Expose for browser smoke test (console: window.__dsf.fsm.cur) */
+window.__dsf = { fsm, ship, bullets, enemies, shipS: SHIPS, stageS: STATE, InputState };
+</script>
+</body>
+</html>

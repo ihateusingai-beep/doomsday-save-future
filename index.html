@@ -114,9 +114,8 @@ const InputState = {
   /* keyboard proxy */
   keys: { up:false, down:false, left:false, right:false },
 
-  /* single-action flags (consume-on-read) */
-  focus: false,           // PLAN #6 focus toggle
-  bomb:  false,           // PLAN #7 bomb trigger
+  /* focus / bomb are now CD-cooldown driven (focusActiveUntil, bombCDUntil
+     module-level globals), not consume-on-read flags — S1-C */
 
   /* drag bookkeeping */
   dragId: null,
@@ -561,8 +560,31 @@ window.addEventListener('keydown', (e) => {
   if (k === 'arrowdown'  || k === 's') { InputState.keys.down = true; e.preventDefault(); }
   if (k === 'arrowleft'  || k === 'a') { InputState.keys.left = true; }
   if (k === 'arrowright' || k === 'd') { InputState.keys.right = true; }
-  if (k === ' ')  { InputState.focus = !InputState.focus; e.preventDefault(); }
-  if (k === 'shift') { InputState.bomb  = true; e.preventDefault(); }
+  if (k === ' ')  {
+    /* PLAN v2 #6: SPACE = focus 4s slow-mo (factor 0.3) + 8s CD.
+       consume-on-press; CD check ensures no double-trigger. */
+    const now = performance.now();
+    if (now >= focusCDUntil) {
+      focusActiveUntil = now + 4000;
+      focusCDUntil    = focusActiveUntil + 8000;
+      console.log('[focus] ON 4s @', (now/1000).toFixed(2));
+    }
+    e.preventDefault();
+  }
+  if (k === 'shift') {
+    /* PLAN v2 #7: SHIFT = bomb — wipe enemy bullets + 1.5s i-frame + 12s CD. */
+    const now = performance.now();
+    if (now >= bombCDUntil) {
+      bombCDUntil = now + 12000;
+      iFrameUntil = now + 1500;
+      /* wipe enemy bullets (in-flight projectiles cleared) */
+      for (let i = enemies.length - 1; i >= 0; i--) {
+        if (enemies[i].kind === 'bullet') enemies.splice(i, 1);
+      }
+      console.log('[bomb] activated @', (now/1000).toFixed(2), 'i-frame 1.5s · CD 12s');
+    }
+    e.preventDefault();
+  }
   /* ship select via keyboard */
   if (fsm.cur === STATE.SHIP_SELECT) {
     if (k === 'a') pickShipAndStart('A');
@@ -654,6 +676,15 @@ function advanceStage() {
 
 /* ---------- 10. TICK (PLAN v2 #13 fixed 60 FPS) ---------- */
 let finalScore = 0;          /* computed on VICTORY entry; displayed on render */
+
+/* focus / bomb cooldowns (PLAN v2 #6-#7) */
+let focusActiveUntil = 0;    /* perf.now() ms */
+let focusCDUntil    = 0;
+let bombCDUntil     = 0;
+let iFrameUntil     = 0;
+function isFocusActive() { return performance.now() < focusActiveUntil; }
+function isIFramed()    { return performance.now() < iFrameUntil; }
+
 function tick(dtMs) {
   /* freeze during non-play states */
   if (!isStage(fsm.cur)) return;
@@ -698,15 +729,8 @@ function tick(dtMs) {
     ship.fireCD = 1000 / ship.fireRate;
   }
 
-  /* ---- bomb trigger (PLAN v2 #7) ---- */
-  if (InputState.bomb) {
-    InputState.bomb = false;
-    /* wipe enemy bullets only — S0 placeholder for i-frame via shield grace */
-    for (let i = enemies.length - 1; i >= 0; i--) {
-      if (enemies[i].kind === 'bullet') enemies.splice(i, 1);
-    }
-    ship.shield = Math.max(ship.shield, 1);
-  }
+  /* ---- focus & bomb are now triggered via keydown with CD checks (S1-C);
+       bomb wipe handled at trigger time, i-frame active window in collision check. */
 
   /* ---- enemy update (with per-pattern boss behavior) ---- */
   for (const e of enemies) {
@@ -760,15 +784,18 @@ function tick(dtMs) {
         }
       }
     } else if (e.kind === 'laser') {
-      e.x += e.vx * dtMs;
-      e.y += e.vy * dtMs;
+      /* focus slows enemy projectiles (PLAN v2 #6) */
+      const slow = isFocusActive() ? 0.3 : 1.0;
+      e.x += e.vx * dtMs * slow;
+      e.y += e.vy * dtMs * slow;
       e.lifeMs -= dtMs;
       if (e.lifeMs <= 0) {
         e._dead = true;
       }
     } else if (e.kind === 'bullet') {
-      e.x += e.vx * dtMs;
-      e.y += e.vy * dtMs;
+      const slow = isFocusActive() ? 0.3 : 1.0;
+      e.x += e.vx * dtMs * slow;
+      e.y += e.vy * dtMs * slow;
     }
   }
 
@@ -804,6 +831,12 @@ function tick(dtMs) {
     if (e.kind !== 'bullet' && e.kind !== 'laser') continue;
     const r = (e.kind === 'laser') ? 4 : 4;
     if (Math.abs(e.x - ship.x) < 6 + r && Math.abs(e.y - ship.y) < 6 + r) {
+      /* PLAN v2 #7: bomb i-frame window — ignore damage during 1.5s post-bomb.
+         Visuals: still flash the bullet out so player sees defense. */
+      if (isIFramed()) {
+        enemies.splice(i, 1);
+        continue;
+      }
       enemies.splice(i, 1);
       if (ship.shield > 0) {
         ship.shield -= 1;
@@ -836,7 +869,13 @@ function tick(dtMs) {
   }
 
   /* ---- HUD ---- */
+  const now = performance.now();
+  const focusState = isFocusActive() ? `FOCUS ON` : `FOCUS CD ${Math.max(0, Math.ceil((focusCDUntil - now)/1000))}s`;
+  const bombState  = isIFramed()
+    ? `BOMB IF ${(1.5 - (now - (iFrameUntil - 1500))).toFixed(1)}s`
+    : (bombCDUntil > now ? `BOMB CD ${Math.max(0, Math.ceil((bombCDUntil - now)/1000))}s` : 'BOMB READY');
   hudEl.hp.textContent = `HP: ${ship.hp}  SHIELD: ${ship.shield}  SCORE: ${Math.floor(runScore)}`;
+  hudEl.tip.textContent = `${focusState} · ${bombState}`;
 }
 
 /* ---------- 11. RENDER ---------- */

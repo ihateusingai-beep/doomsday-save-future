@@ -184,23 +184,24 @@ const fsm = {
 };
 
 function onStateEnter(s, from) {
-  if (s === STATE.STAGE_1 || isStage(s)) {
-    /* reset enemies + bullets + run timer */
+  if (isStage(s)) {
+    lastStage = parseInt(s.split('_')[1], 10);
+    /* reset entities, apply upgrades */
     bullets.length = 0;
     enemies.length = 0;
-    if (!ship) pickShip('A');                 // S0 default ship = A
-    else { ship.x = VIEW_W/2; ship.y = VIEW_H - 60; ship.hp = 3; ship.shield = SHIPS[ship.chassis].shield; }
-    /* spawn S0-4 enemy (8-way spiral) */
-    enemies.push({
-      kind: 'spiral',
-      x: VIEW_W / 2, y: 60,
-      hp: 30,
-      t: 0,                    // ms since spawn
-      lastShot: 0,             // last fired ms
-      ang0: 0,
-    });
+    if (!ship) pickShip('A');                 // default ship first run
+    applyUpgrades();
+    ship.x = VIEW_W/2; ship.y = VIEW_H - 60;
+    ship.hp = ship.maxHp; ship.shield = SHIPS[ship.chassis].shield;
+    /* spawn stage boss */
+    spawnBossFor(lastStage);
     runStartMs = performance.now();
-    hudEl.tip.textContent = 'WASD/Drag to move · SPACE focus · SHIFT bomb';
+    hudEl.tip.textContent = `S${lastStage} · ${STAGE_TABLE[lastStage].name} · WASD/Drag · SPACE focus · SHIFT bomb`;
+  } else if (s === STATE.CHOICE) {
+    /* remember which stage we're mid (already in lastStage from entry) */
+    choiceOffer = generateChoiceOffer();
+    choicePicked = -1;
+    hudEl.tip.textContent = 'CHOICE · tap a card or press 1/2/3';
   } else if (s === STATE.GAMEOVER) {
     hudEl.tip.textContent = 'Tap to retry';
   } else if (s === STATE.VICTORY) {
@@ -209,18 +210,46 @@ function onStateEnter(s, from) {
     hudEl.tip.textContent = 'PAUSED — tab hidden';
   } else if (s === STATE.TITLE) {
     hudEl.tip.textContent = 'tap canvas to begin';
-    bullets.length = 0; enemies.length = 0; ship = null;
+    bullets.length = 0; enemies.length = 0;
+    /* keep ship + playerStacks for retry */
   } else if (s === STATE.SHIP_SELECT) {
     hudEl.tip.textContent = 'A / B / C (or tap a ship card)';
-  } else if (s === STATE.CHOICE) {
-    hudEl.tip.textContent = 'CHOICE modal (S0 placeholder) — press A/B/C to continue';
   }
 }
 
-/* ---------- 6. ENTITIES ---------- */
-let ship = null;            /* { chassis, x, y, hp, shield, speed, fireRate, fireCD } */
+/* ---------- 6. UPGRADES TABLE (PLAN v2 #2: 18 fixed items, all stackable) ---------- */
+const UPGRADES = [
+  { id:'spd_s',   nameZh:'速度+',    icon:'⚡',   desc:'speed +15%',               mod:(s,n)=>{ s.speed *= Math.pow(1.15, n); } },
+  { id:'spd_l',   nameZh:'速度++',   icon:'⚡⚡',  desc:'speed +30%',               mod:(s,n)=>{ s.speed *= Math.pow(1.30, n); } },
+  { id:'hp_s',    nameZh:'生命+',    icon:'❤',   desc:'max HP +1',                mod:(s,n)=>{ s.maxHp += 1 * n; } },
+  { id:'hp_l',    nameZh:'生命+2',   icon:'❤❤', desc:'max HP +2',                mod:(s,n)=>{ s.maxHp += 2 * n; } },
+  { id:'shd_s',   nameZh:'盾+',      icon:'🛡',   desc:'starting shield +1',       mod:(s,n)=>{ s.shield += 1 * n; } },
+  { id:'shd_l',   nameZh:'盾+2',     icon:'🛡🛡', desc:'starting shield +2',       mod:(s,n)=>{ s.shield += 2 * n; } },
+  { id:'fr_s',    nameZh:'射速+',    icon:'🔥',   desc:'fireRate +25%',            mod:(s,n)=>{ s.fireRate *= Math.pow(1.25, n); } },
+  { id:'fr_l',    nameZh:'射速++',   icon:'🔥🔥', desc:'fireRate +50%',            mod:(s,n)=>{ s.fireRate *= Math.pow(1.50, n); } },
+  { id:'gun_2',   nameZh:'雙砲',     icon:'✦',    desc:'2-way → 3-way',            mod:(s,n)=>{ s.bulletCount = 2 + n; } },
+  { id:'gun_3',   nameZh:'三砲',     icon:'✦✦',  desc:'3-way → 4-way',            mod:(s,n)=>{ s.bulletCount = Math.min(4, 3 + n); } },
+  { id:'dmg_s',   nameZh:'火力+',    icon:'💥',   desc:'bullet damage +1 (S2)',    mod:(s,n)=>{ s.bulletDmg = (s.bulletDmg||1) + n; } },
+  { id:'bomb_cd', nameZh:'炸彈CD-',  icon:'💣',   desc:'bomb CD -25%',             mod:(s,n)=>{ s.bombCD *= Math.pow(0.75, n); } },
+  { id:'focus_d', nameZh:'聚焦+',    icon:'◉',    desc:'focus slow 0.3 → 0.2',     mod:(s,n)=>{ s.focusFactor = Math.max(0.1, s.focusFactor - 0.1*n); } },
+  { id:'graze_s', nameZh:'擦彈+',    icon:'»',    desc:'graze score x2 (S2)',      mod:(s,n)=>{ s.grazeMult = (s.grazeMult||1) * Math.pow(2, n); } },
+  { id:'pierce',  nameZh:'貫穿',     icon:'➶',    desc:'bullets pierce 1 enemy',   mod:(s,n)=>{ s.pierce = n; } },
+  { id:'life_st', nameZh:'復活',     icon:'✝',    desc:'one resurrect (S2)',       mod:(s,n)=>{ s.resurrect = (s.resurrect||0) + n; } },
+  { id:'aurora',  nameZh:'極光',     icon:'✺',    desc:'360° periodic burst (S2)', mod:(s,n)=>{ s.aurora = (s.aurora||0) + n; } },
+  { id:'master',  nameZh:'大師',     icon:'★',    desc:'+20% all stats',           mod:(s,n)=>{ s.masterStacks = (s.masterStacks||0) + n; } },
+];
+/* S2 candidates marked "S2" in desc — S1 doesn't implement apply side. */
+
+/* stack count, key = upgrade id (PLAN v2 #3: re-offer allowed) */
+let playerStacks = Object.create(null);
+
+/* ---------- 7. ENTITIES ---------- */
+let ship = null;            /* { chassis, x, y, hp, maxHp, shield, speed, fireRate, fireCD,
+                                 bulletCount, bulletDmg, bombCD, focusFactor,
+                                 focusDuration, focusCD, grazeMult, pierce,
+                                 resurrect, aurora, masterStacks, iFrameUntil } */
 let bullets = [];           /* { x, y, vx, vy, owner:'player' } */
-let enemies = [];           /* spiral | bullet | (boss later) */
+let enemies = [];           /* spiral | bullet | boss */
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
@@ -230,12 +259,107 @@ function pickShip(id) {
     chassis: id,
     x: VIEW_W / 2,
     y: VIEW_H - 60,
-    hp: 3,
+    hp: 3, maxHp: 3,
     shield: c.shield,
     speed: c.speed,
     fireRate: c.fireRate,
     fireCD: 0,
+    bulletCount: 2,
+    bulletDmg: 1,
+    bombCD: 12000,
+    focusFactor: 0.3,
+    focusDuration: 4000,
+    focusCD: 8000,
+    grazeMult: 1.0,
+    pierce: 0,
+    resurrect: 0,
+    aurora: 0,
+    masterStacks: 0,
+    iFrameUntil: 0,
   };
+  /* apply any existing stacks (resuming run) */
+  applyUpgrades();
+}
+
+function applyUpgrades() {
+  if (!ship) return;
+  /* reset to base */
+  const c = SHIPS[ship.chassis];
+  ship.maxHp        = 3;
+  ship.shield       = c.shield;
+  ship.speed        = c.speed;
+  ship.fireRate     = c.fireRate;
+  ship.bulletCount  = 2;
+  ship.bulletDmg    = 1;
+  ship.bombCD       = 12000;
+  ship.focusFactor  = 0.3;
+  ship.focusDuration= 4000;
+  ship.focusCD      = 8000;
+  ship.grazeMult    = 1.0;
+  ship.pierce       = 0;
+  ship.resurrect    = 0;
+  ship.aurora       = 0;
+  ship.masterStacks = 0;
+  /* apply stacks */
+  for (const up of UPGRADES) {
+    const n = playerStacks[up.id] || 0;
+    if (n > 0) up.mod(ship, n);
+  }
+  /* master: multiplicative 1.20 per stack on speed/fireRate */
+  if (ship.masterStacks > 0) {
+    const m = Math.pow(1.20, ship.masterStacks);
+    ship.speed    *= m;
+    ship.fireRate *= m;
+  }
+  /* clamp hp upward if maxHp grew */
+  if (ship.hp < ship.maxHp) ship.hp = ship.maxHp;
+  /* keep shield ≥ 0 */
+  if (ship.shield < 0) ship.shield = 0;
+}
+
+/* ---------- 7a. CHOICE (PLAN v2 §CHOICE / #3 re-offer) ---------- */
+let lastStage = 1;          /* remember pre-CHOICE for advanceStage */
+let choiceOffer = [];        /* [up, up, up] */
+let choicePicked = -1;       /* choice card picked (0/1/2) or -1 */
+
+function generateChoiceOffer() {
+  /* 3 cards from UPGRADES pool; re-offer allowed (no exclusion). */
+  const pick = () => UPGRADES[Math.floor(Math.random() * UPGRADES.length)];
+  return [pick(), pick(), pick()];
+}
+
+function applyPickedUpgrade(idx) {
+  if (idx < 0 || idx >= choiceOffer.length) return;
+  const up = choiceOffer[idx];
+  playerStacks[up.id] = (playerStacks[up.id] || 0) + 1;
+  console.log('[CHOICE] picked', up.id, 'count =', playerStacks[up.id]);
+  applyUpgrades();
+}
+
+/* ---------- 8. STAGE_TABLE + spawnBossFor (S1-B will expand) ---------- */
+/* declared early so onStateEnter's STAGE_n entry can call spawnBossFor */
+const STAGE_TABLE = {
+  1: { name:'維港起飛',  targetSec:50, bossHp:80  },
+  2: { name:'九龍煙柱',  targetSec:55, bossHp:110 },
+  3: { name:'大氣層',    targetSec:60, bossHp:150 },
+  4: { name:'軌道殘骸',  targetSec:65, bossHp:200 },
+  5: { name:'逃逸門 Final', targetSec:70, bossHp:300 },
+};
+
+function spawnBossFor(stageId) {
+  /* S1-A: still single spiral boss; S1-B replaces with per-stage boss.
+     kept compatible with old "spiral" type so S0 collision logic still works. */
+  const st = STAGE_TABLE[stageId] || STAGE_TABLE[1];
+  enemies.push({
+    kind: 'spiral',
+    stage: stageId,
+    x: VIEW_W / 2, y: 60,
+    hp: st.bossHp,
+    t: 0,
+    ang0: 0,
+    label: `${st.name} · BOSS S${stageId}`,
+  });
+  console.log(`[stage ${stageId}] ${st.name} spawned · boss HP ${st.bossHp}`);
 }
 
 /* ---------- 7. INPUT — Pointer Events + Keyboard ---------- */
@@ -256,13 +380,26 @@ canvas.addEventListener('pointerdown', (e) => {
     return;
   }
   if (fsm.cur === STATE.GAMEOVER) {
-    /* restart fresh */
+    /* restart fresh (clear stacks so retry = fresh roguelite) */
     runStartMs = null;
+    playerStacks = Object.create(null);
     fsm.set(STATE.SHIP_SELECT);
     return;
   }
   if (fsm.cur === STATE.CHOICE) {
-    /* S0 placeholder: A/B/C advance */
+    /* 3 cards: 88×96 centered, gap 12 — match render() geometry */
+    const cardW = 88, cardH = 96, gap = 12;
+    const totalW = cardW * 3 + gap * 2;
+    const startX = (VIEW_W - totalW) / 2;
+    const cardY = VIEW_H / 2 - 40;
+    if (py > cardY && py < cardY + cardH && px > startX && px < startX + totalW) {
+      const idx = Math.floor((px - startX) / (cardW + gap));
+      if (idx >= 0 && idx <= 2 && choiceOffer[idx]) {
+        applyPickedUpgrade(idx);
+        advanceStage();
+        return;
+      }
+    }
     return;
   }
   /* STAGE_n: start drag bookkeeping */
@@ -321,8 +458,15 @@ window.addEventListener('keydown', (e) => {
     if (k === 'c') pickShipAndStart('C');
   }
   if (fsm.cur === STATE.CHOICE) {
-    /* placeholder: any key advances */
-    advanceStage();
+    /* S1-A: 1/2/3 keys pick a card (PLAN v2 #3 re-offer) */
+    if (k === '1') { applyPickedUpgrade(0); advanceStage(); }
+    else if (k === '2') { applyPickedUpgrade(1); advanceStage(); }
+    else if (k === '3') { applyPickedUpgrade(2); advanceStage(); }
+    else if (k === 'escape' || k === 'enter') {
+      /* skip — also pick first card as default so it never deadlocks */
+      applyPickedUpgrade(0);
+      advanceStage();
+    }
   }
 });
 window.addEventListener('keyup', (e) => {
@@ -375,6 +519,17 @@ document.addEventListener('visibilitychange', () => {
 
 /* ---------- 9. STAGE FLOW ---------- */
 function advanceStage() {
+  /* Called from CHOICE pick: go to next stage (or VICTORY if last boss defeated). */
+  if (fsm.cur === STATE.CHOICE) {
+    const next = lastStage + 1;
+    if (next > STAGES.length) {
+      fsm.set(STATE.VICTORY);
+    } else {
+      fsm.set(STAGES[next - 1]);
+    }
+    return;
+  }
+  /* other callers: linear from current STAGE_n */
   const idx = STAGES.indexOf(fsm.cur);
   if (idx >= 0 && idx < STAGES.length - 1) {
     fsm.set(STAGES[idx + 1]);
@@ -468,8 +623,12 @@ function tick(dtMs) {
         e.hp -= 1;
         if (e.hp <= 0) {
           console.log('[enemy] spiral defeated @', (performance.now()/1000).toFixed(2));
-          /* S0 shortcut: spiral defeated → CHOICE modal */
-          fsm.set(STATE.CHOICE);
+          /* STAGE 5 boss → VICTORY; others → CHOICE modal */
+          if (lastStage >= STAGES.length) {
+            fsm.set(STATE.VICTORY);
+          } else {
+            fsm.set(STATE.CHOICE);
+          }
           return;
         }
         break;
@@ -613,15 +772,53 @@ function render() {
   }
 
   if (fsm.cur === STATE.CHOICE) {
-    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    /* 3-card CHOICE modal (S1-A, PLAN v2 §CHOICE) */
+    const cardW = 88, cardH = 96, gap = 12;
+    const totalW = cardW * 3 + gap * 2;
+    const startX = (VIEW_W - totalW) / 2;
+    const cardY = VIEW_H / 2 - 40;
+    /* backdrop */
+    ctx.fillStyle = 'rgba(0,0,0,0.78)';
     ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    /* header */
     ctx.fillStyle = '#ff6';
     ctx.font = 'bold 14px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('CHOICE — v2 reward pool empty', VIEW_W/2, VIEW_H/2 - 8);
-    ctx.font = '11px monospace';
-    ctx.fillStyle = '#fff';
-    ctx.fillText('S0 placeholder · press any key to advance', VIEW_W/2, VIEW_H/2 + 14);
+    ctx.fillText('CHOICE — pick an upgrade', VIEW_W/2, cardY - 16);
+    for (let i = 0; i < 3; i++) {
+      const up = choiceOffer[i];
+      const x = startX + i * (cardW + gap);
+      const y = cardY;
+      ctx.fillStyle = 'rgba(0,40,60,0.9)';
+      ctx.fillRect(x, y, cardW, cardH);
+      ctx.strokeStyle = '#0ff';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x, y, cardW, cardH);
+      ctx.fillStyle = '#fff';
+      ctx.font = '22px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(up.icon, x + cardW/2, y + 30);
+      ctx.font = 'bold 11px monospace';
+      ctx.fillStyle = '#0ff';
+      ctx.fillText(up.nameZh, x + cardW/2, y + 50);
+      ctx.font = '9px monospace';
+      ctx.fillStyle = '#aaa';
+      const descLines = up.desc.match(/.{1,12}/g) || [up.desc];
+      for (let li = 0; li < Math.min(descLines.length, 3); li++) {
+        ctx.fillText(descLines[li], x + cardW/2, y + 64 + li * 10);
+      }
+      const n = playerStacks[up.id] || 0;
+      if (n > 0) {
+        ctx.fillStyle = '#0f6';
+        ctx.font = 'bold 10px monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText(`x${n}`, x + cardW - 6, y + 12);
+      }
+      ctx.fillStyle = '#ff6';
+      ctx.font = 'bold 10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(`[${i+1}] tap`, x + cardW/2, y + cardH - 6);
+    }
     return;
   }
 
@@ -644,6 +841,18 @@ function render() {
       ctx.strokeStyle = '#f06';
       ctx.lineWidth = 1;
       ctx.beginPath(); ctx.arc(e.x, e.y, 16, 0, Math.PI * 2); ctx.stroke();
+      /* S1-A: HP bar above boss for visibility */
+      const hpFrac = Math.max(0, e.hp / STAGE_TABLE[e.stage || lastStage].bossHp);
+      ctx.fillStyle = '#300';
+      ctx.fillRect(e.x - 16, e.y - 22, 32, 3);
+      ctx.fillStyle = hpFrac > 0.5 ? '#0f6' : (hpFrac > 0.25 ? '#ff6' : '#f06');
+      ctx.fillRect(e.x - 16, e.y - 22, 32 * hpFrac, 3);
+      if (e.label) {
+        ctx.fillStyle = '#fff';
+        ctx.font = '8px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(e.label, e.x, e.y + 28);
+      }
     }
   }
   /* ship */

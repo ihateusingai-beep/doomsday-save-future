@@ -215,7 +215,7 @@ function onStateEnter(s, from) {
     choicePicked = -1;
     hudEl.tip.textContent = 'CHOICE · tap a card or press 1/2/3';
   } else if (s === STATE.GAMEOVER) {
-    hudEl.tip.textContent = 'Tap to retry';
+    hudEl.tip.textContent = 'Retry / Title';
   } else if (s === STATE.VICTORY) {
     /* PLAN v2 §Score: final = runScore + timeBonus;
        persistence per #22 (bestScore + bestTime). */
@@ -510,12 +510,15 @@ canvas.addEventListener('pointerdown', (e) => {
     return;
   }
   if (fsm.cur === STATE.GAMEOVER) {
-    /* restart fresh (clear stacks so retry = fresh roguelite) */
-    runStartMs = null;
-    stageStartMs = null;
-    pausedAtMs = null;
-    playerStacks = Object.create(null);
-    fsm.set(STATE.SHIP_SELECT);
+    const hit = hitEndBtn(px, py);
+    if (hit === 'retry') return goRetry();
+    if (hit === 'title') return goTitle();
+    return;
+  }
+  if (fsm.cur === STATE.VICTORY) {
+    const hit = hitEndBtn(px, py);
+    if (hit === 'retry') return goRetry();
+    if (hit === 'title') return goTitle();
     return;
   }
   if (fsm.cur === STATE.CHOICE) {
@@ -623,6 +626,11 @@ window.addEventListener('keydown', (e) => {
       advanceStage();
     }
   }
+  /* PLAN: GAMEOVER/VICTORY → [Retry] / [Title] */
+  if (fsm.cur === STATE.GAMEOVER || fsm.cur === STATE.VICTORY) {
+    if (k === 'r' || k === 'enter') { goRetry(); e.preventDefault(); }
+    else if (k === 't' || k === 'escape') { goTitle(); e.preventDefault(); }
+  }
 });
 window.addEventListener('keyup', (e) => {
   const k = e.key.toLowerCase();
@@ -635,6 +643,69 @@ window.addEventListener('keyup', (e) => {
 function pickShipAndStart(id) {
   pickShip(id);
   fsm.set(STATE.STAGE_1);
+}
+
+/* ---------- end-screen exits (PLAN: GAMEOVER [Retry]/[Title]; VICTORY same) ---------- */
+function endScreenBtns() {
+  /* ≥64×64 touch targets, bottom row (PLAN v2 #20) */
+  const w = 128, h = 64, gap = 16;
+  const total = w * 2 + gap;
+  const startX = (VIEW_W - total) / 2;
+  const y = VIEW_H - 100;
+  return {
+    retry: { x: startX, y, w, h, label: 'RETRY' },
+    title: { x: startX + w + gap, y, w, h, label: 'TITLE' },
+  };
+}
+function hitEndBtn(px, py) {
+  const b = endScreenBtns();
+  const inside = (r) => px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
+  if (inside(b.retry)) return 'retry';
+  if (inside(b.title)) return 'title';
+  return null;
+}
+function drawEndBtns() {
+  const b = endScreenBtns();
+  for (const key of ['retry', 'title']) {
+    const r = b[key];
+    ctx.fillStyle = key === 'retry' ? 'rgba(0,80,60,0.95)' : 'rgba(0,40,60,0.95)';
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.strokeStyle = key === 'retry' ? '#0f6' : '#0ff';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(r.x, r.y, r.w, r.h);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 14px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(r.label, r.x + r.w / 2, r.y + r.h / 2);
+  }
+  ctx.textBaseline = 'alphabetic';
+  ctx.font = '10px monospace';
+  ctx.fillStyle = '#888';
+  ctx.textAlign = 'center';
+  ctx.fillText('R / Enter = Retry · T / Esc = Title', VIEW_W / 2, VIEW_H - 22);
+}
+function resetRunFresh() {
+  runStartMs = null;
+  stageStartMs = null;
+  pausedAtMs = null;
+  playerStacks = Object.create(null);
+  ship = null;
+  bullets.length = 0;
+  enemies.length = 0;
+  runScore = 0;
+  isNewBest = false;
+  victoryRunSec = 0;
+  victoryTimeBonus = 0;
+  finalScore = 0;
+}
+function goRetry() {
+  resetRunFresh();
+  fsm.set(STATE.SHIP_SELECT);
+}
+function goTitle() {
+  resetRunFresh();
+  fsm.set(STATE.TITLE);
 }
 
 /* ---------- 8. TAB VISIBILITY + CLOCKS (PLAN v2 #17 + §Score 全程) ---------- */
@@ -1033,10 +1104,11 @@ function render() {
     ctx.fillStyle = '#f06';
     ctx.font = 'bold 28px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('GAME OVER', VIEW_W/2, VIEW_H/2 - 8);
+    ctx.fillText('GAME OVER', VIEW_W/2, VIEW_H/2 - 24);
     ctx.font = '12px monospace';
     ctx.fillStyle = '#fff';
-    ctx.fillText('Tap to retry', VIEW_W/2, VIEW_H/2 + 16);
+    ctx.fillText('ship destroyed', VIEW_W/2, VIEW_H/2 + 4);
+    drawEndBtns();
     return;
   }
 
@@ -1050,27 +1122,28 @@ function render() {
     /* NEW BEST badge (PLAN v2 #22 + nice UX) */
     if (isNewBest) {
       ctx.fillStyle = 'rgba(255,255,0,0.2)';
-      ctx.fillRect(0, VIEW_H/2 - 80, VIEW_W, 24);
+      ctx.fillRect(0, VIEW_H/2 - 100, VIEW_W, 24);
       ctx.fillStyle = '#ff0';
       ctx.font = 'bold 14px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText('★ NEW BEST ★', VIEW_W/2, VIEW_H/2 - 62);
+      ctx.fillText('★ NEW BEST ★', VIEW_W/2, VIEW_H/2 - 82);
     }
     ctx.fillStyle = '#0f6';
     ctx.font = 'bold 32px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('VICTORY', VIEW_W/2, VIEW_H/2 - 20);
+    ctx.fillText('VICTORY', VIEW_W/2, VIEW_H/2 - 40);
     ctx.font = '14px monospace';
     ctx.fillStyle = '#fff';
-    ctx.fillText('escaped · ' + finalRunSec.toFixed(1) + 's', VIEW_W/2, VIEW_H/2 + 16);
+    ctx.fillText('escaped · ' + finalRunSec.toFixed(1) + 's', VIEW_W/2, VIEW_H/2 - 4);
     ctx.fillStyle = '#ff6';
     ctx.font = 'bold 16px monospace';
-    ctx.fillText('SCORE: ' + scoreDisplay, VIEW_W/2, VIEW_H/2 + 50);
+    ctx.fillText('SCORE: ' + scoreDisplay, VIEW_W/2, VIEW_H/2 + 28);
     ctx.font = '11px monospace';
     ctx.fillStyle = '#aaa';
-    ctx.fillText(`(kill ${Math.floor(runScore)} + time bonus ${Math.floor(timeBonus)})`, VIEW_W/2, VIEW_H/2 + 70);
+    ctx.fillText(`(kill ${Math.floor(runScore)} + time bonus ${Math.floor(timeBonus)})`, VIEW_W/2, VIEW_H/2 + 48);
     ctx.fillStyle = '#ff6';
-    ctx.fillText(`BEST: ${Math.floor(bestScore)} · ${bestTime.toFixed(1)}s`, VIEW_W/2, VIEW_H/2 + 96);
+    ctx.fillText(`BEST: ${Math.floor(bestScore)} · ${bestTime.toFixed(1)}s`, VIEW_W/2, VIEW_H/2 + 72);
+    drawEndBtns();
     return;
   }
 

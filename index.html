@@ -745,12 +745,33 @@ function tick(dtMs) {
     ship.y = clamp(ship.y, 8, VIEW_H - 8);
   }
 
-  /* ---- autofire ---- */
+  /* ---- autofire (uses bulletCount + bulletDmg from upgrades) ---- */
   ship.fireCD -= dtMs;
   if (ship.fireCD <= 0) {
-    bullets.push({ x: ship.x - 4, y: ship.y - 8, vx: 0, vy: -0.30, owner: 'player' });
-    bullets.push({ x: ship.x + 4, y: ship.y - 8, vx: 0, vy: -0.30, owner: 'player' });
+    const n = Math.max(1, ship.bulletCount | 0);
+    const mid = (n - 1) / 2;
+    const spread = n <= 2 ? 0.08 : 0.12;   /* rad fan; 2-way stays tight */
+    const spd = 0.30;
+    const dmg = ship.bulletDmg || 1;
+    for (let i = 0; i < n; i++) {
+      const a = -Math.PI / 2 + (i - mid) * spread;  /* upward */
+      bullets.push({
+        x: ship.x + (i - mid) * 4,
+        y: ship.y - 8,
+        vx: Math.cos(a) * spd,
+        vy: Math.sin(a) * spd,
+        owner: 'player',
+        dmg,
+      });
+    }
     ship.fireCD = 1000 / ship.fireRate;
+  }
+
+  /* ---- player bullets move (was missing — bullets stuck at muzzle) ---- */
+  for (const b of bullets) {
+    if (b.owner !== 'player') continue;
+    b.x += b.vx * dtMs;
+    b.y += b.vy * dtMs;
   }
 
   /* ---- focus & bomb are now triggered via keydown with CD checks (S1-C);
@@ -831,7 +852,7 @@ function tick(dtMs) {
       if (b.owner !== 'player') continue;
       if (Math.abs(b.x - e.x) < 12 && Math.abs(b.y - e.y) < 12) {
         bullets.splice(i, 1);
-        e.hp -= 1;
+        e.hp -= (b.dmg || 1);
         if (e.hp <= 0) {
           console.log('[enemy] spiral defeated @', (performance.now()/1000).toFixed(2));
           /* PLAN v2 §Score: kill score 200 for elite/boss */

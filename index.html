@@ -208,7 +208,7 @@ function onStateEnter(s, from) {
     } else {
       runScore = 0;
     }
-    hudEl.tip.textContent = `S${lastStage} · ${STAGE_TABLE[lastStage].name} · WASD/Drag · SPACE focus · SHIFT bomb`;
+    hudEl.tip.textContent = `S${lastStage} · ${STAGE_TABLE[lastStage].name} · drag/WASD · FOCUS/BOMB btn`;
   } else if (s === STATE.CHOICE) {
     beginFreezeClocks();               /* modal freezes run timer (PLAN §Score) */
     choiceOffer = generateChoiceOffer();
@@ -537,8 +537,11 @@ canvas.addEventListener('pointerdown', (e) => {
     }
     return;
   }
-  /* STAGE_n: start drag bookkeeping */
+  /* STAGE_n: ability tap OR start drag bookkeeping */
   if (isStage(fsm.cur)) {
+    const ab = hitAbilityBtn(px, py);
+    if (ab === 'focus') { tryFocus(); return; }
+    if (ab === 'bomb')  { tryBomb();  return; }
     InputState.dragId = e.pointerId;
     InputState.dragOrigin = { x: cx, y: cy };
     InputState.shipOrigin = { x: ship.x, y: ship.y };
@@ -585,28 +588,11 @@ window.addEventListener('keydown', (e) => {
   if (k === 'arrowleft'  || k === 'a') { InputState.keys.left = true; }
   if (k === 'arrowright' || k === 'd') { InputState.keys.right = true; }
   if (k === ' ')  {
-    /* PLAN v2 #6: SPACE = focus 4s slow-mo (factor 0.3) + 8s CD.
-       consume-on-press; CD check ensures no double-trigger. */
-    const now = performance.now();
-    if (now >= focusCDUntil) {
-      focusActiveUntil = now + 4000;
-      focusCDUntil    = focusActiveUntil + 8000;
-      console.log('[focus] ON 4s @', (now/1000).toFixed(2));
-    }
+    tryFocus();
     e.preventDefault();
   }
   if (k === 'shift') {
-    /* PLAN v2 #7: SHIFT = bomb — wipe enemy bullets + 1.5s i-frame + 12s CD. */
-    const now = performance.now();
-    if (now >= bombCDUntil) {
-      bombCDUntil = now + 12000;
-      iFrameUntil = now + 1500;
-      /* wipe enemy bullets (in-flight projectiles cleared) */
-      for (let i = enemies.length - 1; i >= 0; i--) {
-        if (enemies[i].kind === 'bullet') enemies.splice(i, 1);
-      }
-      console.log('[bomb] activated @', (now/1000).toFixed(2), 'i-frame 1.5s · CD 12s');
-    }
+    tryBomb();
     e.preventDefault();
   }
   /* ship select via keyboard */
@@ -698,6 +684,10 @@ function resetRunFresh() {
   victoryRunSec = 0;
   victoryTimeBonus = 0;
   finalScore = 0;
+  focusActiveUntil = 0;
+  focusCDUntil = 0;
+  bombCDUntil = 0;
+  iFrameUntil = 0;
 }
 function goRetry() {
   resetRunFresh();
@@ -792,13 +782,98 @@ bestScore = lsRead(LS_KEY_SCORE);
 bestTime  = lsRead(LS_KEY_TIME);
 let isNewBest = false;          /* set on VICTORY entry, displayed on render */
 
-/* focus / bomb cooldowns (PLAN v2 #6-#7) */
+/* focus / bomb cooldowns (PLAN v2 #6-#7) — durations/CD read from ship when armed */
+const BOMB_IFRAME_MS = 1500;
 let focusActiveUntil = 0;    /* perf.now() ms */
 let focusCDUntil    = 0;
 let bombCDUntil     = 0;
 let iFrameUntil     = 0;
 function isFocusActive() { return performance.now() < focusActiveUntil; }
 function isIFramed()    { return performance.now() < iFrameUntil; }
+function focusSlowFactor() {
+  if (!isFocusActive()) return 1.0;
+  const f = ship && ship.focusFactor != null ? ship.focusFactor : 0.3;
+  return f;
+}
+function tryFocus() {
+  if (!isStage(fsm.cur) || !ship) return false;
+  const now = performance.now();
+  if (now < focusCDUntil) return false;
+  const dur = ship.focusDuration || 4000;
+  const cd  = ship.focusCD || 8000;
+  focusActiveUntil = now + dur;
+  focusCDUntil     = focusActiveUntil + cd;   /* CD starts after focus ends */
+  console.log('[focus] ON', (dur/1000).toFixed(1) + 's · factor', ship.focusFactor, '@', (now/1000).toFixed(2));
+  return true;
+}
+function tryBomb() {
+  if (!isStage(fsm.cur) || !ship) return false;
+  const now = performance.now();
+  if (now < bombCDUntil) return false;
+  const cd = ship.bombCD || 12000;
+  bombCDUntil = now + cd;
+  iFrameUntil = now + BOMB_IFRAME_MS;
+  /* wipe enemy projectiles (bullets + lasers) */
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const k = enemies[i].kind;
+    if (k === 'bullet' || k === 'laser') enemies.splice(i, 1);
+  }
+  console.log('[bomb] ON i-frame', (BOMB_IFRAME_MS/1000).toFixed(1) + 's · CD', (cd/1000).toFixed(1) + 's @', (now/1000).toFixed(2));
+  return true;
+}
+function abilityBtns() {
+  /* touch ≥64×64, bottom corners — avoid ship drag conflict via hit-first */
+  const w = 64, h = 64, m = 8;
+  return {
+    focus: { x: m, y: VIEW_H - h - m, w, h, label: 'FOCUS' },
+    bomb:  { x: VIEW_W - w - m, y: VIEW_H - h - m, w, h, label: 'BOMB' },
+  };
+}
+function hitAbilityBtn(px, py) {
+  const b = abilityBtns();
+  const inside = (r) => px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
+  if (inside(b.focus)) return 'focus';
+  if (inside(b.bomb))  return 'bomb';
+  return null;
+}
+function drawAbilityBtns() {
+  if (!isStage(fsm.cur)) return;
+  const now = performance.now();
+  const b = abilityBtns();
+  const items = [
+    { key: 'focus', ready: now >= focusCDUntil, active: isFocusActive(),
+      cdLeft: Math.max(0, focusCDUntil - now) },
+    { key: 'bomb',  ready: now >= bombCDUntil,  active: isIFramed(),
+      cdLeft: Math.max(0, bombCDUntil - now) },
+  ];
+  for (const it of items) {
+    const r = b[it.key];
+    ctx.fillStyle = it.active ? 'rgba(255,255,0,0.35)'
+                  : it.ready  ? 'rgba(0,60,80,0.85)'
+                              : 'rgba(30,30,30,0.75)';
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.strokeStyle = it.active ? '#ff0' : it.ready ? '#0ff' : '#555';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(r.x, r.y, r.w, r.h);
+    ctx.fillStyle = it.ready || it.active ? '#fff' : '#888';
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(r.label, r.x + r.w/2, r.y + r.h/2 - 8);
+    ctx.font = '9px monospace';
+    if (it.active) {
+      ctx.fillStyle = '#ff0';
+      ctx.fillText('ON', r.x + r.w/2, r.y + r.h/2 + 10);
+    } else if (!it.ready) {
+      ctx.fillStyle = '#f06';
+      ctx.fillText(Math.ceil(it.cdLeft/1000) + 's', r.x + r.w/2, r.y + r.h/2 + 10);
+    } else {
+      ctx.fillStyle = '#0f6';
+      ctx.fillText('READY', r.x + r.w/2, r.y + r.h/2 + 10);
+    }
+  }
+  ctx.textBaseline = 'alphabetic';
+}
 
 function tick(dtMs) {
   /* freeze during non-play states */
@@ -920,8 +995,8 @@ function tick(dtMs) {
         }
       }
     } else if (e.kind === 'laser') {
-      /* focus slows enemy projectiles (PLAN v2 #6) */
-      const slow = isFocusActive() ? 0.3 : 1.0;
+      /* focus slows enemy projectiles (PLAN v2 #6; factor from ship) */
+      const slow = focusSlowFactor();
       e.x += e.vx * dtMs * slow;
       e.y += e.vy * dtMs * slow;
       e.lifeMs -= dtMs;
@@ -929,7 +1004,7 @@ function tick(dtMs) {
         e._dead = true;
       }
     } else if (e.kind === 'bullet') {
-      const slow = isFocusActive() ? 0.3 : 1.0;
+      const slow = focusSlowFactor();
       e.x += e.vx * dtMs * slow;
       e.y += e.vy * dtMs * slow;
     }
@@ -1006,9 +1081,11 @@ function tick(dtMs) {
 
   /* ---- HUD ---- */
   const now = performance.now();
-  const focusState = isFocusActive() ? `FOCUS ON` : `FOCUS CD ${Math.max(0, Math.ceil((focusCDUntil - now)/1000))}s`;
+  const focusState = isFocusActive()
+    ? `FOCUS ON×${(ship.focusFactor != null ? ship.focusFactor : 0.3).toFixed(1)}`
+    : `FOCUS CD ${Math.max(0, Math.ceil((focusCDUntil - now)/1000))}s`;
   const bombState  = isIFramed()
-    ? `BOMB IF ${(1.5 - (now - (iFrameUntil - 1500))).toFixed(1)}s`
+    ? `BOMB IF ${(Math.max(0, iFrameUntil - now)/1000).toFixed(1)}s`
     : (bombCDUntil > now ? `BOMB CD ${Math.max(0, Math.ceil((bombCDUntil - now)/1000))}s` : 'BOMB READY');
   hudEl.hp.textContent = `HP: ${ship.hp}  SHIELD: ${ship.shield}  SCORE: ${Math.floor(runScore)}`;
   hudEl.tip.textContent = `${focusState} · ${bombState}`;
@@ -1266,7 +1343,14 @@ function render() {
     /* engine flame */
     ctx.fillStyle = '#ff6';
     ctx.fillRect(ship.x - 2, ship.y + 6, 4, 4 + (Math.sin(performance.now() / 50) * 2));
+    /* focus glow ring while active */
+    if (isFocusActive()) {
+      ctx.strokeStyle = 'rgba(255,255,0,0.55)';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(ship.x, ship.y, 14, 0, Math.PI * 2); ctx.stroke();
+    }
   }
+  drawAbilityBtns();
 }
 
 /* ---------- 12. LOOP (PLAN v2 #13 fixed-timestep accumulator) ---------- */

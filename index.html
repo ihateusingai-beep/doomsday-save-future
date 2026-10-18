@@ -197,7 +197,12 @@ function onStateEnter(s, from) {
     waveCursor = 0;
     /* spawn stage boss */
     spawnBossFor(lastStage);
-    runStartMs = performance.now();
+    /* stage clock always resets; run clock only on fresh run start (PLAN: 全程 count-up) */
+    endFreezeClocks();                 /* absorb CHOICE/PAUSED gap before anchors */
+    stageStartMs = performance.now();
+    if (s === STATE.STAGE_1 && (from === STATE.SHIP_SELECT || runStartMs === null)) {
+      runStartMs = stageStartMs;
+    }
     if (from !== STATE.STAGE_1) {
       /* mid-run stage entry: don't reset runScore */
     } else {
@@ -205,6 +210,7 @@ function onStateEnter(s, from) {
     }
     hudEl.tip.textContent = `S${lastStage} · ${STAGE_TABLE[lastStage].name} · WASD/Drag · SPACE focus · SHIFT bomb`;
   } else if (s === STATE.CHOICE) {
+    beginFreezeClocks();               /* modal freezes run timer (PLAN §Score) */
     choiceOffer = generateChoiceOffer();
     choicePicked = -1;
     hudEl.tip.textContent = 'CHOICE · tap a card or press 1/2/3';
@@ -213,10 +219,13 @@ function onStateEnter(s, from) {
   } else if (s === STATE.VICTORY) {
     /* PLAN v2 §Score: final = runScore + timeBonus;
        persistence per #22 (bestScore + bestTime). */
-    const finalRunSec = (performance.now() - runStartMs) / 1000;
+    endFreezeClocks();                 /* no residual freeze in final calc */
+    const finalRunSec = runStartMs != null ? (performance.now() - runStartMs) / 1000 : 0;
     const targetTotal = STAGES.reduce((acc, st) => acc + STAGE_TABLE[st.split('_')[1]].targetSec, 0);
     const timeBonus = Math.max(0, targetTotal - finalRunSec) * 10;
     finalScore = runScore + timeBonus;
+    victoryRunSec = finalRunSec;
+    victoryTimeBonus = timeBonus;
     /* compare + persist */
     let isNewBestScore = false, isNewBestTime = false;
     if (finalScore > bestScore) { bestScore = finalScore; lsWrite(LS_KEY_SCORE, bestScore); isNewBestScore = true; }
@@ -231,8 +240,11 @@ function onStateEnter(s, from) {
     bullets.length = 0; enemies.length = 0;
     /* keep ship + playerStacks for retry */
   } else if (s === STATE.SHIP_SELECT) {
-    /* new run: reset score + advanceAtMs */
+    /* new run: reset score + clocks */
     runScore = 0;
+    runStartMs = null;
+    stageStartMs = null;
+    pausedAtMs = null;
     hudEl.tip.textContent = 'A / B / C (or tap a ship card)';
   }
 }
@@ -500,6 +512,8 @@ canvas.addEventListener('pointerdown', (e) => {
   if (fsm.cur === STATE.GAMEOVER) {
     /* restart fresh (clear stacks so retry = fresh roguelite) */
     runStartMs = null;
+    stageStartMs = null;
+    pausedAtMs = null;
     playerStacks = Object.create(null);
     fsm.set(STATE.SHIP_SELECT);
     return;
@@ -623,22 +637,26 @@ function pickShipAndStart(id) {
   fsm.set(STATE.STAGE_1);
 }
 
-/* ---------- 8. TAB VISIBILITY (PLAN v2 #17) ---------- */
-let runStartMs = null;
-let pausedAtMs = null;        /* performance.now() when paused; null = not paused */
-function shiftRunStartByPause() {
-  /* PLAN v2 #17: resume MUST NOT replay lost time.
-     shift runStartMs forward by the pause duration so HUD timer stays consistent. */
-  if (pausedAtMs !== null && runStartMs !== null) {
-    runStartMs += (performance.now() - pausedAtMs);
-    pausedAtMs = null;
-  }
+/* ---------- 8. TAB VISIBILITY + CLOCKS (PLAN v2 #17 + §Score 全程) ---------- */
+let runStartMs   = null;   /* full-run anchor; only set on STAGE_1 start; freeze-shifted */
+let stageStartMs = null;   /* per-stage anchor for WAVE_TEMPLATES; reset each STAGE_n */
+let pausedAtMs   = null;   /* freeze start (tab PAUSED or CHOICE modal); null = live */
+function beginFreezeClocks() {
+  if (pausedAtMs === null) pausedAtMs = performance.now();
+}
+function endFreezeClocks() {
+  /* PLAN v2 #17: resume MUST NOT replay lost time — shift anchors forward by freeze gap. */
+  if (pausedAtMs === null) return;
+  const gap = performance.now() - pausedAtMs;
+  if (runStartMs   !== null) runStartMs   += gap;
+  if (stageStartMs !== null) stageStartMs += gap;
+  pausedAtMs = null;
 }
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     /* pause iff in STAGE_n — don't pause TITLE/SHIP_SELECT/GAMEOVER/VICTORY/CHOICE */
     if (isStage(fsm.cur) && fsm.cur !== STATE.PAUSED) {
-      pausedAtMs = performance.now();
+      beginFreezeClocks();
       fsm.prev = fsm.cur;
       fsm.set(STATE.PAUSED);
       hudEl.paused.textContent = '⏸ hidden';
@@ -650,7 +668,7 @@ document.addEventListener('visibilitychange', () => {
       /* bypass fsm.set() to avoid onStateEnter reset wiping live bullets/enemies */
       fsm.cur = resumeTo;
       fsm.prev = STATE.PAUSED;
-      shiftRunStartByPause();          /* freeze HUD timer across pause gap */
+      endFreezeClocks();          /* freeze HUD/run/stage timers across pause gap */
       hudEl.state.textContent = `STATE: ${resumeTo}`;
       hudEl.paused.textContent = '';
       console.log(`[FSM] PAUSED → ${resumeTo} @ ${(performance.now()/1000).toFixed(2)}s (no time replay)`);
@@ -683,6 +701,8 @@ function advanceStage() {
 
 /* ---------- 10. TICK (PLAN v2 #13 fixed 60 FPS) ---------- */
 let finalScore = 0;          /* computed on VICTORY entry; displayed on render */
+let victoryRunSec = 0;       /* frozen full-run seconds at VICTORY entry */
+let victoryTimeBonus = 0;    /* frozen timeBonus at VICTORY entry */
 
 /* localStorage persistence (PLAN v2 #22) */
 const LS_KEY_SCORE = 'dsf.bestScore';
@@ -714,8 +734,8 @@ function tick(dtMs) {
   if (!isStage(fsm.cur)) return;
 
   /* ---- wave scheduler (S1-B): emit waves on stage-time targets ---- */
-  if (runStartMs) {
-    const stageMs = performance.now() - runStartMs;
+  if (stageStartMs) {
+    const stageMs = performance.now() - stageStartMs;
     while (waveCursor < waveQueue.length && waveQueue[waveCursor].at <= stageMs) {
       const w = waveQueue[waveCursor];
       for (const s of w.spawn) emitWaveType(s, lastStage);
@@ -1021,11 +1041,10 @@ function render() {
   }
 
   if (fsm.cur === STATE.VICTORY) {
-    /* PLAN v2 §Score: final = runScore + timeBonus; bestScore / bestTime from localStorage */
-    const finalRunSec = (performance.now() - runStartMs) / 1000;
-    const targetTotal = STAGES.reduce((acc, st) => acc + STAGE_TABLE[st.split('_')[1]].targetSec, 0);
-    const timeBonus = Math.max(0, targetTotal - finalRunSec) * 10;
-    const scoreDisplay = Math.floor(runScore + timeBonus);
+    /* frozen at onStateEnter — do NOT recompute from live clock (would drift on screen) */
+    const finalRunSec = victoryRunSec;
+    const timeBonus = victoryTimeBonus;
+    const scoreDisplay = Math.floor(finalScore);
     ctx.fillStyle = 'rgba(0,0,0,0.65)';
     ctx.fillRect(0, 0, VIEW_W, VIEW_H);
     /* NEW BEST badge (PLAN v2 #22 + nice UX) */
@@ -1189,7 +1208,7 @@ function loop(nowMs) {
     tick(FIXED_DT_MS);
     accMs -= FIXED_DT_MS;
   }
-  /* HUD timer (only count during STAGE_n; PAUSED freezes runStartMs) */
+  /* HUD timer: full-run count-up only during STAGE_n (PAUSED/CHOICE freeze via clock shift) */
   if (isStage(fsm.cur) && runStartMs) {
     const sec = (nowMs - runStartMs) / 1000;
     hudEl.time.textContent = `TIME: ${sec.toFixed(1)}s`;

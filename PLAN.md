@@ -1,185 +1,294 @@
-# 末日救未來 — PLAN v2
-> 取代 v1(2026-10-16),v2 freeze 2026-10-17。 v2 = spec 不再變,改嘢要走 changelog + reference table 雙確認。
+# 末日救未來 — 計劃書 v3.3
+> v3 freeze 2026-10-21；v3.1 雜魚；v3.2 擦彈；v3.3 手動暫停 + repo 衛生。
+> 語言：全中文。所有用戶可見文字、註解、主控台日誌一律中文。
+> v3 主要係 P0 整頓：清走死卡、修護盾 bug、debug HUD 收埋、手感改動。
 
-## Goal
-瀏覽器垂直 STG(PC / iPad / Smart Board),一局 3–5 分,線性 5 關,局內 roguelite,計時對應分數。暫無局外成長。
+## 目標
 
-## Path
-`~/workspace/doomsday-save-future/index.html`(單檔,Self-contained, file:// 可開)
+瀏覽器垂直 STG（PC／iPad／智慧白板），線性 5 關，局內 roguelite，計時對應分數。暫無局外成長。
 
-## Lock
+## 路徑
+
+`~/workspace/doomsday-save-future/index.html`（單檔、自帶依賴，`file://` 可直接開）
+
+## 鎖定項目
+
 | 項 | 定案 |
 |---|---|
 | 名 | 末日救未來 |
-| 模式 | 垂直向上 scroll |
-| 流程 | S1→S2→S3→S4→S5 線性 |
-| 時長 | 全程 3–5 分(target 240s) |
-| 成長 | 只局內三選一;meta 預留 null(明示關閉) |
-| 失敗 | 死 → GAMEOVER modal + [Retry]/[Title] |
-| 操作 | autofire + 拖移/WASD + Focus + Bomb |
-| 音效 | **v1 silent**;v2 才考慮 WebAudio synth |
+| 模式 | 垂直向上捲動 |
+| 流程 | 第一關→ 第二關→ 第三關→ 第四關→ 第五關 線性 |
+| 時長 | 目標 3–5 分鐘。P1-5 後每關結構為「波次約 24–39 秒 → boss」，**單關約 35–55 秒，整局約 3–4 分鐘，已貼近目標** |
+| 成長 | 只有局內三選一；局外系統明確關閉 |
+| 失敗 | 死 → 任務失敗畫面 +［重試］／［標題］ |
+| 操作 | 自動開火 + 拖曳／WASD + 聚焦 + 炸彈 |
+| 音效 | **v1 靜音**；下個版本先考慮 WebAudio |
 | 存檔 | localStorage 只存 `dsf.bestScore` + `dsf.bestTime` |
+| 語言 | 純中文（無 i18n，無英文介面） |
+| 開發者模式 | 檔案路徑尾加 `?debug=1` 先顯示 HUD |
 
-## Reference Table (single source of truth)
-> 凍所有 spec ambiguity(per memory rule 13 §X.5)。改動唯一入口。
+## 參考表（唯一真實來源）
 
-| # | 主題 | Freeze |
+> 凍結所有規格歧義（記憶規則 13 §X.5）。改任何一格必須走下面嘅「改動紀錄」。
+
+| # | 主題 | 凍結值 |
 |---|---|---|
-| 1 | ship 設計 | **1 ship × 3 chassis**:`A速`/`B盾`/`C火`,差在 baseSpeed / shield / fireRate 三軸 |
-| 2 | upgrade 池 | **18 件 fixed**,no rolling。`UPGRADES = [{id, name, icon, stackable:true}]` |
-| 3 | 三選一可疊加 | **re-offer 機制**:同一 id 第 2 次出現 = 可揀 = stack level +1 |
-| 4 | timeBonus target | **全關總和**(classic STG) |
-| 5 | timeBonus mult | `10`(per second under target) |
-| 6 | focus | `4s` slow-mo(`factor=0.3`)+ `8s` CD |
-| 7 | bomb | 全屏清子彈 + 1.5s i-frame + `12s` CD |
-| 8 | 風險波 | 敵 HP ×2 + 持彈率 ×1.5;下一抽 rarity tier +1(uncommon→rare,rare→epic) |
-| 9 | 雙 input | **last-write-wins**:touch drag 同 keyboard 寫同一個 target 變數,以最後一個為準 |
-| 10 | render tech | **Canvas 2D**(零依賴) |
-| 11 | 內部座標 | **320×480** portrait;CSS scale 適應 window |
-| 12 | DPR | `canvas.width = 320 * dpr; canvas.style.width = 320+'px'` 每次 resize/orientation 重計 |
-| 13 | timestep | **fixed 60 FPS accumulator**(`dt = 1/60`)`requestAnimationFrame` 只係 tick pump |
-| 14 | entity cap | 600。超 cap 先 particle culling,再 enemy cull(最低 HP 優先) |
-| 15 | input layer | **Pointer Events** + keyboard proxy normalize 成 `InputState = {moveX, moveY, focus, bomb}` |
-| 16 | FSM | `TITLE → SHIP_SELECT → STAGE_n ∈ [1..5] → CHOICE → ... → GAMEOVER / VICTORY`,子狀態 `PAUSED` |
-| 17 | tab visibility | `document.hidden → freeze `state=PAUSED`,timer + physics 唔跑;visible → unfreeze,resume 唔補時 |
-| 18 | iPad 雙指 | drag 一指 priority,二指 reset drag 起點(避免跳位) |
-| 19 | smart board 觸控 | drag 起始 8px tolerance,小郁動唔做 ship move(dodge 噪聲過濾) |
-| 20 | 3-choice modal | 凍 state=PAUSED;3 cards,每張 ≥64×64 touch target;揀咗先 resume |
-| 21 | data-driven | `STAGES / UPGRADES / SHIPS / BOSSES / WAVE_TEMPLATES` 全部 `const` table 在 game loop 外 |
-| 22 | persist | `dsf.bestScore` (Number) + `dsf.bestTime` (Number, 秒)。讀寫試 try/catch 吞 quota 錯 |
-| 23 | CHANGELOG | 改 §Reference 任何一格 → v2.x bump(major 表 design change,minor 表 number tweak) |
+| 1 | 戰機設計 | **1 架 × 3 機體**：`A 速`／`B 盾`／`C 火`，差在 速度／護盾／射速 三軸 |
+| 2 | 強化池 | **17 件固定**（v2 為 18 件 → v3 收緊至 15 → v3.1 加回貫穿 → v3.2 加回擦彈）。全部經過驗證，每件都有 game logic 讀取其欄位 |
+| 3 | 三選一可疊加 | **可重複出現**：同一 id 第 2 次出現 = 可揀 = 層數 +1 |
+| 4 | 時間獎金目標 | **五關總和** |
+| 5 | 時間獎金倍率 | `10`（每快於目標 1 秒） |
+| 6 | 聚焦 | `4 秒` 減速（係數 `0.3`）+ `8 秒` 冷卻 |
+| 7 | 炸彈 | 全屏清彈 + `1.5 秒` 無敵 + `12 秒` 冷卻 |
+| 8 | 風險波 | 敵方生命 ×2 + 持彈率 ×1.5；下一抽稀有度 +1。**⚠️ 未實作** |
+| 9 | 雙輸入 | **後寫者勝**：拖曳同鍵盤寫入同一個目標變數 |
+| 10 | 繪圖技術 | **Canvas 2D**（零依賴） |
+| 11 | 內部座標 | **320×480** 直向；CSS 縮放適應視窗 |
+| 12 | DPR | `canvas.width = 320 × dpr`、`style.width = 適應後像素`；resize／orientationchange 重算。**v2 呢格寫錯咗（寫死 320px），v3 已更正** |
+| 13 | 時間步 | **固定 60 FPS 累加器**（`dt = 1/60`），`requestAnimationFrame` 只做節拍泵 |
+| 14 | 實體上限 | 600。超出先剪粒子，再剪敵機（最低生命優先） |
+| 15 | 輸入層 | **Pointer Events** + 鍵盤代理，統一成 `InputState` |
+| 16 | 狀態機 | `標題 → 選擇機體 → 第一至五關 → 選擇強化 → … → 任務失敗／逃出生天`，子狀態 `已暫停` |
+| 17 | 分頁可見度 | `document.hidden → 狀態轉 已暫停`，計時與物理停擺；返回後**不補時間** |
+| 18 | iPad 雙指 | 一指優先，第二指重設拖曳起點（避免跳位） |
+| 19 | 智慧白板觸控 | 拖曳起始 8px 容差，小郁動唔移動戰機（去抖） |
+| 20 | 三選一畫面 | 凍結狀態；3 張卡；每張 ≥64×64 觸控目標；揀咗先繼續 |
+| 21 | 資料導向 | `STAGES`／`UPGRADES`／`SHIPS`／`BOSSES`／`WAVE_TEMPLATES` 全部係迴圈外嘅 `const` 表 |
+| 22 | 持久化 | `dsf.bestScore`、`dsf.bestTime`（數字）。讀寫包 try/catch，吞掉配額錯誤 |
+| 23 | 版號規則 | 改參考表任何一格 → 大版本（設計改動）或小版本（數值微調），並寫入改動紀錄 |
+| 24 | **戰機活動下限**（v3 新增） | `PLAY_BOTTOM = 396`。技能按鈕佔 y 408–472，戰機唔可以落到下面 |
+| 25 | **拖曳跟手速度**（v3 新增） | `DRAG_SPEED_MULT = 2.4`。拖曳受 `ship.speed` 限制，唔再瞬移。令速度類強化喺觸控平台生效 |
+| 26 | **版面幾何單一來源**（v3 新增） | 強化卡同機體卡嘅尺寸／位置由 `choiceLayout()`／`shipCardsLayout()` 定義，繪製同點擊判定共用 |
+| 27 | **boss 分數**（v3.1 新增） | `800`。P1-5 之前 boss 只有 200 分；加入雜魚之後雜魚分數佔大多數，boss 係場面高潮，所以調高，令 boss 約佔總分三成 |
+| 28 | **雜魚數值**（v3.1 新增） | 普通：生命 `8`、分 `100`、落速 `0.055`。精英：生命 `24`、分 `200`、落速 `0.042`、三向射擊、帶詞綴。俯衝型落速 `0.09` |
+| 29 | **關卡結構**（v3.1 新增） | **波次打完先召喚 boss**（佇列出齊 + 場上冇雜魚；8 秒保險超時）。舊做法 boss 一入關就出，第一關 4 秒就死，令波次永遠來不及出現 |
+| 30 | **雜魚撞擊**（v3.1 新增） | 雜魚撞到戰機會造成傷害並同玩家同歸於盡（自身消滅、**不計分**）。冇呢條規則嘅話玩家會選擇完全唔理雜魚，「擊殺雜魚」變成冇誘因 |
+| 31 | **擦彈判定**（v3.2 新增） | 半徑 `20` 像素（圓形，非方形），命中判定之外、判定圈之內即算擦彈。**每粒子彈只可計一次**（`_grazed` 旗標）——一粒子彈會喺圈內停留 20–40 幀，冇旗標會被重複計幾十次 |
+| 32 | **擦彈回報**（v3.2 新增） | 每次擦彈 `+5` 分（可被 `擦彈+` 乘大）；累加能量，每 `10` 次回充聚焦同炸彈冷卻各 `1200` 毫秒。實測被動玩家約 0.35 次／秒，主動走位應可達 1–2 次／秒 |
 
-## Stage Stats
+## 關卡數據
 
-| # | 名 | targetSec | Waves | Boss HP | Theme |
-|---|---|---|---|---|---|
-| 1 | 維港起飛 | 50 | 3 | 80 | 港灣天際,直線彈幕 |
-| 2 | 九龍煙柱 | 55 | 3 | 110 | 樓宇 fire/smoke,扇形 spread |
-| 3 | 大氣層 | 60 | 3 | 150 | meteor 入 + 螺旋彈幕 |
-| 4 | 軌道殘骸 | 65 | 3 | 200 | debris 隨機 + laser wall |
-| 5 | 逃逸門 Final | 70 | 4 | 300 | escape gate + 全圖 boss 混彈 |
+| # | 名 | 目標秒數 | 波次數 | 最後一波 | boss 生命 | 主題 |
+|---|---|---|---|---|---|---|
+| 1 | 維港起飛 | 50 | 7 | 23 秒 | 80 | 港灣天際、教學編排 |
+| 2 | 九龍煙柱 | 55 | 7 | 25 秒 | 110 | 樓宇火與煙、扇形散彈 |
+| 3 | 大氣層 | 60 | 8 | 28 秒 | 150 | 流星落下、俯衝雜魚 |
+| 4 | 軌道殘骸 | 65 | 8 | 30 秒 | 200 | 碎片隨機、**首隻精英** |
+| 5 | 逃逸門 | 70 | 11 | 39 秒 | 300 | 逃逸門、密集雜魚 + **四隻精英** |
 
-> Total target = 300s = 5 分,讓 3–5 分 budget 有 60s 緩衝(chance + boss 拖延)
+> 目標總和 = 300 秒 = 5 分鐘，留 60 秒緩衝。
+> **⚠️ 現況落差見下方「已知落差」——實際一局只係 60–90 秒。**
 
-## Game Flow
+## 遊戲流程
 
 ```
-TITLE → [Tap] → SHIP_SELECT → [pick A/B/C] → STAGE_1 →
-  WAVE_1..n + ELITE(1 詞綴) + [risk wave?] + BOSS →
-  CHOICE → STAGE_2 → ... → STAGE_5 BOSS →
-    VICTORY | GAMEOVER(hp=0)
+標題 →［點擊］→ 選擇機體 →［揀 A／B／C］→ 第一關 →
+  ┌─ 波次階段：雜魚編隊 + 彈幕（24–39 秒）
+  └─ boss 階段：雜魚清晒之後召喚
+  →［強化選擇］→ 第二關 → … → 第五關 boss →
+    逃出生天 ／ 任務失敗（生命歸零）
 ```
-子狀態 `PAUSED` 由四件事觸發:tab blur / modal 開 / SHIP_SELECT / CHOICE。
 
-## Score / Timer
+> P1-5 之前 boss 喺入關瞬間就出現，第一關 boss 生命 80 ÷ 火力 20 = 4 秒就死，
+> 而第二個波次 6 秒先出 —— 玩家根本睇唔到 `WAVE_TEMPLATES` 任何內容。
+> 改為「波次打完先召喚 boss」之後，節奏同原始設計（`WAVE_1..n + BOSS`）一致。
+
+`已暫停` 由五件事觸發：分頁隱藏／彈出畫面／選擇機體／強化選擇／**手動暫停**。
+
+**手動暫停（v3.3）**：關卡中 `P`／`Esc`／右上角⏸掣 → `pauseReason='manual'`；繼續用畫面點擊／`P`／`Esc`／空白／Enter。分頁暫停（`pauseReason='tab'`）只在 tab 返回時自動恢復，唔會被鍵強制開。計時用同一套 `beginFreezeClocks`／`endFreezeClocks`（唔補時間）。
+
+## 計分與計時
 
 ```js
-// 每關
-killScore      = enemy.type === 'elite' ? 200 : 100;
-grazeScore     = grazeCount * 5;
-grazeEnergy    = grazeCount * 0.5;            // 補 focus / bomb charge
-// 全關結算
-timeBonus      = max(0, targetTotal - runSec) * 10;
-finalScore     = sum(killScore) + grazeScore + timeBonus;
-bestScore      = max(localStorage.dsf.bestScore ?? 0, finalScore);
+// 現況（v3.2 實際程式碼 —— 全部已實作）
+killScore     = 雜魚 100 / 精英 200 / boss 800
+grazeScore    = 擦彈次數 × 5 × grazeMult
+grazeEnergy   = 每 10 次擦彈回充聚焦／炸彈冷卻各 1200 毫秒
+finalScore    = 擊殺分 + 擦彈分 + timeBonus
+timeBonus     = max(0, 目標總和 - 實際秒數) * 10
 ```
-- Timer:count-up 全程,只在 `state === STAGE_n` 加;modal/blur freeze
-- Graze 子彈擦身過彈 box 1px 內,為咗 energy + score 雙得
 
-## Engine & Render
-- **Canvas 2D** + 全 procedural draw(`fillRect`, `arc`, `polygon`)
-- **Single sprite sheet = inline base64** 一張 64×64 集(無 CDN,no fetch)
-- Backing store:`canvas.width = 320 * dpr`,`canvas.style.width = 320+'px'`, `ctx.scale(dpr, dpr)`
-- Resize handler:`window.resize` + `orientationchange` 重計 CSS size + backing store
-- Color:cyan / pink / white on black(iPad Smart Board 都睇得清)
-- Touch target:任何 UI hit area **≥64×64 px**
+> PLAN v2 §計分原本列咗「擊殺／擦彈／時間獎金」三項，v3.2 之前淨係得擊殺一項。
+> 勝利畫面會分開列出三項，玩家睇得到擦彈貢獻咗幾多分。
 
-## Input Layer
-- **Pointer Events**(`pointerdown/move/up/cancel`)
-- Keyboard proxy:`keydown/keyup` 維護 `InputState.keys = {up,down,left,right}`,同 touch drag 同寫去 `InputState.targetX/Y`
-- `InputState.target` = `last-write-wins`,後寫入覆蓋前
-- Drag 起始 `clientX/Y` → 內部座標 → ship `_dragOrigin`,`move` 時 offset 計 target
-- iPad 雙指:`pointercancel` reset drag origin 唔跳位
-- `preventDefault` on canvas `touchmove` 避瀏覽器 scroll/zoom
+粗略結算（全殺約 70–100 隻雜魚）：
+擊殺分約 `7500–11000` + boss `5 × 800 = 4000` → 擊殺技術真正影響總分，
+唔再係「完成咗就有 1000 分」。時間獎金仍然係第二大項。
 
-## Game State FSM
+- 計時：全局累加，只在關卡狀態前進；彈出畫面與分頁切換靠平移錨點凍結
+- 擦彈：v3.2 已實作（半徑 20px 圓形、每彈只計一次、+5 分、能量回充冷卻）
+- 測試開關：`?debug=1` 顯示開發者 HUD、`?god=1` 無敵
+
+## 引擎與繪圖
+
+- **Canvas 2D**，程序繪圖為主（`fillRect`／`arc`）
+- **單張貼圖圖集＝內嵌 base64**，無 CDN、無 fetch
+- Backing store：`canvas.width = 320 × dpr` + `ctx.setTransform(dpr,...)`
+- Resize 處理：`resize` + `orientationchange` 重算 CSS 尺寸與 backing store，**同時把 HUD 錨到畫布左上角**
+- 配色：青／粉／白，配黑底（智慧白板投影清晰）
+- 觸控目標：任何 UI 命中區 **≥64×64 像素**
+- 生命／護盾指示：畫布**頂部**兩側（v3 由底部移上來，避開技能按鈕）
+
+## 輸入層
+
+- **Pointer Events**（`pointerdown/move/up/cancel`）
+- 鍵盤代理：方向鍵／WASD 寫入同一組目標變數
+- 拖曳：起始 8px 容差；位移換算成內部座標；**每幀最多行 `ship.speed × 2.4`**
+- 雙指：`pointercancel` 重設拖曳起點，唔跳位
+- 畫布上 `touchmove` 加 `preventDefault`，避免瀏覽器捲動／縮放
+- 技能鍵：左下聚焦、右下炸彈，各 64×64，點擊判定優先於拖曳
+
+## 狀態機
 
 ```js
-state = {
-  TITLE, SHIP_SELECT, STAGE_1..5, CHOICE,
-  GAMEOVER, VICTORY, PAUSED
+STATE = {
+  標題, 選擇機體,
+  第一關, 第二關, 第三關, 第四關, 第五關,
+  選擇強化, 任務失敗, 逃出生天, 已暫停,
 }
-// transitions 受 state machine 子機鎖,所有 mutate 經 emit/reducer pattern
 ```
-- `state = PAUSED` 設定時:raf 繼續但 `tick(dt) { if paused return; ... }`
-- 重設 mandatory:每 state 進入要 reset `_frame`, `_enemyList`, `_bulletList` — F2 reset-on-render 防線
-- Tab visibility → state = previous | PAUSED;resume → PAUSED
 
-## Browser Matrix
+- 狀態轉換記錄到 `fsm.transitions` 並輸出中文日誌
+- 每個狀態入場各自重置實體（F2 重置-on-render 防線）
+- 分頁隱藏時恢復會繞過 `fsm.set()`，避免重置清走場上子彈／敵機
 
-| Target | Status | Note |
+## 開發者 HUD
+
+- 預設 **完全隱藏**
+- 加 `?debug=1` 先顯示，內容：狀態、計時、生命／護盾／分數、技能冷卻
+- v3.2 起加多一行統計：`擊殺 N（雜魚 X · boss Y）　擦彈 M（能量 E/10）`
+  - 狀態列兩行順序有坑：統計行必須喺 `hudEl.tip` 賦值**之後**寫，否則下一行即刻覆蓋（呢個係 P1-6 實測時撞到並修掉的）
+- 錨點跟畫布走，唔再黐死視窗左上角
+- `aria-hidden="true"`（唔會讀出聲，亦唔會造成讀屏轟炸）
+
+## 瀏覽器支援
+
+| 目標 | 狀態 | 備註 |
 |---|---|---|
-| iPad Safari 14+ | ✅ primary | pointer events + touch |
-| Smart Board Chrome 100+ on Win | ✅ primary | USB touch,8px tolerance |
-| macOS Safari 14+ | ✅ secondary | dev / verify |
-| macOS Chrome 100+ | ✅ secondary | dev / verify |
-| Android Chrome < 100 | ❌ | 唔測 |
-| iOS Chrome | ❌ | 強用 Safari |
-| IE / Edge Legacy | ❌ | 唔支援 |
-| Firefox Mobile | ❌ | 唔測 |
+| iPad Safari 14+ | ✅ 主要 | Pointer Events + 觸控 |
+| 智慧白板 Chrome 100+（Win） | ✅ 主要 | USB 觸控、8px 容差 |
+| macOS Safari 14+ | ✅ 次要 | 開發／驗證 |
+| macOS Chrome 100+ | ✅ 次要 | 開發／驗證 |
+| Android Chrome < 100 | ❌ | 不測試 |
+| iOS Chrome | ❌ | 須用 Safari |
+| 舊版 Edge / IE | ❌ | 不支援 |
+| Firefox Mobile | ❌ | 不測試 |
 
-## Sound (v1: silent)
-- 完全冇音,純視覺
-- iOS audio gesture trap(v2 才撞):第一次 user gesture unlock `audioContext.resume()`
-- v2 候選:WebAudio synth 短 sine + noise burst = shoot / hit / bomb
+## 音效（v1：靜音）
 
-## Persistence
-- `localStorage` 兩個 key:`dsf.bestScore`(Number),`dsf.bestTime`(Number)
-- 寫入 try/catch,quota 或 private mode 失敗 → 繼續行,只係冇 best
-- 開機時讀;失敗 fallback `0`
+- 完全無聲，純視覺
+- iOS 音訊手勢陷阱留待下個版本撞
+- 候選：WebAudio 合成短正弦 + 噪聲爆發 = 開火／命中／炸彈
 
-## MVP Done — 10 POST conditions
+## 持久化
 
-```
-- [ ] POST: iPad Safari drag → ship 跟手 + autofire
-- [ ] POST: WASD hold → ship 走 + autofire
-- [ ] POST: tab blur 5s 回 tab → timer 冇跳
-- [ ] POST: death → GAMEOVER modal + [Retry] 即新 run / [Title] 回船選擇
-- [ ] POST: 通 5 關 → VICTORY modal 顯示 score = kill + graze + timeBonus
-- [ ] POST: clear localStorage → 仍可開機遊玩(no crash)
-- [ ] POST: reload after best score → 顯示歷史最佳
-- [ ] POST: CHOICE 出現 → state=PAUSED + 揀咗先 resume
-- [ ] POST: Smart Board Chrome drag → ship 跟手
-- [ ] POST: open file:// doomsday-save-future/index.html → console 0 error
-```
+- `localStorage` 兩個鍵：`dsf.bestScore`、`dsf.bestTime`
+- 寫入包 try/catch，配額或無痕模式失敗 → 繼續運行，只是冇最佳紀錄
+- 開機讀取，失敗回退 `0`
 
-## 5-bug-family risk pre-screen(per memory rule 13)
+## v3 P0 整頓成果
 
-- **F1 default-state desync**:✅ mitigated by FSM single source of truth (`state` global)
-- **F2 reset-on-render**:✅ mitigated by state entry reset hook
-- **F3 enable-condition off-by-concept**:✅ mitigated by focus / bomb / risk wave freeze table(#6-#8)
-- **F4 silent default data loss**:✅ mitigated by localStorage try/catch + UI fallback
-- **F5 dead code via name collision**:✅ mitigated by all entity id prefixed(`stage_`, `elite_`, `upgrade_`, etc)
+| 項目 | 內容 |
+|---|---|
+| P0-1 | 開發者 HUD 收埋（`?debug=1`），並錨到畫布左上角 |
+| P0-2 | 修護盾 bug：舊碼每關入場覆寫回基礎值，令 `盾+`／`盾+2` 100% 失效 |
+| P0-3 | 強化池 18 → 15：切走 `貫穿`（單 boss 無從貫穿）、`擦彈+`（機制未實作）、`極光`（大功能）；實作 `復活`；修正 `大師` 描述 |
+| P0-4 | 生命／護盾指示移到畫布頂部；戰機活動下限 396；拖曳改受速度限制；強化卡同機體卡命中判定與繪製共用同一份幾何 |
+| 中文化 | 用戶可見字串、註解、主控台日誌、版面標題、強化描述全部轉中文 |
 
-## Out of scope now
-- 局外樹 / 每日任務 / 帳號 / 線上排行
-- v1 冇 sound
-- v1 冇 high score 排行(只 best)
-- v1 冇難度選擇
-- v1 冇 en/zh i18n
+## v3.1 P1-5 雜魚系統
 
-## Open Questions / 30 日 follow-up
+| 項目 | 內容 |
+|---|---|
+| 新實體 | `kind:'grunt'`。普通雜魚、俯衝型、精英三種；程序繪圖（粉紅向下三角／精英金色加大加光環），刻意同 boss 圓形外觀區分 |
+| AI | 慢落 + 蛇形擺動 + 間歇瞄準射擊；俯衝型持續加速。精英三向射擊、射速更高、首次開火前顯示詞綴 |
+| 關卡結構 | boss 改為波次清完之後召喚（佇列出齊 + 冇雜魚 + 8 秒保險），符合原始設計 |
+| 計分 | 雜魚 100、精英 200、boss 由 200 調高至 800 |
+| 撞擊 | 雜魚撞機造成傷害並自毀（不計分）；飛出畫面 = 走脫不計分 |
+| 波次重寫 | 5 關由 13 個波次增加到 39 個，每關波次階段拉長至 24–39 秒 |
+| 強化 | `貫穿` 加回池（此時場上有雜魚可以貫穿，已真正實作，連同 `_lastHit` 防重複扣血） |
+| 測試開關 | `?god=1` 無敵模式，配合 `?debug=1` 用嚟驗證完整流程同計時 |
 
-1. 18 池實際 list 寫邊度? → S0 起手寫 `const UPGRADES = [...]`,放 index.html top
-2. 5 關 boss pattern 邊個最先做? → S0 起手做 stage_1 boss = 8-way spiral + slow laser
-3. Stage 2 嘅 fire/smoke theme 用 SVG inline 定 procedural? → procedural fillRect gradient
-4. v2 sound 用 WebAudio synth 定 wav blob? → 押後
-5. Smart Board 8px drag tolerance 寫死,定 auto-tune?
+## v3.2 P1-6 擦彈系統
 
-## Changelog (memory rule 3: SemVer single source)
+| 項目 | 內容 |
+|---|---|
+| 判定 | 半徑 20px 圓形，命中框以外。必須每彈只計一次（`_grazed` 旗標） |
+| 回報 | 每次 +5 分；能量每滿 10 次回充聚焦／炸彈冷卻各 1.2 秒 |
+| 視覺 | 戰機周圍常駐淡色判定圈（令玩家知道邊度有分）；每次擦彈喺該點噴出擴散光環；底部中央能量條 + 文字「擦彈 N　M 次回充」 |
+| 強化 | `擦彈+` 加回池（擦彈分數 ×2） |
+| 結算 | 勝利畫面拆開顯示「擊殺 X + 擦彈 Y（N 次）+ 時間獎金 Z」 |
 
-- v2.0 (2026-10-17):freeze 23 ambiguity,加 §Reference Table / §Engine / §FSM / §Browser Matrix,MVP done 5→10
-- v1.0 (2026-10-16):initial 54-line concept
+### 設計理由
+
+之前呢個遊戲只有「懲」冇「獎」—— 走位得避彈，冇任何好處，令 P1-5 加入嘅彈幕
+純粹係威脅。加入擦彈之後：
+
+1. **唔完美先有回報** —— 擦彈本身就係「行得近啲但唔撞到」，令玩家敢於靠近彈幕
+2. **兩種玩家都有得著** —— 隨手擦到就加分；高技術玩家主動 weave 就可以賺返炸彈冷卻
+3. **唔會變成刷分** —— 每彈只計一次，且彈幕密度有上限
+
+### 實測數據
+
+| 情境 | 結果 |
+|---|---|
+| 靜止不動（`?god=1`）第一關 | 51 秒內 28 次擦彈 ≈ 0.55 次／秒，觸發 2 次回充（能量 8/10） |
+| 分數對數 | 480 = 4 隻雜魚 × 100 + 16 次擦彈 × 5；525 = 400 + 125；540 = 4 × 100 + 28 × 5 ✓ 完全吻合 |
+| 能量對數 | 16 次擦彈 → 能量 6/10；25 次 → 5/10；28 次 → 8/10 ✓ 每次滿 10 就減 10 |
+| 冷卻回充 | **端到端實測通過**。施放炸彈於 `t=28.76s` → 到期 `40.76s`；`t=35.19s` 集滿 10 次回充，log 顯示炸彈剩 `4.4 秒`（手算 `40.76 − 35.19 − 1.2 = 4.37`）✓；`t=49.11s` 第二次回充時炸彈已就緒，`Math.max(0, …)` 正確夾住唔會變負數 ✓ |
+| 主控台日誌 | 每次回充都印 `[擦彈] 集滿 10 次 → 回充 1.2 秒　聚焦剩 …　炸彈剩 …`，方便日後調數值時直接對數 |
+
+### 實測發現並修掉的 bug
+
+| Bug | 症狀 | 根因 |
+|---|---|---|
+| 重複計分 | 同一批雜魚得分異常偏高（實測 2100 分，實際只有 7 隻） | 死亡嘅雜魚**冇被移出 `enemies` 陣列**，疊喺屍體上嘅子彈喺之後每一幀再扣一次血、加一次分。boss 原本因為即刻轉狀態而掩蓋咗呢個問題 |
+
+## 已知落差（未修，待下個版本）
+
+1. **無判定點顯示**（判定比 sprite 細但完全隱形）
+2. **難度未經真人實測**：靜止唔郁嘅玩家 15 秒死喺第一關（比 P1-5 前嘅 26 秒更難，因為多了雜魚撞擊）。實際玩家會走位，但智慧白板學生嘅反應速度要你自己試
+3. `DRAG_SPEED_MULT = 2.4` 手感同雜魚落速 `0.055` 一樣未經實機調校
+4. 強化選擇有機會抽到三張一模一樣嘅卡
+5. `riskWave`／稀有度分級（#8）未實作
+6. 圖集座標同時存在本機 `out/dsf_main.json`（已 gitignore）與程式碼手寫表兩份
+7. `window.__dsf.ship` 係初始化當刻 `null` 的值快照，冒煙測試讀唔到（可用 getter 再修）
+8. 目標秒數（50–70 秒／關）係按舊結構訂，今次加入波次階段後**未重新校準**
+9. **擦彈可以「接」聚焦**（v3.2 已知互動，未判定係 bug）：`focusCDUntil = focusActiveUntil + cd`，而回充直接由 `focusCDUntil` 減 1.2 秒。若玩家喺 4 秒生效期內集到 10 次回充，聚焦會提前轉就緒、可以連環開。要打掉呢條路徑要喺 `tryFocus()` 加「生效中唔准重複開」閘，或者對生效中嘅聚焦停發回充。**唔打算喺未經真人試玩前改**——如果真人根本連唔到 10 次／4 秒，呢條路徑根本觸發唔到
+10. 手動暫停畫面而家只顯示遮罩文案，**未凍結繪製場上實體**（實體仍在 memory，恢復後繼續；純視覺）
+
+## 五類 bug 家族預檢（記憶規則 13）
+
+- **F1 預設狀態不同步**：✅ 單一狀態機為真實來源
+- **F2 重置-on-render**：✅ 每個狀態入場各自重置
+- **F3 啟用條件離題**：✅ 聚焦／炸彈／風險波凍結表（#6–#8）
+- **F4 無聲資料遺失**：✅ localStorage 包 try/catch + 介面回退
+- **F5 命名撞擊死碼**：✅ 實體 id 全部有前綴
+
+## 現階段不做
+
+- 局外養成樹／每日任務／帳號／線上排行
+- v1 無音效
+- v1 只有最佳紀錄，冇排行榜
+- v1 無難度選擇
+
+## 待決問題
+
+1. 目標秒數要唔要按新結構重新校準（現時單關實測約 35–55 秒，目標寫 50–70 秒）
+2. 雜魚落速同血量要唔要再調（靜態測試偏難，但要真人試先知）
+3. 聚焦連環開嘅路徑要唔要閂（見「已知落差」擦彈接聚焦）
+4. 下個版本音效用 WebAudio 合成定 wav blob
+5. P1 餘下項目（判定點顯示、風險波 rarity、暫停畫面繪實體）邊項先做
+
+## 改動紀錄
+
+- **v3.3（2026-10-21）**：手動暫停（`P`／`Esc`／右上⏸，`pauseReason` 區分 tab／manual）；`STAGE_TABLE.waveCount` 對齊 WAVE 7/7/8/8/11；S5 名「逃逸門」；`out/` gitignore + 移出版本庫；刪 `.i18n_comments.py`；版號 v0.9.0
+- **v3.2（2026-10-21）**：P1-6 擦彈系統。判定半徑 20px、每彈只計一次（#31）；每次 +5 分、每 10次回充技能冷卻 1.2 秒（#32）；常駐判定圈 + 擦彈光環 + 底部能量條；`擦彈+` 加回池；勝利畫面拆開顯示擊殺／擦彈／時間獎金；開發者 HUD 加擊殺／擦彈統計行（修正覆蓋順序）；回充時印中文 log 方便對數
+- **v3.1（2026-10-21）**：P1-5 雜魚系統。新增 `grunt` 實體（普通／俯衝／精英）、波次重寫至 39 個、boss 改為波次清完先召喚（凍結為 #29）、boss 分數調至 800（#27）、雜魚數值凍結（#28）、撞擊規則凍結（#30）、`貫穿` 加回並實作、修死亡雜魚重複計分 bug、新增 `?god=1` 測試開關
+- **v3.0（2026-10-21）**：P0 整頓。強化池 18→15（切走 3 件死卡、實作復活）；修正護盾覆寫 bug；開發者 HUD 收埋並錨定畫布；戰機活動下限與拖曳速度凍結為 #24／#25；版面幾何單一來源凍結為 #26；全中文介面
+- v2.0（2026-10-17）：凍結 23 項歧義，新增參考表／引擎／狀態機／瀏覽器支援章節
+- v1.0（2026-10-16）：初始 54 行概念稿
 
 ---
-> Trust hierarchy:disk > this file > agent memory > session。改 plan,先改 this file,再寫 progress;唔好靠 chat 回憶。
+
+> 信任層級：磁碟 > 本檔案 > agent 記憶 > 對話記憶。改計劃先改本檔案，再寫進度；唔好靠聊天回憶。

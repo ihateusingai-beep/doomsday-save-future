@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover,user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#000">
-<title>末日救未來 — Doomsday Save the Future</title>
+<title>末日救未來</title>
 <style>
-  /* === reset + fullscreen === */
+  /* === 重置 + 全螢幕 === */
   * { margin:0; padding:0; box-sizing:border-box; }
   html, body {
     width:100%; height:100%;
@@ -24,7 +24,7 @@
     -webkit-touch-callout:none;
     touch-action:none;
   }
-  /* === canvas (PLAN v2 #10-12, CSS-scaled, image-rendering pixelated) === */
+  /* === 畫布（PLAN v2 #10-12，CSS 縮放 + pixelated 像素化） === */
   canvas {
     display:block;
     image-rendering:pixelated;
@@ -35,9 +35,12 @@
     box-shadow:0 0 0 1px rgba(0,255,255,0.18), 0 0 40px rgba(0,180,255,0.18);
     border-radius:4px;
   }
-  /* === HUD === */
+  /* === 開發者 HUD（預設隱藏，加 ?debug=1 先顯示） ===
+     錨點跟畫布走，唔再黐死視窗左上角。 */
   #hud {
-    position:fixed; top:10px; left:10px;
+    position:fixed; left:0; top:0;
+    transform:translate(10px, 10px);
+    display:none;
     font:12px ui-monospace, SFMono-Regular, Menlo, monospace;
     pointer-events:none;
     color:#9ff;
@@ -48,46 +51,60 @@
     border-radius:8px;
     padding:8px 10px;
     backdrop-filter:blur(4px);
+    z-index:10;
   }
+  body.debug #hud { display:block; }
   #hud .row { white-space:nowrap; }
   #hud .accent { color:#ffd56a; }
   #hud .warn { color:#ff5e8a; }
 </style>
 </head>
 <body>
-  <canvas id="game" width="320" height="480" aria-label="Doomsday Save the Future game canvas"></canvas>
-  <div id="hud" aria-live="polite">
-    <div class="row" id="hud-state">STATE: --</div>
-    <div class="row" id="hud-time">TIME: 0.0s</div>
-    <div class="row" id="hud-hp">HP: --  SHIELD: --</div>
+  <canvas id="game" width="320" height="480" aria-label="末日救未來 遊戲畫布"></canvas>
+  <div id="hud" aria-hidden="true">
+    <div class="row" id="hud-state">狀態：--</div>
+    <div class="row" id="hud-time">時間：0.0 秒</div>
+    <div class="row" id="hud-hp">生命：--  護盾：--</div>
     <div class="row" id="hud-paused"></div>
-    <div class="row accent" id="hud-tip">tap canvas to begin</div>
+    <div class="row accent" id="hud-tip">點擊畫面開始</div>
   </div>
 <script>
 'use strict';
 /* ============================================================
  * 末日救未來 — S0 scaffold (PLAN v2 2026-10-17)
- * coverage:
- *   S0-1 canvas 320×480 + DPR-aware backing store + CSS fit
- *   S0-2 frozen FSM (TITLE/SHIP_SELECT/STAGE_n/CHOICE/PAUSED/GAMEOVER/VICTORY)
- *   S0-3 1 ship (drag + arrow/WASD + autofire)
- *   S0-4 1 enemy (8-way spiral + ship bullets hit/damage)
- *   S0-5 tab visibilitychange → state=PAUSED + timer freeze
+ * 涵蓋範圍：
+ *   P0-1 畫布 320×480 + 感知 DPR 的 backing store + CSS 適應
+ *   P0-2 凍結狀態機（TITLE/SHIP_SELECT/STAGE_n/CHOICE/PAUSED/GAMEOVER/VICTORY）
+ *   P0-3 一架戰機（拖曳 + 方向鍵/WASD + 自動開火）
+ *   P0-4 敵機（八方向螺旋 + 玩家子彈命中／傷害）
+ *   P0-5 分頁可見度切換 → state=PAUSED + 計時凍結
  *
- * follow PLAN v2 §Reference #11 (Canvas 2D / 320×480 internal coords),
- *                        #13 (fixed 60 FPS accumulator),
- *                        #15 (Pointer Events + keyboard proxy),
- *                        #16 (FSM with reset hook),
- *                        #17 (tab visibility pause)
+ * 依據 PLAN v2 §參考表 #11（Canvas 2D / 320×480 內部座標）、
+ *                        #13（固定 60 FPS 累加器）、
+ *                        #15（Pointer Events + 鍵盤代理）、
+ *                        #16（帶重置鉤子的狀態機）、
+ *                        #17（分頁可見度暫停）
  * ============================================================ */
 
-/* ---------- 1. CONSTANTS ---------- */
+/* ---------- 1. 常數 ---------- */
 const VIEW_W = 320;
 const VIEW_H = 480;
 const FIXED_DT_MS = 1000 / 60;             // 60 FPS logic step
 const MAX_FRAME_MS = 100;                  // cap huge tab-blur gap
 
-/* FSM enum (PLAN v2 #16) */
+/* P0-4：戰機活動下限。技能按鈕佔 y 408–472，所以戰機唔可以落到
+   下面（舊代碼 clamp 到 VIEW_H-8 = 472，等於可以躲喺按鈕底下，
+   而且喺按鈕位置開始拖曳會誤觸技能）。 */
+const PLAY_BOTTOM = 396;
+
+/* P0-4：拖曳跟手速度係 ship.speed 乘呢個係數。
+   舊代碼用 x += (target-x)*0.30 瞬移，令 spd_s / spd_l 兩張速度卡
+   喺 iPad / Smart Board（純拖曳，冇鍵盤）完全無效 —— 即係話佢哋係假卡。
+   改成受速度限制後，移動變成有慣性：要預判，唔可以瞬移 dodging。
+   呢個係手感數值，實機試完可能仲要調。 */
+const DRAG_SPEED_MULT = 2.4;
+
+/* 狀態機列舉（PLAN v2 #16） */
 const STATE = Object.freeze({
   TITLE:       'TITLE',
   SHIP_SELECT: 'SHIP_SELECT',
@@ -102,7 +119,22 @@ const STATE = Object.freeze({
   PAUSED:      'PAUSED',
 });
 
-/* SHIPS (PLAN v2 #1: 1 ship × 3 chassis A/B/C) */
+const STATE_LABEL = Object.freeze({
+  TITLE:       '標題',
+  SHIP_SELECT: '選擇機體',
+  STAGE_1:     '第一關',
+  STAGE_2:     '第二關',
+  STAGE_3:     '第三關',
+  STAGE_4:     '第四關',
+  STAGE_5:     '第五關',
+  CHOICE:      '選擇強化',
+  GAMEOVER:    '任務失敗',
+  VICTORY:     '逃出生天',
+  PAUSED:      '已暫停',
+});
+const stateLabel = (s) => STATE_LABEL[s] || s;
+
+/* SHIPS（PLAN v2 #1：1 架 × 3 種機體 A/B/C） */
 const SHIPS = Object.freeze({
   A: { id:'A', name:'速', speed:3.2, shield:1, fireRate:10 },
   B: { id:'B', name:'盾', speed:2.4, shield:3, fireRate:14 },
@@ -112,7 +144,7 @@ const SHIPS = Object.freeze({
 const isStage = (s) => s && s.indexOf('STAGE_') === 0;
 const STAGES = [STATE.STAGE_1, STATE.STAGE_2, STATE.STAGE_3, STATE.STAGE_4, STATE.STAGE_5];
 
-/* ---- SPRITE SHEET (pxl art.px.js → out/dsf_main.png, inline base64 PLAN) ---- */
+/* ---- 貼圖圖集（art.px.js → out/dsf_main.png，內嵌 base64 見 PLAN） ---- */
 const SPRITE = Object.freeze({
   ship_a: { x:0, y:0, w:8, h:9 },
   ship_b: { x:9, y:0, w:10, h:10 },
@@ -145,11 +177,11 @@ const SPRITE = Object.freeze({
 const SHEET_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAGEAAABNCAMAAACBtvrcAAAAk1BMVEUAAAAAPkAAAAD/5Wb/mhj/aiAA9v/4//8AoMhA9///atUAt9Y9/4r/6Wr/MolArsn/Gmr/64wP9/8PqtMPHDNNjP//pUZAJwb/7ZQzFSv5//+gECizJEwz9/8SQVT/eiQAsNISGjD/TV6KoMjI2P8cJ0SxFDj/nCkAaIhaaog6SGj/6Gx1X24cS2USO08qNUhqTk9zr1dEAAAAAXRSTlMAQObYZgAAA8NJREFUeNrt2At30jAUAOBy06alc7MycJZOpUyYQ3H7/7/Om5t3H7Qp6NFzuMt6YAv5muQmzRZFUTSbRTKAiv+SxQyvcRLTT0H/PihmnEsCOGCRLxmkDJoC8FT/PoRCICUCeMbTjJqAOQNgczAC8wXI8xzGAzccy0wA2Tv8wjZgHt8C3MZE0PDECXMEyO/u7kYTVshUoMDfcyjERQtREvlCGiLwm5sPQljcZ4tFdr8AF1Ntt4SgPswYw0u0XK0+UlliS8W8wMIbjUybh2gWA8RippdSWNJMx/O5nIZOITBtTeov4yUWevkQP2CJeoWp4ay4ByotgZ8pDN/Cpz8M2C7+g+FmRknl0sB6bYgyL7HI17z3hhrZWok4UQNiDNBAkWMhgqXMfsD9eCIC/PY9QySdm3aOgMBjvv6sCO5UgAZgiYpVhQhLAP8iwhDwlQIU8Jh/fnws8rLRR0MIAN9aopJAUbDKApvNxhKQCIDqlwhg6+JSusB6vdaEAixBAGOMeqGBrK7rzBCukGO9nC4nBPXeERgjwgibOk3TemMEO0pIqPAH6UyhkUsiW3NvRXjzcLYQlaX8bhKNiQ6aB3GyYDCw5v1k7c6lKunJpcauMbwDNNdDVSWn10P4JhO8pidslIH70jWmjnIj/JTtGuJs/AMY6o4Qp5Dtdquk1UoZqbg8jbtvu+Sg5q1AAbYpfglpRWHqP317Ej3gp3vhbQv1rhUkbKkTAuDcI0Z1YVjQowQCEASEzAPsn5+f93BaQIKuQkjbwgBAgiJ6BZkNsg+rIAEB2hoV0S+o6kisQrtQFGsiRgkymYI2Hdir/X2kIIiwXS1YiEK3zdY8fG9FfeZOLAmbS927xrnEXgP9O9/52+n1qTI0RP3vO0cPeqIHeMFwmzxg2KdF8gNaDyqbbnQuaqecz0nB/swTAMzBiGpwqgQe4BD6HwbyuASecDDtwoFzLcDhpxZkDVkJBVrqxyM1dTyqla+2YM5/iTBHsrZg+gCH1zcliFpNAYGjCE1IATi1Tob86KsT4AkIvLy+vdEbEpgnUNN4AjbEJEGE0zVXoIYzbDjThDySyLbxWisCBeYK4FqOEDkZaYTNDv8S2W1agnjOmk6YPrCWIIlDO8tHCLwhsM4+yKHpWEZDgjxktfrQJfT8L2xoHk4LeN+s88abwolc0sJgLg0IvetBhyOwacLINX1GHwRBsfOE5r5kBRYiBOytE/vQHZ0f6xLYgBD2BJrSh8Bn6F8XQApw4YOAHUd6HjWe3Bc+eFyFq/DfCNHF/ibR8RsMd+OXN39h0AAAAABJRU5ErkJggg==';
 const sheetImg = new Image();
 let sheetReady = false;
-sheetImg.onload = () => { sheetReady = true; console.log('[sprites] sheet ready', Object.keys(SPRITE).length, 'frames'); };
-sheetImg.onerror = () => { console.warn('[sprites] sheet load failed — procedural fallback'); };
+sheetImg.onload = () => { sheetReady = true; console.log('[貼圖] 圖集就緒 ·', Object.keys(SPRITE).length, '格'); };
+sheetImg.onerror = () => { console.warn('[貼圖] 圖集載入失敗 — 改用程序繪圖'); };
 sheetImg.src = 'data:image/png;base64,' + SHEET_B64;
 
-/** draw atlas frame centered at (cx,cy); scale multiplies native px. returns false if not ready */
+/** 以 (cx,cy) 為中心畫圖集格；scale 乘原生像素。未就緒回傳 false */
 function drawSprite(name, cx, cy, scale) {
   if (!sheetReady) return false;
   const f = SPRITE[name];
@@ -165,7 +197,7 @@ function drawSprite(name, cx, cy, scale) {
 }
 const SHIP_SPRITE = Object.freeze({ A: 'ship_a', B: 'ship_b', C: 'ship_c' });
 
-/* ---------- VFX / WORLD (beautify pass) ---------- */
+/* ---------- 特效 / 場景（美化） ---------- */
 const STAGE_THEME = Object.freeze({
   1: { name:'維港起飛', skyTop:'#030814', skyBot:'#0a1a3a', accent:'#00f0ff', prop:'tower', tint:'rgba(0,180,255,0.06)' },
   2: { name:'九龍煙柱', skyTop:'#100808', skyBot:'#2a1010', accent:'#ff6a20', prop:'bldg',  tint:'rgba(255,80,40,0.07)' },
@@ -199,6 +231,10 @@ function spawnBoom(x, y) {
 }
 function tickVfx(dtMs) {
   bgScroll += dtMs * 0.025;
+  /* P1-6 擦彈光環：每次擦彈重設為 1，然後一路衰減到 0。
+         密集擦彈時唔會無限疊加光環，畫面唔會被洗白。 */
+  if (grazeRingT > 0) grazeRingT = Math.max(0, grazeRingT - dtMs * 0.0035);
+  if (grazeFlash > 0) grazeFlash = Math.max(0, grazeFlash - dtMs * 0.002);
   if (screenFlash > 0) screenFlash = Math.max(0, screenFlash - dtMs * 0.0022);
   if (hitShake > 0) hitShake = Math.max(0, hitShake - dtMs * 0.012);
   for (let i = particles.length - 1; i >= 0; i--) {
@@ -291,46 +327,51 @@ function drawFlash() {
 }
 function drawHudChips() {
   if (!ship || !isStage(fsm.cur)) return;
+  /* P0-4：血心 / 護盾由畫面底部移去頂部。舊位置 y=VIEW_H-18 啱啱落喺
+     FOCUS / BOMB 按鈕（y 408–472）入面，實機截圖見到紅心壓住
+     "READY" 字樣、盾 icon 壓住炸彈按鈕。頂部兩邊本身係空嘅
+     （關卡名 chip 喺正中間 x 100–220）。 */
   for (let i = 0; i < ship.maxHp; i++) {
     const on = i < ship.hp;
     ctx.globalAlpha = on ? 1 : 0.28;
-    if (!drawSprite('ui_heart', 14 + i * 14, VIEW_H - 18, 1.15)) {
+    if (!drawSprite('ui_heart', 16 + i * 14, 20, 1.15)) {
       ctx.fillStyle = on ? '#f06' : '#444';
-      ctx.fillRect(8 + i * 12, VIEW_H - 22, 10, 8);
+      ctx.fillRect(10 + i * 12, 16, 10, 8);
     }
     ctx.globalAlpha = 1;
   }
   for (let i = 0; i < Math.min(ship.shield, 5); i++) {
-    drawSprite('ui_shield', VIEW_W - 14 - i * 14, VIEW_H - 18, 1);
+    drawSprite('ui_shield', VIEW_W - 16 - i * 14, 20, 1);
   }
 }
 
-/* ---------- 2. INPUT LAYER (PLAN v2 #15, #18-19) ---------- */
+/* ---------- 2. 輸入層（PLAN v2 #15、#18-19） ---------- */
 const InputState = {
-  /* last-write-wins target (drag OR WASD converge here) */
+  /* 後寫者勝的目標座標（拖曳或 WASD 都收斂到呢度） */
   targetX: VIEW_W / 2,
   targetY: VIEW_H - 60,
 
-  /* keyboard proxy */
+  /* 鍵盤代理 */
   keys: { up:false, down:false, left:false, right:false },
 
-  /* focus / bomb are now CD-cooldown driven (focusActiveUntil, bombCDUntil
-     module-level globals), not consume-on-read flags — S1-C */
+  /* 聚焦／炸彈而家由冷卻時間驅動（focusActiveUntil、bombCDUntil
+     係模組層級全域變數），唔係讀取後即清嘅旗標 */
 
-  /* drag bookkeeping */
+  /* 拖曳記帳 */
   dragId: null,
   dragOrigin: { x:0, y:0 },
   shipOrigin: { x:0, y:0 },
   touchMoved: false,
 };
 
-/* 8px tolerance for Smart Board dedup — PLAN v2 #19 */
+/* 智慧白板去噪：8px 觸控容差（PLAN v2 #19） */
 const DRAG_TOLERANCE_PX = 8;
 
-/* ---------- 3. DOM refs ---------- */
+/* ---------- 3. DOM 參考 ---------- */
 const canvas = document.getElementById('game');
 const ctx    = canvas.getContext('2d');
 const hudEl  = {
+  root:   document.getElementById('hud'),
   state:  document.getElementById('hud-state'),
   time:   document.getElementById('hud-time'),
   hp:     document.getElementById('hud-hp'),
@@ -338,12 +379,19 @@ const hudEl  = {
   tip:    document.getElementById('hud-tip'),
 };
 
-/* ---------- 4. Canvas DPR (PLAN v2 #12) ---------- */
+/* 開發者模式：檔案路徑尾加 ?debug=1 先顯示 HUD（見 CSS body.debug）
+   無敵測試：?god=1 令戰機唔會受傷，方便驗證完整流程同計時。
+   兩個開關都係測試用途，正常玩家永遠唔會用到。 */
+const DEBUG = /[?&]debug=1/.test(location.search);
+const GOD   = /[?&]god=1/.test(location.search);
+if (DEBUG) document.body.classList.add('debug');
+
+/* ---------- 4. 畫布 DPR（PLAN v2 #12） ---------- */
 function setupCanvas() {
   const dpr = window.devicePixelRatio || 1;
   canvas.width  = VIEW_W * dpr;
   canvas.height = VIEW_H * dpr;
-  /* fit while preserving 320×480 aspect */
+  /* 保持 320×480 比例去適應視窗 */
   const aspect = VIEW_W / VIEW_H;
   const winAspect = window.innerWidth / window.innerHeight;
   let cssW, cssH;
@@ -357,12 +405,18 @@ function setupCanvas() {
   canvas.style.width  = Math.floor(cssW) + 'px';
   canvas.style.height = Math.floor(cssH) + 'px';
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);    // logical coords = internal 320×480
+  /* HUD 錨喺畫布左上角（唔係視窗左上角），闊螢幕都唔會走飛 */
+  if (hudEl.root) {
+    const r = canvas.getBoundingClientRect();
+    hudEl.root.style.left = Math.round(r.left) + 'px';
+    hudEl.root.style.top  = Math.round(r.top) + 'px';
+  }
 }
 setupCanvas();
 window.addEventListener('resize', setupCanvas);
 window.addEventListener('orientationchange', () => setTimeout(setupCanvas, 120));
 
-/* ---------- 5. FSM ---------- */
+/* ---------- 5. 狀態機 ---------- */
 const fsm = {
   cur: STATE.TITLE,
   prev: null,                 // remember pre-PAUSED state for resume
@@ -374,29 +428,34 @@ const fsm = {
     this.prev = this.cur;
     this.cur  = next;
     this.transitions.push({ from, to: next, at: performance.now() });
-    /* F2 reset-on-render: per-state entry reset (PLAN v2 #16) */
+    /* F2 重置-on-render 防線：每個狀態入場各自重置（PLAN v2 #16） */
     onStateEnter(next, from);
-    /* S0-2 log */
-    console.log(`[FSM] ${from} → ${next} @ ${(performance.now()/1000).toFixed(2)}s`);
-    hudEl.state.textContent = `STATE: ${next}`;
+    /* 狀態機日誌 */
+    console.log(`[狀態機] ${stateLabel(from)} → ${stateLabel(next)} @ ${(performance.now()/1000).toFixed(2)}秒`);
+    hudEl.state.textContent = `狀態：${stateLabel(next)}`;
   },
 };
 
 function onStateEnter(s, from) {
   if (isStage(s)) {
     lastStage = parseInt(s.split('_')[1], 10);
-    /* reset entities, apply upgrades */
+    /* 重置實體、套用強化 */
     bullets.length = 0;
     enemies.length = 0;
     if (!ship) pickShip('A');                 // default ship first run
     applyUpgrades();
     ship.x = VIEW_W/2; ship.y = VIEW_H - 60;
-    ship.hp = ship.maxHp; ship.shield = SHIPS[ship.chassis].shield;
-    /* reset wave scheduler */
+    /* 只補滿血；護盾由 applyUpgrades() 決定（含 shd_s / shd_l 升級）。
+       舊代碼喺呢度再覆寫一次 SHIPS[chassis].shield，令玩家揀咗嘅護盾卡
+       每關一入去就即刻被清走 —— 100% 死卡。 */
+    ship.hp = ship.maxHp;
+    /* 重置波次排程 */
     waveQueue = (WAVE_TEMPLATES[lastStage] || []).map(w => ({ at: w.at, spawn: w.spawn, fired: false }));
     waveCursor = 0;
-    /* spawn stage boss */
-    spawnBossFor(lastStage);
+    /* P1-5：boss 唔喺呢度出。改為波次清完之後由 tick() 召喚，
+       令每關有「雜魚 → boss」嘅正確節奏。 */
+    bossSpawned = false;
+    waveQueueDoneAt = null;
     /* stage clock always resets; run clock only on fresh run start (PLAN: 全程 count-up) */
     endFreezeClocks();                 /* absorb CHOICE/PAUSED gap before anchors */
     stageStartMs = performance.now();
@@ -404,21 +463,21 @@ function onStateEnter(s, from) {
       runStartMs = stageStartMs;
     }
     if (from !== STATE.STAGE_1) {
-      /* mid-run stage entry: don't reset runScore */
+      /* 局中入關：唔好清 runScore */
     } else {
       runScore = 0;
     }
-    hudEl.tip.textContent = `S${lastStage} · ${STAGE_TABLE[lastStage].name} · drag/WASD · FOCUS/BOMB btn`;
+    hudEl.tip.textContent = `第 ${lastStage} 關 · ${STAGE_TABLE[lastStage].name} · 拖曳／WASD · 空白鍵聚焦 · Shift 炸彈 · P／⏸ 暫停`;
   } else if (s === STATE.CHOICE) {
     beginFreezeClocks();               /* modal freezes run timer (PLAN §Score) */
     choiceOffer = generateChoiceOffer();
     choicePicked = -1;
-    hudEl.tip.textContent = 'CHOICE · tap a card or press 1/2/3';
+    hudEl.tip.textContent = '選擇強化 · 點擊卡牌或按 1/2/3';
   } else if (s === STATE.GAMEOVER) {
-    hudEl.tip.textContent = 'Retry / Title';
+    hudEl.tip.textContent = '重試 / 返回標題';
   } else if (s === STATE.VICTORY) {
-    /* PLAN v2 §Score: final = runScore + timeBonus;
-       persistence per #22 (bestScore + bestTime). */
+    /* PLAN v2 §計分：最終 = runScore + timeBonus；
+       持久化見 #22（bestScore + bestTime）。 */
     endFreezeClocks();                 /* no residual freeze in final calc */
     const finalRunSec = runStartMs != null ? (performance.now() - runStartMs) / 1000 : 0;
     const targetTotal = STAGES.reduce((acc, st) => acc + STAGE_TABLE[st.split('_')[1]].targetSec, 0);
@@ -426,62 +485,68 @@ function onStateEnter(s, from) {
     finalScore = runScore + timeBonus;
     victoryRunSec = finalRunSec;
     victoryTimeBonus = timeBonus;
-    /* compare + persist */
+    /* 比較 + 寫入儲存 */
     let isNewBestScore = false, isNewBestTime = false;
     if (finalScore > bestScore) { bestScore = finalScore; lsWrite(LS_KEY_SCORE, bestScore); isNewBestScore = true; }
     if (bestTime === 0 || finalRunSec < bestTime) { bestTime = finalRunSec; lsWrite(LS_KEY_TIME, bestTime); isNewBestTime = true; }
     isNewBest = isNewBestScore || isNewBestTime;
-    console.log(`[VICTORY] final=${Math.floor(finalScore)} best=${Math.floor(bestScore)} time=${finalRunSec.toFixed(1)}s bestTime=${bestTime.toFixed(1)}s newBest=${isNewBest}`);
-    hudEl.tip.textContent = `Mission complete · score ${Math.floor(finalScore)}`;
+    console.log(`[勝利] 最終=${Math.floor(finalScore)} 最佳=${Math.floor(bestScore)} 用時=${finalRunSec.toFixed(1)}秒 最佳時間=${bestTime.toFixed(1)}秒 新紀錄=${isNewBest}`);
+    hudEl.tip.textContent = `任務完成 · 分數 ${Math.floor(finalScore)}`;
   } else if (s === STATE.PAUSED) {
-    hudEl.tip.textContent = 'PAUSED — tab hidden';
+    hudEl.tip.textContent = pauseReason === 'manual'
+      ? '已暫停 — 撳畫面／P／Esc 繼續'
+      : '已暫停 — 分頁切換中';
   } else if (s === STATE.TITLE) {
-    hudEl.tip.textContent = 'tap canvas to begin';
+    hudEl.tip.textContent = '點擊畫面開始';
     bullets.length = 0; enemies.length = 0;
-    /* keep ship + playerStacks for retry */
+    /* 保留戰機同 playerStacks 方便重試 */
   } else if (s === STATE.SHIP_SELECT) {
-    /* new run: reset score + clocks */
+    /* 新的一局：重置分數同計時 */
     runScore = 0;
     runStartMs = null;
     stageStartMs = null;
     pausedAtMs = null;
-    hudEl.tip.textContent = 'A / B / C (or tap a ship card)';
+    hudEl.tip.textContent = 'A / B / C（或點擊機體卡）';
   }
 }
 
-/* ---------- 6. UPGRADES TABLE (PLAN v2 #2: 18 fixed items, all stackable) ---------- */
+/* ---------- 6. UPGRADES 強化池 ----------
+   P0 整頓：原本 18 件入面有 6 件係「揀咗完全冇效果」嘅死卡。
+     - aurora   極光  → 切走（係大功能，唔應該掛住個 icon 呃玩家）
+     - pierce   貫穿  → P0 切走，P1-5 加入雜魚後已加返
+     - graze_s 擦彈+ → P0 切走，P1-6 擦彈機制實作後已加返
+   現時 17 件全部經過驗證：每個 mod() 寫入嘅欄位都有 game logic 讀取。
+   註：spd_s / spd_l 之所以有效，係因為 P0-4 已將拖曳改為受 ship.speed 限制。 */
 const UPGRADES = [
-  { id:'spd_s',   nameZh:'速度+',    icon:'⚡',   desc:'speed +15%',               mod:(s,n)=>{ s.speed *= Math.pow(1.15, n); } },
-  { id:'spd_l',   nameZh:'速度++',   icon:'⚡⚡',  desc:'speed +30%',               mod:(s,n)=>{ s.speed *= Math.pow(1.30, n); } },
-  { id:'hp_s',    nameZh:'生命+',    icon:'❤',   desc:'max HP +1',                mod:(s,n)=>{ s.maxHp += 1 * n; } },
-  { id:'hp_l',    nameZh:'生命+2',   icon:'❤❤', desc:'max HP +2',                mod:(s,n)=>{ s.maxHp += 2 * n; } },
-  { id:'shd_s',   nameZh:'盾+',      icon:'🛡',   desc:'starting shield +1',       mod:(s,n)=>{ s.shield += 1 * n; } },
-  { id:'shd_l',   nameZh:'盾+2',     icon:'🛡🛡', desc:'starting shield +2',       mod:(s,n)=>{ s.shield += 2 * n; } },
-  { id:'fr_s',    nameZh:'射速+',    icon:'🔥',   desc:'fireRate +25%',            mod:(s,n)=>{ s.fireRate *= Math.pow(1.25, n); } },
-  { id:'fr_l',    nameZh:'射速++',   icon:'🔥🔥', desc:'fireRate +50%',            mod:(s,n)=>{ s.fireRate *= Math.pow(1.50, n); } },
-  { id:'gun_2',   nameZh:'雙砲',     icon:'✦',    desc:'2-way → 3-way',            mod:(s,n)=>{ s.bulletCount = 2 + n; } },
-  { id:'gun_3',   nameZh:'三砲',     icon:'✦✦',  desc:'3-way → 4-way',            mod:(s,n)=>{ s.bulletCount = Math.min(4, 3 + n); } },
-  { id:'dmg_s',   nameZh:'火力+',    icon:'💥',   desc:'bullet damage +1 (S2)',    mod:(s,n)=>{ s.bulletDmg = (s.bulletDmg||1) + n; } },
-  { id:'bomb_cd', nameZh:'炸彈CD-',  icon:'💣',   desc:'bomb CD -25%',             mod:(s,n)=>{ s.bombCD *= Math.pow(0.75, n); } },
-  { id:'focus_d', nameZh:'聚焦+',    icon:'◉',    desc:'focus slow 0.3 → 0.2',     mod:(s,n)=>{ s.focusFactor = Math.max(0.1, s.focusFactor - 0.1*n); } },
-  { id:'graze_s', nameZh:'擦彈+',    icon:'»',    desc:'graze score x2 (S2)',      mod:(s,n)=>{ s.grazeMult = (s.grazeMult||1) * Math.pow(2, n); } },
-  { id:'pierce',  nameZh:'貫穿',     icon:'➶',    desc:'bullets pierce 1 enemy',   mod:(s,n)=>{ s.pierce = n; } },
-  { id:'life_st', nameZh:'復活',     icon:'✝',    desc:'one resurrect (S2)',       mod:(s,n)=>{ s.resurrect = (s.resurrect||0) + n; } },
-  { id:'aurora',  nameZh:'極光',     icon:'✺',    desc:'360° periodic burst (S2)', mod:(s,n)=>{ s.aurora = (s.aurora||0) + n; } },
-  { id:'master',  nameZh:'大師',     icon:'★',    desc:'+20% all stats',           mod:(s,n)=>{ s.masterStacks = (s.masterStacks||0) + n; } },
+  { id:'spd_s',   nameZh:'速度+',    icon:'⚡',   desc:'移動速度 +15%',          mod:(s,n)=>{ s.speed *= Math.pow(1.15, n); } },
+  { id:'spd_l',   nameZh:'速度++',   icon:'⚡⚡',  desc:'移動速度 +30%',          mod:(s,n)=>{ s.speed *= Math.pow(1.30, n); } },
+  { id:'hp_s',    nameZh:'生命+',    icon:'❤',   desc:'生命上限 +1',            mod:(s,n)=>{ s.maxHp += 1 * n; } },
+  { id:'hp_l',    nameZh:'生命+2',   icon:'❤❤',  desc:'生命上限 +2',            mod:(s,n)=>{ s.maxHp += 2 * n; } },
+  { id:'shd_s',   nameZh:'盾+',      icon:'🛡',   desc:'初始護盾 +1',            mod:(s,n)=>{ s.shield += 1 * n; } },
+  { id:'shd_l',   nameZh:'盾+2',     icon:'🛡🛡',  desc:'初始護盾 +2',            mod:(s,n)=>{ s.shield += 2 * n; } },
+  { id:'fr_s',    nameZh:'射速+',    icon:'🔥',   desc:'射速 +25%',              mod:(s,n)=>{ s.fireRate *= Math.pow(1.25, n); } },
+  { id:'fr_l',    nameZh:'射速++',   icon:'🔥🔥',  desc:'射速 +50%',              mod:(s,n)=>{ s.fireRate *= Math.pow(1.50, n); } },
+  { id:'gun_2',   nameZh:'雙砲',     icon:'✦',    desc:'2 連發 → 3 連發',       mod:(s,n)=>{ s.bulletCount = 2 + n; } },
+  { id:'gun_3',   nameZh:'三砲',     icon:'✦✦',   desc:'3 連發 → 4 連發',       mod:(s,n)=>{ s.bulletCount = Math.min(4, 3 + n); } },
+  { id:'dmg_s',   nameZh:'火力+',    icon:'💥',   desc:'子彈傷害 +1',            mod:(s,n)=>{ s.bulletDmg = (s.bulletDmg||1) + n; } },
+  { id:'bomb_cd', nameZh:'炸彈冷卻-',icon:'💣',   desc:'炸彈冷卻 -25%',          mod:(s,n)=>{ s.bombCD *= Math.pow(0.75, n); } },
+  { id:'focus_d', nameZh:'聚焦+',    icon:'◉',    desc:'聚焦減速 0.3 → 0.2',    mod:(s,n)=>{ s.focusFactor = Math.max(0.1, s.focusFactor - 0.1*n); } },
+  { id:'pierce',  nameZh:'貫穿',     icon:'➶',    desc:'子彈多穿過一個敵人',   mod:(s,n)=>{ s.pierce += n; } },
+  { id:'graze_s', nameZh:'擦彈+',    icon:'»',    desc:'擦彈分數 ×2',          mod:(s,n)=>{ s.grazeMult *= Math.pow(2, n); } },
+  { id:'life_st', nameZh:'復活',     icon:'✝',    desc:'死亡時復活一次',         mod:(s,n)=>{ s.resurrect += n; } },
+  { id:'master',  nameZh:'大師',     icon:'★',    desc:'速度與射速 +20%',       mod:(s,n)=>{ s.masterStacks = (s.masterStacks||0) + n; } },
 ];
-/* S2 candidates marked "S2" in desc — S1 doesn't implement apply side. */
 
-/* stack count, key = upgrade id (PLAN v2 #3: re-offer allowed) */
+/* 疊加次數，key = 強化 id（PLAN v2 #3：容許重複出現） */
 let playerStacks = Object.create(null);
 
-/* ---------- 7. ENTITIES ---------- */
+/* ---------- 7. 實體 ---------- */
 let ship = null;            /* { chassis, x, y, hp, maxHp, shield, speed, fireRate, fireCD,
                                  bulletCount, bulletDmg, bombCD, focusFactor,
-                                 focusDuration, focusCD, grazeMult, pierce,
-                                 resurrect, aurora, masterStacks, iFrameUntil } */
+                                 focusDuration, focusCD, pierce, resurrect,
+                                 grazeMult, masterStacks, iFrameUntil } */
 let bullets = [];           /* { x, y, vx, vy, owner:'player' } */
-let enemies = [];           /* spiral | bullet | boss */
+let enemies = [];           /* spiral(=boss) | grunt(=雜魚) | bullet | laser */
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
@@ -502,20 +567,19 @@ function pickShip(id) {
     focusFactor: 0.3,
     focusDuration: 4000,
     focusCD: 8000,
-    grazeMult: 1.0,
+    grazeMult: 1,
     pierce: 0,
     resurrect: 0,
-    aurora: 0,
     masterStacks: 0,
     iFrameUntil: 0,
   };
-  /* apply any existing stacks (resuming run) */
+  /* 套用已累積嘅疊加值（繼續同一局時） */
   applyUpgrades();
 }
 
 function applyUpgrades() {
   if (!ship) return;
-  /* reset to base */
+  /* 先重設返基礎值 */
   const c = SHIPS[ship.chassis];
   ship.maxHp        = 3;
   ship.shield       = c.shield;
@@ -527,35 +591,34 @@ function applyUpgrades() {
   ship.focusFactor  = 0.3;
   ship.focusDuration= 4000;
   ship.focusCD      = 8000;
-  ship.grazeMult    = 1.0;
+  ship.grazeMult    = 1;
   ship.pierce       = 0;
   ship.resurrect    = 0;
-  ship.aurora       = 0;
   ship.masterStacks = 0;
-  /* apply stacks */
+  /* 再套用疊加值 */
   for (const up of UPGRADES) {
     const n = playerStacks[up.id] || 0;
     if (n > 0) up.mod(ship, n);
   }
-  /* master: multiplicative 1.20 per stack on speed/fireRate */
+  /* 大師：每層對速度與射速乘 1.20 */
   if (ship.masterStacks > 0) {
     const m = Math.pow(1.20, ship.masterStacks);
     ship.speed    *= m;
     ship.fireRate *= m;
   }
-  /* clamp hp upward if maxHp grew */
+  /* 生命上限增加時一併補返血量 */
   if (ship.hp < ship.maxHp) ship.hp = ship.maxHp;
-  /* keep shield ≥ 0 */
+  /* 護盾唔可以負數 */
   if (ship.shield < 0) ship.shield = 0;
 }
 
-/* ---------- 7a. CHOICE (PLAN v2 §CHOICE / #3 re-offer) ---------- */
+/* ---------- 7a. 強化選擇（PLAN v2 §CHOICE / #3 可重複） ---------- */
 let lastStage = 1;          /* remember pre-CHOICE for advanceStage */
 let choiceOffer = [];        /* [up, up, up] */
 let choicePicked = -1;       /* choice card picked (0/1/2) or -1 */
 
 function generateChoiceOffer() {
-  /* 3 cards from UPGRADES pool; re-offer allowed (no exclusion). */
+  /* 從 UPGRADES 池抽 3 張；容許重複（唔排除已擁有嘅）。 */
   const pick = () => UPGRADES[Math.floor(Math.random() * UPGRADES.length)];
   return [pick(), pick(), pick()];
 }
@@ -564,58 +627,143 @@ function applyPickedUpgrade(idx) {
   if (idx < 0 || idx >= choiceOffer.length) return;
   const up = choiceOffer[idx];
   playerStacks[up.id] = (playerStacks[up.id] || 0) + 1;
-  console.log('[CHOICE] picked', up.id, 'count =', playerStacks[up.id]);
+  console.log('[選擇強化] 揀咗', up.id, '· 疊加 =', playerStacks[up.id]);
   applyUpgrades();
 }
 
-/* ---------- 8. STAGE_TABLE + WAVE_TEMPLATES + BOSS PATTERNS ---------- */
-/* declared early so onStateEnter's STAGE_n entry can call spawnBossFor */
+/* ---------- 8. 關卡表 + 波次模板 + BOSS 招式 ---------- */
+/* 要喺前面宣告，因為 onStateEnter 入關時會叫 spawnBossFor */
 const STAGE_TABLE = {
-  1: { name:'維港起飛',     targetSec:50, bossHp:80,  pattern:'A', waveCount:3 },
-  2: { name:'九龍煙柱',     targetSec:55, bossHp:110, pattern:'B', waveCount:3 },
-  3: { name:'大氣層',       targetSec:60, bossHp:150, pattern:'C', waveCount:3 },
-  4: { name:'軌道殘骸',     targetSec:65, bossHp:200, pattern:'D', waveCount:3 },
-  5: { name:'逃逸門 Final', targetSec:70, bossHp:300, pattern:'E', waveCount:4 },
+  /* waveCount = WAVE_TEMPLATES[n].length（唯一真相；死欄已清） */
+  1: { name:'維港起飛', targetSec:50, bossHp:80,  pattern:'A', waveCount:7 },
+  2: { name:'九龍煙柱', targetSec:55, bossHp:110, pattern:'B', waveCount:7 },
+  3: { name:'大氣層',   targetSec:60, bossHp:150, pattern:'C', waveCount:8 },
+  4: { name:'軌道殘骸', targetSec:65, bossHp:200, pattern:'D', waveCount:8 },
+  5: { name:'逃逸門',   targetSec:70, bossHp:300, pattern:'E', waveCount:11 },
 };
 
-/* Each wave = {at (ms), spawn:[{type, ...opts}]}.
-   types: 'spray' (downward arc), 'aim' (lock onto ship), 'ring' (8-way), 'meteor' (3-5 fast). */
+/* 每個波次 = {at（毫秒）, spawn:[{type, ...}]}。
+   彈幕型：spray 向下弧形散彈、aim 鎖定戰機、ring 八方向環彈、meteor 三至五發快彈
+   敵機型：grunt 一排雜魚、dive 俯衝雜魚、elite 精英（多血 + 三向射擊 + 詞綴） */
 const WAVE_TEMPLATES = {
-  1: [   /* 維港起飛 — 直線彈幕 + 輕量 spiral */
-    { at: 2000, spawn: [{ type:'spray', count: 6, spread: 0.4, speed: 0.07 }] },
-    { at: 6000, spawn: [{ type:'spray', count: 6, spread: 0.4, speed: 0.07 }] },
-    { at:10000, spawn: [{ type:'aim',   count: 3, speed: 0.10 }] },
+  1: [   /* 維港起飛 — 教學關：單排雜魚 + 輕量彈幕 */
+    { at: 1500, spawn: [{ type:'grunt', count: 3, hp: 8 }] },
+    { at: 4500, spawn: [{ type:'spray', count: 6, spread: 0.4, speed: 0.07 }] },
+    { at: 7500, spawn: [{ type:'grunt', count: 4, hp: 8 }] },
+    { at:11000, spawn: [{ type:'aim',   count: 3, speed: 0.10 }] },
+    { at:15000, spawn: [{ type:'grunt', count: 5, hp: 8 }] },
+    { at:19000, spawn: [{ type:'spray', count: 8, spread: 0.5, speed: 0.08 }] },
+    { at:23000, spawn: [{ type:'grunt', count: 4, hp: 8 }] },
   ],
-  2: [   /* 九龍煙柱 — 扇形 spread + 多 wave */
-    { at: 2000, spawn: [{ type:'spray', count: 9, spread: 0.6, speed: 0.07 }] },
+  2: [   /* 九龍煙柱 — 扇形散彈 + 兩排雜魚 */
+    { at: 1500, spawn: [{ type:'grunt', count: 4, hp: 9 }] },
     { at: 5000, spawn: [{ type:'spray', count: 9, spread: 0.6, speed: 0.07 }] },
-    { at: 9000, spawn: [{ type:'spray', count: 9, spread: 0.6, speed: 0.10 }] },
+    { at: 9000, spawn: [{ type:'grunt', count: 5, hp: 9 }] },
+    { at:13000, spawn: [{ type:'spray', count: 9, spread: 0.6, speed: 0.09 }] },
+    { at:17000, spawn: [{ type:'grunt', count: 4, hp: 9 }] },
+    { at:21000, spawn: [{ type:'aim',   count: 4, speed: 0.11 }] },
+    { at:25000, spawn: [{ type:'grunt', count: 6, hp: 9 }] },
   ],
-  3: [   /* 大氣層 — meteor 入 + 螺旋 */
-    { at: 1500, spawn: [{ type:'meteor', count: 4, speed: 0.13 }] },
-    { at: 5000, spawn: [{ type:'meteor', count: 4, speed: 0.13 }] },
-    { at: 9000, spawn: [{ type:'ring',   count: 8, speed: 0.07 }] },
+  3: [   /* 大氣層 — 流星 + 俯衝雜魚（考走位） */
+    { at: 1200, spawn: [{ type:'meteor', count: 4, speed: 0.13 }] },
+    { at: 5000, spawn: [{ type:'grunt', count: 4, hp: 10 }] },
+    { at: 8500, spawn: [{ type:'dive',  count: 4, hp: 8 }] },
+    { at:12500, spawn: [{ type:'ring',  count: 8, speed: 0.07 }] },
+    { at:16000, spawn: [{ type:'grunt', count: 5, hp: 10 }] },
+    { at:20000, spawn: [{ type:'dive',  count: 6, hp: 8 }] },
+    { at:24000, spawn: [{ type:'meteor', count: 6, speed: 0.14 }] },
+    { at:28000, spawn: [{ type:'grunt', count: 4, hp: 10 }] },
   ],
-  4: [   /* 軌道殘骸 — laser wall + 雷射 + 彈幕 */
-    { at: 1500, spawn: [{ type:'ring',   count: 8, speed: 0.09 }] },
-    { at: 4500, spawn: [{ type:'spray', count: 5, spread: 0.3, speed: 0.09 }] },
+  4: [   /* 軌道殘骸 — 彈幕 + 首隻精英 */
+    { at: 1200, spawn: [{ type:'ring',  count: 8, speed: 0.09 }] },
+    { at: 4500, spawn: [{ type:'grunt', count: 5, hp: 10 }] },
+    { at: 8500, spawn: [{ type:'spray', count: 6, spread: 0.4, speed: 0.09 }] },
+    { at:13000, spawn: [{ type:'elite', count: 1, hp: 24, affix:'重裝' }] },
+    { at:18000, spawn: [{ type:'dive',  count: 5, hp: 9 }] },
+    { at:22000, spawn: [{ type:'ring',  count: 8, speed: 0.10 }] },
+    { at:26000, spawn: [{ type:'grunt', count: 6, hp: 10 }] },
+    { at:30000, spawn: [{ type:'elite', count: 1, hp: 24, affix:'狙擊' }] },
+  ],
+  5: [   /* 逃逸門 — 全開，密集雜魚 + 四隻精英（2+2） */
+    { at: 1200, spawn: [{ type:'meteor', count: 5, speed: 0.13 }] },
+    { at: 4200, spawn: [{ type:'grunt', count: 6, hp: 11 }] },
     { at: 7500, spawn: [{ type:'ring',  count: 8, speed: 0.10 }] },
-  ],
-  5: [   /* 逃逸門 — 全上 */
-    { at: 1500, spawn: [{ type:'meteor', count: 5, speed: 0.13 }] },
-    { at: 3500, spawn: [{ type:'ring',   count: 8, speed: 0.10 }] },
-    { at: 5500, spawn: [{ type:'spray', count: 7, spread: 0.5, speed: 0.10 }] },
-    { at: 8000, spawn: [{ type:'meteor', count: 6, speed: 0.14 }] },
+    { at:11000, spawn: [{ type:'dive',  count: 6, hp: 9 }] },
+    { at:14500, spawn: [{ type:'elite', count: 2, hp: 26, affix:'重裝' }] },
+    { at:19000, spawn: [{ type:'spray', count: 8, spread: 0.5, speed: 0.11 }] },
+    { at:23000, spawn: [{ type:'grunt', count: 7, hp: 11 }] },
+    { at:27000, spawn: [{ type:'dive',  count: 8, hp: 9 }] },
+    { at:31000, spawn: [{ type:'elite', count: 2, hp: 26, affix:'狙擊' }] },
+    { at:35000, spawn: [{ type:'meteor', count: 8, speed: 0.15 }] },
+    { at:39000, spawn: [{ type:'grunt', count: 8, hp: 11 }] },
   ],
 };
 
-/* wave spawning queue (consumed as stage time advances) */
+/* 波次產生佇列（隨關卡時間推進而消耗） */
 let waveQueue = [];
 let waveCursor = 0;       /* index into waveQueue */
+/* P1-5：boss 唔再一入關就出現，而係等波次打完先召喚。
+   舊做法令第一關 boss 生命 80 ÷ 火力 20 = 4 秒就死，
+   而第二個波次 6 秒先出 —— 即係玩家根本睇唔到 WAVE_TEMPLATES 內容。 */
+let bossSpawned = false;      /* 本關 boss 已召喚？ */
+let waveQueueDoneAt = null;   /* 佇列清空嘅時間戳，用嚟做保險超時 */
 
-/* ---------- score (PLAN v2 §Score) ---------- */
-let runScore = 0;          /* accumulates during run; sum displayed in VICTORY */
-/* graze reserved for S2; S1 tracks kill + bullet hits */
+/* P1-5：雜魚基礎數值。生命值經過對照玩家火力（20 dps 上限、
+   實戰命中率約四成）而訂，令普通雜魚要打約 1 秒、精英約 3 秒。 */
+const GRUNT_HP = 8, GRUNT_SCORE = 100;
+const ELITE_HP = 24, ELITE_SCORE = 200;
+const BOSS_SCORE = 800;    /* P1-5：加入雜魚後 boss 分數由 200 調高，見 PLAN #27 */
+const ELITE_AFFIX = ['重裝', '狙擊', '急速', '護盾'];
+
+/* ---------- 擦彈（P1-6） ----------
+   STG 個核心：「擦住彈走」要比重彈更有回饋。之前呢個遊戲完全冇擦彈，
+   走位只有懲冇獎 —— 令 P1-5 加入嘅雜魚彈幕變成純粹嘅威脅。
+   設計三層：
+     1. 每粒彈只可以擦一次（_grazed 旗標）—— 否則一粒子彈喺判定圈內
+        停留 20–40 幀，會被重複計幾十次
+     2. 每次擦彈加分（可被 graze_s 強化乘大）
+     3. 每次擦彈累加能量，集齊就回充聚焦／炸彈冷卻 —— 令「主動靠近彈幕」
+        變成一種資源策略，而唔只係搏命
+*/
+const GRAZE_RADIUS   = 20;    /* 擦彈判定圈半徑（像素） */
+const GRAZE_SCORE    = 5;     /* 每次擦彈分數（PLAN v2 §計分） */
+const GRAZE_ENERGY_NEED = 10; /* 集幾多次回充一次 */
+const GRAZE_REFUND_MS   = 1200; /* 回充多少毫秒 */
+let grazeCount  = 0;
+let grazeEnergy = 0;
+let grazeScoreTotal = 0;   /* 擦彈貢獻咗幾多分（勝利畫面要拆開顯示） */
+let grazeRingT  = 0;          /* 光環動畫進度 1 → 0 */
+let grazeRingX = 0, grazeRingY = 0;
+let grazeFlash = 0;          /* 集滿能量時嘅提示閃光 */
+
+function doGraze(ex, ey) {
+  grazeCount++;
+  const gained = GRAZE_SCORE * (ship.grazeMult || 1);
+  runScore += gained;
+  grazeScoreTotal += gained;
+  grazeEnergy++;
+  /* 集滿一次就回充兩個技能嘅冷卻，令走位可以「賺」返炸彈 */
+  if (grazeEnergy >= GRAZE_ENERGY_NEED) {
+    grazeEnergy -= GRAZE_ENERGY_NEED;
+    focusCDUntil = Math.max(0, focusCDUntil - GRAZE_REFUND_MS);
+    bombCDUntil  = Math.max(0, bombCDUntil  - GRAZE_REFUND_MS);
+    grazeFlash = 1;
+    const t = performance.now();
+    const cdText = (until) => until - t > 0 ? ((until - t) / 1000).toFixed(1) + ' 秒' : '就緒';
+    console.log('[擦彈] 集滿 ' + GRAZE_ENERGY_NEED + ' 次 → 回充 ' + (GRAZE_REFUND_MS / 1000).toFixed(1) +
+      ' 秒　聚焦剩 ' + cdText(focusCDUntil) + '　炸彈剩 ' + cdText(bombCDUntil) +
+      ' @' + (t / 1000).toFixed(2));
+  }
+  grazeRingT = 1;
+  grazeRingX = ex; grazeRingY = ey;
+  spawnSparks(ex, ey, 2, 0.05);
+}
+
+/* ---------- 計分（PLAN v2 §計分） ---------- */
+let runScore = 0;          /* 局內累積，勝利時結算 */
+let runKills = 0;          /* 擊殺數（調數值用；debug HUD 顯示） */
+let runGrunts = 0;         /* 雜魚擊殺數 */
+/* 擦彈留待 P1；現階段只計擊殺分 */
 
 function spawnBossFor(stageId) {
   const st = STAGE_TABLE[stageId] || STAGE_TABLE[1];
@@ -633,23 +781,55 @@ function spawnBossFor(stageId) {
     laserWarm: 0,
     label: `${st.name} · S${stageId}`,
   });
-  console.log(`[stage ${stageId}] ${st.name} spawned · boss HP ${st.bossHp} · pattern ${st.pattern}`);
+  console.log(`[第 ${stageId} 關] ${st.name} · boss 生命 ${st.bossHp} · 招式 ${st.pattern}`);
 }
 
-function spawnWaveAt(stageId) {
-  /* called when waveScheduler timer fires; reads WAVE_TEMPLATES[stageId] entry */
-  const tpl = (WAVE_TEMPLATES[stageId] || []);
-  while (waveCursor < tpl.length) {
-    const w = tpl[waveCursor];
-    for (const s of w.spawn) emitWaveType(s, stageId);
-    waveCursor++;
+/* P1-5：雜魚編隊產生器。
+   P1-5 之前場上只有 boss一種可擊殺目標，所以「貫穿」呢類需要多目標嘅
+   強化根本無處生效（見 UPGRADES 註釋）。加入雜魚之後先有東西可以貫穿。 */
+function spawnGruntFormation(opt) {
+  const n = opt.count || 1;
+  const hp = opt.hp || GRUNT_HP;
+  const elite = opt.type === 'elite';
+  const diving = opt.type === 'dive';
+  const score = elite ? ELITE_SCORE : GRUNT_SCORE;
+  for (let i = 0; i < n; i++) {
+    /* 一排平均分佈喺畫面寬度中央 80% 範圍內 */
+    const t = n === 1 ? 0.5 : i / (n - 1);
+    const x = clamp(VIEW_W / 2 + (t - 0.5) * VIEW_W * 0.8, 20, VIEW_W - 20);
+    enemies.push({
+      kind: 'grunt',
+      x,
+      y: -14 - (elite ? 0 : i * 6),
+      vx: 0,
+      /* P1-5 雜魚慢落，但唔可以慢到變成殘留物資：
+         0.035 px/ms 橫跨全屏要 12 秒，實測會令畫面堆滿慢慢漂嘅目標。
+         0.055 約 8 秒、俯衝 0.09 約 5 秒，密度同可瞄準時間比較平衡。 */
+      vy: diving ? (elite ? 0.07 : 0.09) : (elite ? 0.042 : 0.055),
+      hp: elite ? (opt.hp || ELITE_HP) : hp,
+      maxHp: elite ? (opt.hp || ELITE_HP) : hp,
+      elite,
+      diving,
+      score,
+      affix: elite ? (opt.affix || ELITE_AFFIX[i % ELITE_AFFIX.length]) : '',
+      t: i * 120,                    /* 錯開發炮時間，避免全機同時開火 */
+      sway: diving ? 0 : 0.022 + (i % 3) * 0.008,
+      fireCD: 1600 + i * 420,
+      label: '',
+    });
   }
 }
 
 function emitWaveType(s, stageId) {
-  /* emit enemies of a given type from top of canvas */
+  /* 由畫面頂部產生指定類型嘅彈幕／雜魚 */
   const cx = VIEW_W / 2;
   switch (s.type) {
+    case 'grunt':
+    case 'dive':
+    case 'elite': {
+      spawnGruntFormation(s);
+      break;
+    }
     case 'spray': {
       const baseA = Math.PI / 2;
       for (let i = 0; i < s.count; i++) {
@@ -665,7 +845,7 @@ function emitWaveType(s, stageId) {
       break;
     }
     case 'aim': {
-      /* shoots directly at current ship position */
+      /* 直接瞄準戰機現時位置 */
       const sx = ship ? ship.x : cx;
       const sy = ship ? ship.y : VIEW_H - 60;
       for (let i = 0; i < s.count; i++) {
@@ -692,21 +872,22 @@ function emitWaveType(s, stageId) {
   }
 }
 
-/* ---------- 7. INPUT — Pointer Events + Keyboard ---------- */
+/* ---------- 7. 輸入 —— Pointer Events + 鍵盤 ---------- */
 canvas.addEventListener('pointerdown', (e) => {
-  /* onTap dispatch by state */
+  /* 依狀態分派點擊 */
   const rect = canvas.getBoundingClientRect();
   const cx = e.clientX, cy = e.clientY;
   const px = (cx - rect.left) * VIEW_W / rect.width;
   const py = (cy - rect.top)  * VIEW_H / rect.height;
   if (fsm.cur === STATE.TITLE) { fsm.set(STATE.SHIP_SELECT); return; }
   if (fsm.cur === STATE.SHIP_SELECT) {
-    /* 64×64 cards at y = VIEW_H/2 ± 32; three columns x ∈ {60,160,260} ± 32 */
-    if (py > VIEW_H/2 - 32 && py < VIEW_H/2 + 32) {
-      if (px > 28  && px < 92 ) return pickShipAndStart('A');
-      if (px > 128 && px < 192) return pickShipAndStart('B');
-      if (px > 228 && px < 292) return pickShipAndStart('C');
-    }
+    const id = hitShipCard(px, py);
+    if (id) pickShipAndStart(id);
+    return;
+  }
+  if (fsm.cur === STATE.PAUSED) {
+    /* 手動暫停：點擊繼續；分頁暫停等 visibility 恢復 */
+    if (pauseReason === 'manual') resumePause();
     return;
   }
   if (fsm.cur === STATE.GAMEOVER) {
@@ -722,23 +903,16 @@ canvas.addEventListener('pointerdown', (e) => {
     return;
   }
   if (fsm.cur === STATE.CHOICE) {
-    /* 3 cards: 88×96 centered, gap 12 — match render() geometry */
-    const cardW = 88, cardH = 96, gap = 12;
-    const totalW = cardW * 3 + gap * 2;
-    const startX = (VIEW_W - totalW) / 2;
-    const cardY = VIEW_H / 2 - 40;
-    if (py > cardY && py < cardY + cardH && px > startX && px < startX + totalW) {
-      const idx = Math.floor((px - startX) / (cardW + gap));
-      if (idx >= 0 && idx <= 2 && choiceOffer[idx]) {
-        applyPickedUpgrade(idx);
-        advanceStage();
-        return;
-      }
+    const idx = hitChoiceCard(px, py);
+    if (idx >= 0) {
+      applyPickedUpgrade(idx);
+      advanceStage();
     }
     return;
   }
-  /* STAGE_n: ability tap OR start drag bookkeeping */
+  /* STAGE_n：暫停掣 → 技能鍵 → 拖曳 */
   if (isStage(fsm.cur)) {
+    if (hitPauseBtn(px, py)) { enterPause('manual'); return; }
     const ab = hitAbilityBtn(px, py);
     if (ab === 'focus') { tryFocus(); return; }
     if (ab === 'bomb')  { tryBomb();  return; }
@@ -760,7 +934,7 @@ canvas.addEventListener('pointermove', (e) => {
     InputState.touchMoved = true;
   }
   if (InputState.touchMoved && ship) {
-    /* convert CSS delta to internal-coord delta using canvas rect */
+    /* 用畫布 rect 將 CSS 位移換算成內部座標位移 */
     const newX = InputState.shipOrigin.x + dxCss * VIEW_W / rect.width;
     const newY = InputState.shipOrigin.y + dyCss * VIEW_H / rect.height;
     InputState.targetX = clamp(newX, 8, VIEW_W - 8);
@@ -771,18 +945,31 @@ canvas.addEventListener('pointermove', (e) => {
 function endDrag(e) {
   if (e.pointerId === InputState.dragId) {
     InputState.dragId = null;
-    /* if never crossed tolerance, treat as tap (already handled in pointerdown) */
+    /* 如果從未過容差線，當作點擊（pointerdown 已處理） */
   }
 }
 canvas.addEventListener('pointerup',    endDrag);
 canvas.addEventListener('pointercancel', endDrag);
 
-/* prevent iPad scroll/zoom */
+/* 阻止 iPad 捲動／縮放 */
 canvas.addEventListener('touchmove', (e) => e.preventDefault(), { passive:false });
 
-/* keyboard proxy */
+/* 鍵盤代理 */
 window.addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
+  /* 手動暫停／繼續（課堂硬需求）。分頁暫停唔好用鍵強制恢復。 */
+  if (fsm.cur === STATE.PAUSED && pauseReason === 'manual') {
+    if (k === 'p' || k === 'escape' || k === ' ' || k === 'enter') {
+      resumePause();
+      e.preventDefault();
+      return;
+    }
+  }
+  if (isStage(fsm.cur) && (k === 'p' || k === 'escape')) {
+    enterPause('manual');
+    e.preventDefault();
+    return;
+  }
   if (k === 'arrowup'    || k === 'w') { InputState.keys.up = true; e.preventDefault(); }
   if (k === 'arrowdown'  || k === 's') { InputState.keys.down = true; e.preventDefault(); }
   if (k === 'arrowleft'  || k === 'a') { InputState.keys.left = true; }
@@ -795,24 +982,24 @@ window.addEventListener('keydown', (e) => {
     tryBomb();
     e.preventDefault();
   }
-  /* ship select via keyboard */
+  /* 用鍵盤揀機體 */
   if (fsm.cur === STATE.SHIP_SELECT) {
     if (k === 'a') pickShipAndStart('A');
     if (k === 'b') pickShipAndStart('B');
     if (k === 'c') pickShipAndStart('C');
   }
   if (fsm.cur === STATE.CHOICE) {
-    /* S1-A: 1/2/3 keys pick a card (PLAN v2 #3 re-offer) */
+    /* 按 1/2/3 揀卡（PLAN v2 #3 可重複） */
     if (k === '1') { applyPickedUpgrade(0); advanceStage(); }
     else if (k === '2') { applyPickedUpgrade(1); advanceStage(); }
     else if (k === '3') { applyPickedUpgrade(2); advanceStage(); }
     else if (k === 'escape' || k === 'enter') {
-      /* skip — also pick first card as default so it never deadlocks */
+      /* 跳過 —— 同時揀第一張做預設，保證唔會卡死 */
       applyPickedUpgrade(0);
       advanceStage();
     }
   }
-  /* PLAN: GAMEOVER/VICTORY → [Retry] / [Title] */
+  /* PLAN：任務失敗／勝利 → [重試] / [標題] */
   if (fsm.cur === STATE.GAMEOVER || fsm.cur === STATE.VICTORY) {
     if (k === 'r' || k === 'enter') { goRetry(); e.preventDefault(); }
     else if (k === 't' || k === 'escape') { goTitle(); e.preventDefault(); }
@@ -831,16 +1018,57 @@ function pickShipAndStart(id) {
   fsm.set(STATE.STAGE_1);
 }
 
-/* ---------- end-screen exits (PLAN: GAMEOVER [Retry]/[Title]; VICTORY same) ---------- */
+/* ---- 版面幾何：render 同 hit-test 共用同一份數據 ----
+   P0：原本 CHOICE 卡 render 用 cardH=108 / cardY=VIEW_H/2-50，但
+   hit test 用 cardH=96 / cardY=VIEW_H/2-40，令每張卡頂部 10px、
+   底部 2px 點唔中。船選擇畫面亦同樣縮細咗 hitbox。
+   現在兩邊都行同一個函數，唔會再 drift。 */
+function choiceLayout() {
+  const cardW = 88, cardH = 108, gap = 12;
+  const startX = (VIEW_W - (cardW * 3 + gap * 2)) / 2;
+  const cardY = VIEW_H / 2 - 50;
+  return {
+    cardW, cardH, gap, startX, cardY,
+    rect: (i) => ({ x: startX + i * (cardW + gap), y: cardY, w: cardW, h: cardH }),
+  };
+}
+function hitChoiceCard(px, py) {
+  const L = choiceLayout();
+  if (py < L.cardY || py > L.cardY + L.cardH) return -1;
+  for (let i = 0; i < 3; i++) {
+    const r = L.rect(i);
+    if (px >= r.x && px <= r.x + r.w) return choiceOffer[i] ? i : -1;
+  }
+  return -1;   /* 12px 卡片間隙：唔當成點中右邊張卡 */
+}
+
+function shipCardsLayout() {
+  const w = 72, h = 84;
+  const y = VIEW_H / 2;
+  return {
+    w, h, y,
+    rect: (i) => ({ x: 60 + i * 100 - w / 2, y: y - 40, w, h }),
+  };
+}
+function hitShipCard(px, py) {
+  const L = shipCardsLayout();
+  for (let i = 0; i < 3; i++) {
+    const r = L.rect(i);
+    if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return 'ABC'[i];
+  }
+  return null;
+}
+
+/* ---------- 結算畫面離開按鈕（PLAN：任務失敗 [重試]/[標題]，勝利同樣） ---------- */
 function endScreenBtns() {
-  /* ≥64×64 touch targets, bottom row (PLAN v2 #20) */
+  /* 觸控目標 ≥64×64，排喺底部一行（PLAN v2 #20） */
   const w = 128, h = 64, gap = 16;
   const total = w * 2 + gap;
   const startX = (VIEW_W - total) / 2;
   const y = VIEW_H - 100;
   return {
-    retry: { x: startX, y, w, h, label: 'RETRY' },
-    title: { x: startX + w + gap, y, w, h, label: 'TITLE' },
+    retry: { x: startX, y, w, h, label: '重試' },
+    title: { x: startX + w + gap, y, w, h, label: '標題' },
   };
 }
 function hitEndBtn(px, py) {
@@ -869,7 +1097,7 @@ function drawEndBtns() {
   ctx.font = '10px monospace';
   ctx.fillStyle = '#888';
   ctx.textAlign = 'center';
-  ctx.fillText('R / Enter = Retry · T / Esc = Title', VIEW_W / 2, VIEW_H - 22);
+  ctx.fillText('R / Enter = 重試 · T / Esc = 返回標題', VIEW_W / 2, VIEW_H - 22);
 }
 function resetRunFresh() {
   runStartMs = null;
@@ -880,10 +1108,19 @@ function resetRunFresh() {
   bullets.length = 0;
   enemies.length = 0;
   runScore = 0;
+  runKills = 0;
+  runGrunts = 0;
   isNewBest = false;
   victoryRunSec = 0;
   victoryTimeBonus = 0;
   finalScore = 0;
+  bossSpawned = false;
+  waveQueueDoneAt = null;
+  grazeCount = 0;
+  grazeEnergy = 0;
+  grazeScoreTotal = 0;
+  grazeRingT = 0;
+  grazeFlash = 0;
   focusActiveUntil = 0;
   focusCDUntil = 0;
   bombCDUntil = 0;
@@ -905,44 +1142,98 @@ function goTitle() {
 let runStartMs   = null;   /* full-run anchor; only set on STAGE_1 start; freeze-shifted */
 let stageStartMs = null;   /* per-stage anchor for WAVE_TEMPLATES; reset each STAGE_n */
 let pausedAtMs   = null;   /* freeze start (tab PAUSED or CHOICE modal); null = live */
+let pauseReason  = null;   /* 'tab' | 'manual' | null —— 分辨分頁暫停同手動暫停 */
 function beginFreezeClocks() {
   if (pausedAtMs === null) pausedAtMs = performance.now();
 }
 function endFreezeClocks() {
-  /* PLAN v2 #17: resume MUST NOT replay lost time — shift anchors forward by freeze gap. */
+  /* PLAN v2 #17：恢復時絕對唔可以補時間 —— 錨點順延凍結長度。 */
   if (pausedAtMs === null) return;
   const gap = performance.now() - pausedAtMs;
   if (runStartMs   !== null) runStartMs   += gap;
   if (stageStartMs !== null) stageStartMs += gap;
   pausedAtMs = null;
 }
+
+/* 手動／分頁暫停共用入口。fsm.set(PAUSED) 只改 tip，唔清實體。 */
+function enterPause(reason) {
+  if (fsm.cur === STATE.PAUSED) return false;
+  if (!isStage(fsm.cur)) return false;
+  beginFreezeClocks();
+  fsm.prev = fsm.cur;
+  pauseReason = reason || 'manual';
+  fsm.set(STATE.PAUSED);
+  hudEl.paused.textContent = pauseReason === 'tab' ? '⏸ 已隱藏' : '⏸ 手動暫停';
+  console.log('[暫停]', pauseReason, '@', (performance.now()/1000).toFixed(2) + '秒');
+  return true;
+}
+function resumePause() {
+  if (fsm.cur !== STATE.PAUSED) return false;
+  const resumeTo = (fsm.prev && isStage(fsm.prev))
+    ? fsm.prev
+    : (STAGES[Math.max(0, (lastStage || 1) - 1)] || STATE.STAGE_1);
+  /* 繞過 fsm.set()，避免 onStateEnter 重置清走場上子彈／敵機 */
+  fsm.cur = resumeTo;
+  fsm.prev = STATE.PAUSED;
+  endFreezeClocks();
+  pauseReason = null;
+  InputState.dragId = null;
+  InputState.keys.up = InputState.keys.down = InputState.keys.left = InputState.keys.right = false;
+  hudEl.state.textContent = `狀態：${stateLabel(resumeTo)}`;
+  hudEl.paused.textContent = '';
+  if (STAGE_TABLE[lastStage]) {
+    hudEl.tip.textContent = `第 ${lastStage} 關 · ${STAGE_TABLE[lastStage].name} · 拖曳／WASD · 空白鍵聚焦 · Shift 炸彈 · P／⏸ 暫停`;
+  }
+  console.log(`[狀態機] 已暫停 → ${stateLabel(resumeTo)} @ ${(performance.now()/1000).toFixed(2)}秒（唔補時間）`);
+  return true;
+}
+
+/* 暫停掣：右上角 ≥56px，智慧白板可撳；唔同聚焦／炸彈重疊 */
+function pauseBtnRect() {
+  const s = 56;
+  return { x: VIEW_W - s - 6, y: 6, w: s, h: s };
+}
+function hitPauseBtn(px, py) {
+  const r = pauseBtnRect();
+  return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
+}
+function drawPauseBtn() {
+  if (!isStage(fsm.cur)) return;
+  const r = pauseBtnRect();
+  ctx.fillStyle = 'rgba(0,20,40,0.72)';
+  ctx.fillRect(r.x, r.y, r.w, r.h);
+  ctx.strokeStyle = 'rgba(0,255,255,0.55)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(r.x, r.y, r.w, r.h);
+  /* 兩條暫停棒 */
+  ctx.fillStyle = '#0ff';
+  const bw = 8, bh = 22;
+  const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+  ctx.fillRect(cx - 12, cy - bh / 2, bw, bh);
+  ctx.fillRect(cx + 4,  cy - bh / 2, bw, bh);
+  ctx.fillStyle = '#9ef';
+  ctx.font = 'bold 9px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('暫停', cx, r.y + r.h - 6);
+}
+
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
-    /* pause iff in STAGE_n — don't pause TITLE/SHIP_SELECT/GAMEOVER/VICTORY/CHOICE */
-    if (isStage(fsm.cur) && fsm.cur !== STATE.PAUSED) {
-      beginFreezeClocks();
-      fsm.prev = fsm.cur;
-      fsm.set(STATE.PAUSED);
-      hudEl.paused.textContent = '⏸ hidden';
+    /* 關卡中 → 分頁暫停；已手動暫停則保持（時鐘已凍） */
+    if (isStage(fsm.cur)) {
+      enterPause('tab');
     }
   } else {
-    /* resume iff PAUSED */
-    if (fsm.cur === STATE.PAUSED) {
-      const resumeTo = fsm.prev || STATE.STAGE_1;
-      /* bypass fsm.set() to avoid onStateEnter reset wiping live bullets/enemies */
-      fsm.cur = resumeTo;
-      fsm.prev = STATE.PAUSED;
-      endFreezeClocks();          /* freeze HUD/run/stage timers across pause gap */
-      hudEl.state.textContent = `STATE: ${resumeTo}`;
-      hudEl.paused.textContent = '';
-      console.log(`[FSM] PAUSED → ${resumeTo} @ ${(performance.now()/1000).toFixed(2)}s (no time replay)`);
+    /* 只有分頁暫停先自動恢復；手動暫停要玩家自己撳 */
+    if (fsm.cur === STATE.PAUSED && pauseReason === 'tab') {
+      resumePause();
     }
   }
 });
 
-/* ---------- 9. STAGE FLOW ---------- */
+/* ---------- 9. 關卡流程 ---------- */
 function advanceStage() {
-  /* Called from CHOICE pick: go to next stage (or VICTORY if last boss defeated). */
+  /* 由強化選擇觸發：入下一關（最後一關 boss 擊破就勝利）。 */
   if (fsm.cur === STATE.CHOICE) {
     const next = lastStage + 1;
     if (next > STAGES.length) {
@@ -952,7 +1243,7 @@ function advanceStage() {
     }
     return;
   }
-  /* other callers: linear from current STAGE_n */
+  /* 其他呼叫者：由當前 STAGE_n 順序推下一關 */
   const idx = STAGES.indexOf(fsm.cur);
   if (idx >= 0 && idx < STAGES.length - 1) {
     fsm.set(STAGES[idx + 1]);
@@ -963,12 +1254,12 @@ function advanceStage() {
   }
 }
 
-/* ---------- 10. TICK (PLAN v2 #13 fixed 60 FPS) ---------- */
+/* ---------- 10. 邏輯更新（PLAN v2 #13 固定 60 FPS） ---------- */
 let finalScore = 0;          /* computed on VICTORY entry; displayed on render */
 let victoryRunSec = 0;       /* frozen full-run seconds at VICTORY entry */
 let victoryTimeBonus = 0;    /* frozen timeBonus at VICTORY entry */
 
-/* localStorage persistence (PLAN v2 #22) */
+/* localStorage 持久化（PLAN v2 #22） */
 const LS_KEY_SCORE = 'dsf.bestScore';
 const LS_KEY_TIME  = 'dsf.bestTime';
 let bestScore = 0, bestTime = 0;
@@ -985,7 +1276,7 @@ bestScore = lsRead(LS_KEY_SCORE);
 bestTime  = lsRead(LS_KEY_TIME);
 let isNewBest = false;          /* set on VICTORY entry, displayed on render */
 
-/* focus / bomb cooldowns (PLAN v2 #6-#7) — durations/CD read from ship when armed */
+/* 聚焦／炸彈冷卻（PLAN v2 #6-#7）—— 啟動時由戰機讀取時長同冷卻 */
 const BOMB_IFRAME_MS = 1500;
 let focusActiveUntil = 0;    /* perf.now() ms */
 let focusCDUntil    = 0;
@@ -1006,7 +1297,7 @@ function tryFocus() {
   const cd  = ship.focusCD || 8000;
   focusActiveUntil = now + dur;
   focusCDUntil     = focusActiveUntil + cd;   /* CD starts after focus ends */
-  console.log('[focus] ON', (dur/1000).toFixed(1) + 's · factor', ship.focusFactor, '@', (now/1000).toFixed(2));
+  console.log('[聚焦] 開啟', (dur/1000).toFixed(1) + '秒 · 係數', ship.focusFactor, '@', (now/1000).toFixed(2));
   return true;
 }
 function tryBomb() {
@@ -1016,22 +1307,22 @@ function tryBomb() {
   const cd = ship.bombCD || 12000;
   bombCDUntil = now + cd;
   iFrameUntil = now + BOMB_IFRAME_MS;
-  /* wipe enemy projectiles (bullets + lasers) */
+  /* 清除敵方彈幕（子彈 + 雷射） */
   for (let i = enemies.length - 1; i >= 0; i--) {
     const k = enemies[i].kind;
     if (k === 'bullet' || k === 'laser') enemies.splice(i, 1);
   }
   if (ship) spawnBoom(ship.x, ship.y);
   screenFlash = Math.max(screenFlash, 0.7);
-  console.log('[bomb] ON i-frame', (BOMB_IFRAME_MS/1000).toFixed(1) + 's · CD', (cd/1000).toFixed(1) + 's @', (now/1000).toFixed(2));
+  console.log('[炸彈] 開啟無敵', (BOMB_IFRAME_MS/1000).toFixed(1) + '秒 · 冷卻', (cd/1000).toFixed(1) + '秒 @', (now/1000).toFixed(2));
   return true;
 }
 function abilityBtns() {
-  /* touch ≥64×64, bottom corners — avoid ship drag conflict via hit-first */
+  /* 觸控 ≥64×64，底部兩角 —— 先判按鈕，避免同拖曳衝突 */
   const w = 64, h = 64, m = 8;
   return {
-    focus: { x: m, y: VIEW_H - h - m, w, h, label: 'FOCUS' },
-    bomb:  { x: VIEW_W - w - m, y: VIEW_H - h - m, w, h, label: 'BOMB' },
+    focus: { x: m, y: VIEW_H - h - m, w, h, label: '聚焦' },
+    bomb:  { x: VIEW_W - w - m, y: VIEW_H - h - m, w, h, label: '炸彈' },
   };
 }
 function hitAbilityBtn(px, py) {
@@ -1070,23 +1361,23 @@ function drawAbilityBtns() {
     ctx.font = '9px monospace';
     if (it.active) {
       ctx.fillStyle = '#ff0';
-      ctx.fillText('ON', r.x + r.w/2, r.y + r.h - 12);
+      ctx.fillText('生效中', r.x + r.w/2, r.y + r.h - 12);
     } else if (!it.ready) {
       ctx.fillStyle = '#f06';
-      ctx.fillText(Math.ceil(it.cdLeft/1000) + 's', r.x + r.w/2, r.y + r.h - 12);
+      ctx.fillText(Math.ceil(it.cdLeft/1000) + '秒', r.x + r.w/2, r.y + r.h - 12);
     } else {
       ctx.fillStyle = '#0f6';
-      ctx.fillText('READY', r.x + r.w/2, r.y + r.h - 12);
+      ctx.fillText('就緒', r.x + r.w/2, r.y + r.h - 12);
     }
   }
   ctx.textBaseline = 'alphabetic';
 }
 
 function tick(dtMs) {
-  /* freeze during non-play states */
+  /* 非遊戲狀態下凍結 */
   if (!isStage(fsm.cur)) return;
 
-  /* ---- wave scheduler (S1-B): emit waves on stage-time targets ---- */
+  /* ---- 波次排程：到達關卡時間目標就產生波次 ---- */
   if (stageStartMs) {
     const stageMs = performance.now() - stageStartMs;
     while (waveCursor < waveQueue.length && waveQueue[waveCursor].at <= stageMs) {
@@ -1096,7 +1387,23 @@ function tick(dtMs) {
     }
   }
 
-  /* ---- ship movement (drag-first, then keys converge on target) ---- */
+  /* ---- P1-5：波次清完之後先召喚 boss ----
+     條件：波次佇列出齊 + 場上冇雜魚。
+     保險：如果雜魚一直清唔走（例如玩家唔理佢，任由佢飛出畫面），
+     8 秒後強制召喚，避免卡住成關。 */
+  if (!bossSpawned && stageStartMs) {
+    if (waveCursor >= waveQueue.length) {
+      if (waveQueueDoneAt === null) waveQueueDoneAt = performance.now();
+      const noGrunts = !enemies.some(e => e.kind === 'grunt' && !e._dead);
+      if (noGrunts || performance.now() - waveQueueDoneAt > 8000) {
+        spawnBossFor(lastStage);
+        bossSpawned = true;
+        waveQueueDoneAt = null;
+      }
+    }
+  }
+
+  /* ---- 戰機移動（鍵盤優先，否則收斂到拖曳目標） ---- */
   let vx = 0, vy = 0;
   if (InputState.keys.left)  vx -= 1;
   if (InputState.keys.right) vx += 1;
@@ -1106,19 +1413,26 @@ function tick(dtMs) {
     const len = Math.hypot(vx, vy);
     const step = ship.speed * (dtMs / 16.67);  /* ship.speed is per-frame @60fps */
     ship.x = clamp(ship.x + (vx/len) * step, 8, VIEW_W - 8);
-    ship.y = clamp(ship.y + (vy/len) * step, 8, VIEW_H - 8);
+    ship.y = clamp(ship.y + (vy/len) * step, 8, PLAY_BOTTOM);
     InputState.targetX = ship.x;
     InputState.targetY = ship.y;
   } else {
-    /* smooth toward InputState.target (drag-set or last-keyframe) */
-    ship.x += (InputState.targetX - ship.x) * 0.30;
-    ship.y += (InputState.targetY - ship.y) * 0.30;
-    /* hard clamp */
+    /* P0-4：拖曳朝 target 行，但每幀最多行 ship.speed * DRAG_SPEED_MULT。
+       唔再瞬移，所以 spd_s / spd_l 喺觸控平台真係有用。 */
+    const step = ship.speed * DRAG_SPEED_MULT * (dtMs / 16.67);
+    const dx = InputState.targetX - ship.x;
+    const dy = InputState.targetY - ship.y;
+    const d = Math.hypot(dx, dy);
+    if (d > 0.01) {
+      const k = Math.min(1, step / d);
+      ship.x += dx * k;
+      ship.y += dy * k;
+    }
     ship.x = clamp(ship.x, 8, VIEW_W - 8);
-    ship.y = clamp(ship.y, 8, VIEW_H - 8);
+    ship.y = clamp(ship.y, 8, PLAY_BOTTOM);
   }
 
-  /* ---- autofire (uses bulletCount + bulletDmg from upgrades) ---- */
+  /* ---- 自動開火（彈數同傷害讀自強化） ---- */
   ship.fireCD -= dtMs;
   if (ship.fireCD <= 0) {
     const n = Math.max(1, ship.bulletCount | 0);
@@ -1135,31 +1449,35 @@ function tick(dtMs) {
         vy: Math.sin(a) * spd,
         owner: 'player',
         dmg,
+        /* P1-5：貫穿餘額（P1-5 之前呢個欄位從來冇寫入過） */
+        pierceLeft: ship.pierce || 0,
+        _lastHit: null,
       });
     }
     ship.fireCD = 1000 / ship.fireRate;
   }
 
-  /* ---- player bullets move (was missing — bullets stuck at muzzle) ---- */
+  /* ---- 玩家子彈移動（原本漏咗，令子彈卡喺槍口） ---- */
   for (const b of bullets) {
     if (b.owner !== 'player') continue;
     b.x += b.vx * dtMs;
     b.y += b.vy * dtMs;
   }
 
-  /* ---- focus & bomb are now triggered via keydown with CD checks (S1-C);
-       bomb wipe handled at trigger time, i-frame active window in collision check. */
+  /* ---- 聚焦同炸彈由按鍵觸發並檢查冷卻；
+       清彈喺觸發當下處理，無敵時段喺碰撞時判斷。 ---- */
 
-  /* ---- enemy update (with per-pattern boss behavior) ---- */
+  /* ---- 敵機更新（boss 招式各自不同） ---- */
   for (const e of enemies) {
+    if (e._dead) continue;        /* 屍體唔再郁，正式移除交由 cull */
     if (e.kind === 'spiral') {
       e.t += dtMs;
-      /* figure-8 path (default) */
+      /* 8 字形路徑（預設） */
       e.x = VIEW_W/2 + Math.cos(e.t / 600) * 80;
       e.y = 80       + Math.sin(e.t / 400) * 30;
       e.ang0 = e.t / 1000;
 
-      /* per-pattern fire rate, count, speed */
+      /* 各招式的射速、彈數、彈速 */
       const P = e.pattern || 'A';
       let nWay = 8, fireEvery = 1000, bulletSpd = 0.06;
       if (P === 'A') {                       /* stage 1: classic 8-way */
@@ -1183,14 +1501,14 @@ function tick(dtMs) {
         }
       }
 
-      /* Pattern E: also fires slow laser every 4.5s (Open Question #2 partial) */
+      /* E 招式：每 4.5 秒追加一次慢雷射（待決問題 #2 部分實作） */
       if (P === 'E' || P === 'D') {
         e.laserCD = (e.laserCD || 0) - dtMs;
         if (e.laserCD <= 0) {
-          /* laser warmup 600ms then actual laser */
+          /* 雷射預警 600 毫秒，之後先發射 */
           e.laserWarn = (e.laserWarn === undefined) ? 600 : e.laserWarn - dtMs;
           if (e.laserWarn <= 0 && !e.laserFiring) {
-            /* FIRES: 1 high-speed shot aimed at ship */
+            /* 發射：1 發瞄準戰機嘅高速彈 */
             const sx = ship ? ship.x : VIEW_W/2;
             const a = Math.atan2(ship ? ship.y - e.y : VIEW_H/2, sx - e.x);
             enemies.push({ kind:'laser', x: e.x, y: e.y, vx: Math.cos(a)*0.20, vy: Math.sin(a)*0.20, lifeMs: 1500 });
@@ -1202,7 +1520,7 @@ function tick(dtMs) {
         }
       }
     } else if (e.kind === 'laser') {
-      /* focus slows enemy projectiles (PLAN v2 #6; factor from ship) */
+      /* 聚焦令敵方彈幕減速（PLAN v2 #6；係數由戰機決定） */
       const slow = focusSlowFactor();
       e.x += e.vx * dtMs * slow;
       e.y += e.vy * dtMs * slow;
@@ -1214,51 +1532,109 @@ function tick(dtMs) {
       const slow = focusSlowFactor();
       e.x += e.vx * dtMs * slow;
       e.y += e.vy * dtMs * slow;
+    } else if (e.kind === 'grunt') {
+      /* ---- P1-5 雜魚 AI：慢慢落下 + 蛇形擺動 + 間歇瞄準射擊 ----
+         俯衝型快好多，用嚟考走位。 */
+      e.t += dtMs;
+      if (!e.diving) {
+        e.x += Math.sin(e.t / 620) * e.sway * dtMs;
+      } else {
+        /* 俯衝：落到底就加速，形成壓迫感 */
+        e.vy += 0.000012 * dtMs;
+      }
+      e.x = clamp(e.x, 12, VIEW_W - 12);
+      e.y += e.vy * dtMs;
+
+      e.fireCD -= dtMs;
+      if (e.fireCD <= 0 && e.y > 24 && e.y < VIEW_H - 120) {
+        e.fireCD = e.elite ? 1500 : 2800;
+        const sx = ship ? ship.x : VIEW_W / 2;
+        const sy = ship ? ship.y : VIEW_H - 60;
+        const base = Math.atan2(sy - e.y, sx - e.x);
+        const n = e.elite ? 3 : 1;
+        const spd = e.elite ? 0.075 : 0.06;
+        for (let i = 0; i < n; i++) {
+          const a = base + (i - (n - 1) / 2) * 0.24;
+          enemies.push({ kind:'bullet', x: e.x, y: e.y, vx: Math.cos(a)*spd, vy: Math.sin(a)*spd });
+        }
+      }
+      /* 精英第一次開火之前先顯示詞綴，等玩家睇得見 */
+      if (e.elite && !e.label) e.label = '精英 · ' + e.affix;
     }
   }
 
-  /* ---- collision: player bullets vs spiral ---- */
+  /* ---- 碰撞：玩家子彈 vs 敵機（boss 同雜魚） ---- */
   for (const e of enemies) {
-    if (e.kind !== 'spiral') continue;
+    if (e.kind !== 'spiral' && e.kind !== 'grunt') continue;
+    if (e._dead) continue;          /* 已經死咗，唔可以再計多次分 */
+    const halfW = (e.kind === 'spiral') ? 12 : 8;
     for (let i = bullets.length - 1; i >= 0; i--) {
       const b = bullets[i];
       if (b.owner !== 'player') continue;
-      if (Math.abs(b.x - e.x) < 12 && Math.abs(b.y - e.y) < 12) {
-        bullets.splice(i, 1);
+      if (Math.abs(b.x - e.x) < halfW && Math.abs(b.y - e.y) < halfW) {
+        /* 貫穿：仲有餘數就唔清走粒彈，繼續打下一個目標。
+           b._lastHit 防止同一粒彈喺連續幾幀重複扣同一隻怪嘅血。 */
+        if (b.pierceLeft > 0) {
+          if (e === b._lastHit) continue;
+          b.pierceLeft--;
+          b._lastHit = e;
+        } else {
+          bullets.splice(i, 1);
+        }
         e.hp -= (b.dmg || 1);
         spawnSparks(b.x, b.y, 3, 0.08);
         if (e.hp <= 0) {
-          console.log('[enemy] spiral defeated @', (performance.now()/1000).toFixed(2));
           spawnBoom(e.x, e.y);
-          /* PLAN v2 §Score: kill score 200 for elite/boss */
-          runScore += 200;
-          /* STAGE 5 boss → VICTORY; others → CHOICE modal */
-          if (lastStage >= STAGES.length) {
-            fsm.set(STATE.VICTORY);
-          } else {
-            fsm.set(STATE.CHOICE);
+          if (e.kind === 'spiral') {
+            console.log('[擊破] boss @', (performance.now()/1000).toFixed(2));
+            /* P1-5：加入雜魚之後雜魚分數佔大多數，boss 係場面高潮，
+               所以由 200 調高做 800（約佔總分三成）。見 PLAN #27。 */
+            runScore += BOSS_SCORE;
+            runKills++;
+            /* 第五關 boss 擊破 → 勝利；其他 → 強化選擇 */
+            if (lastStage >= STAGES.length) {
+              fsm.set(STATE.VICTORY);
+            } else {
+              fsm.set(STATE.CHOICE);
+            }
+            return;
           }
-          return;
+          runScore += (e.score || GRUNT_SCORE);
+          runKills++;
+          runGrunts++;
+          /* ⚠️ 必須標記死亡：雜魚唔會即時離開 enemies 陣列，
+             如果唔標，疊喺屍體上嘅子彈會喺之後每一幀再扣一次血，
+             再加一次分 —— 變成無限刷分。boss 原本因為即刻轉狀態
+             所以掩蓋咗呢個問題。真正移除交由下方 cull 處理。 */
+          e._dead = true;
+          if (e.elite) console.log('[擊破] 精英「' + e.affix + '」· +' + (e.score || ELITE_SCORE));
+          break;
         }
         break;
       }
     }
   }
 
-  /* ---- collision: enemy bullets + lasers vs ship ---- */
+  /* ---- 碰撞：敵方子彈、雷射同雜魚撞擊 vs 戰機 ---- */
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
-    if (e.kind !== 'bullet' && e.kind !== 'laser') continue;
-    const r = (e.kind === 'laser') ? 4 : 4;
+    if (e.kind !== 'bullet' && e.kind !== 'laser' && e.kind !== 'grunt') continue;
+    /* P1-5：雜魚有撞擊傷害 —— 撞到玩家會自己死。
+       冇呢條規則嘅話，最優策略就係完全唔理雜魚任由佢飛走，
+       「擊殺雜魚」變成冇誘因，等 P1-5 個設計目標失效。 */
+    const isBody = (e.kind === 'grunt');
+    const r = isBody ? 9 : 4;
     if (Math.abs(e.x - ship.x) < 6 + r && Math.abs(e.y - ship.y) < 6 + r) {
-      /* PLAN v2 #7: bomb i-frame window — ignore damage during 1.5s post-bomb.
-         Visuals: still flash the bullet out so player sees defense. */
-      if (isIFramed()) {
-        enemies.splice(i, 1);
+      /* PLAN v2 #7：炸彈無敵時段 —— 施放後 1.5 秒內唔受傷。
+         視覺上仍然清走嗰粒彈，等玩家見到擋成功咗。 */
+      if (isIFramed() || GOD) {
+        if (isBody) { spawnSparks(e.x, e.y, 6, 0.12); enemies.splice(i, 1); }
+        else enemies.splice(i, 1);
+        if (GOD) { ship.hp = ship.maxHp; ship.shield = SHIPS[ship.chassis].shield; }
         continue;
       }
       enemies.splice(i, 1);
-      spawnSparks(ship.x, ship.y, 6, 0.14);
+      if (isBody) spawnBoom(e.x, e.y); else spawnSparks(ship.x, ship.y, 6, 0.14);
       hitShake = 1;
       screenFlash = Math.max(screenFlash, 0.35);
       if (ship.shield > 0) {
@@ -1266,22 +1642,48 @@ function tick(dtMs) {
       } else {
         ship.hp -= 1;
         if (ship.hp <= 0) {
-          console.log('[ship] destroyed');
+          /* life_st 復活：消耗一次機會、補滿血、送 2.5 秒無敵，
+             否則先判定 GAME OVER。之前呢個欄位只係寫入從來冇讀過。 */
+          if (ship.resurrect > 0) {
+            ship.resurrect -= 1;
+            ship.hp = ship.maxHp;
+            iFrameUntil = performance.now() + 2500;
+            spawnBoom(ship.x, ship.y);
+            screenFlash = Math.max(screenFlash, 0.6);
+            console.log('[復活] 消耗 1 次 · 剩餘', ship.resurrect);
+            continue;
+          }
+          console.log('[戰機] 被擊毀');
           spawnBoom(ship.x, ship.y);
           fsm.set(STATE.GAMEOVER);
           return;
         }
       }
+    } else if (!isBody && !e._grazed) {
+      /* ---- P1-6 擦彈判定 ----
+         用圓形距離（唔係上面嗰個方形），令斜向擦過都算數。
+         必須 `else if`：已經判中嘅彈唔可以同時當擦彈。
+         `_grazed` 保證每粒子彈只計一次 —— 一粒子彈喺 20px 圈內
+         大約停留 20–40 幀，冇呢個旗標會被重複計幾十次。 */
+      const dx = e.x - ship.x, dy = e.y - ship.y;
+      if (Math.hypot(dx, dy) < GRAZE_RADIUS) {
+        e._grazed = true;
+        doGraze(ship.x + dx, ship.y + dy);
+      }
     }
   }
 
-  /* ---- cull off-screen ---- */
+  /* ---- 清除離畫面實體 ---- */
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
     if (e._dead) { enemies.splice(i, 1); continue; }
     if (e.kind === 'bullet' && (e.x < -16 || e.x > VIEW_W + 16 || e.y < -16 || e.y > VIEW_H + 16)) {
       enemies.splice(i, 1);
     } else if (e.kind === 'laser' && (e.lifeMs !== undefined && e.lifeMs <= 0)) {
+      enemies.splice(i, 1);
+    } else if (e.kind === 'grunt' && (e.y > VIEW_H + 20 || e.y < -40 || e.x < -24 || e.x > VIEW_W + 24)) {
+      /* 雜魚飛出畫面 = 走脫，唔計分。令玩家有動機主動擊殺，
+         而唔係「閃埋唔打」就過關。 */
       enemies.splice(i, 1);
     }
   }
@@ -1292,43 +1694,56 @@ function tick(dtMs) {
     }
   }
 
-  /* ---- HUD ---- */
+  /* ---- 狀態列 ---- */
   const now = performance.now();
   const focusState = isFocusActive()
-    ? `FOCUS ON×${(ship.focusFactor != null ? ship.focusFactor : 0.3).toFixed(1)}`
-    : `FOCUS CD ${Math.max(0, Math.ceil((focusCDUntil - now)/1000))}s`;
+    ? `聚焦生效 ×${(ship.focusFactor != null ? ship.focusFactor : 0.3).toFixed(1)}`
+    : `聚焦冷卻 ${Math.max(0, Math.ceil((focusCDUntil - now)/1000))} 秒`;
   const bombState  = isIFramed()
-    ? `BOMB IF ${(Math.max(0, iFrameUntil - now)/1000).toFixed(1)}s`
-    : (bombCDUntil > now ? `BOMB CD ${Math.max(0, Math.ceil((bombCDUntil - now)/1000))}s` : 'BOMB READY');
-  hudEl.hp.textContent = `HP: ${ship.hp}  SHIELD: ${ship.shield}  SCORE: ${Math.floor(runScore)}`;
+    ? `炸彈無敵 ${(Math.max(0, iFrameUntil - now)/1000).toFixed(1)} 秒`
+    : (bombCDUntil > now ? `炸彈冷卻 ${Math.max(0, Math.ceil((bombCDUntil - now)/1000))} 秒` : '炸彈就緒');
+  hudEl.hp.textContent = `生命：${ship.hp}  護盾：${ship.shield}  分數：${Math.floor(runScore)}`;
   hudEl.tip.textContent = `${focusState} · ${bombState}`;
+  /* 必須喺 tip 賦值之後，否則下一行會即刻覆蓋咗 */
+  if (DEBUG) {
+    hudEl.tip.textContent =
+      `擊殺 ${runKills}（雜魚 ${runGrunts} · boss ${runKills - runGrunts}）　擦彈 ${grazeCount}（能量 ${grazeEnergy}/${GRAZE_ENERGY_NEED}）　` +
+      hudEl.tip.textContent;
+  }
 }
 
-/* ---------- 11. RENDER ---------- */
+/* ---------- 11. 繪製 ---------- */
 function render() {
   const shakeX = hitShake > 0 ? (Math.random() - 0.5) * 4 * hitShake : 0;
   const shakeY = hitShake > 0 ? (Math.random() - 0.5) * 4 * hitShake : 0;
   ctx.save();
   ctx.translate(shakeX, shakeY);
 
-  /* world backdrop — stage-themed or title sky */
+  /* 背景 —— 依關卡主題，或標題畫面 */
   const bgStage = isStage(fsm.cur) ? lastStage
     : (fsm.cur === STATE.CHOICE || fsm.cur === STATE.PAUSED) ? lastStage
     : 1;
   drawBackdrop(bgStage);
   drawParticles();
 
-  /* ---------- menus ---------- */
+  /* ---------- 選單 ---------- */
   if (fsm.cur === STATE.PAUSED) {
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
     ctx.fillRect(0, 0, VIEW_W, VIEW_H);
     ctx.fillStyle = '#0ff';
     ctx.font = 'bold 28px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('PAUSED', VIEW_W/2, VIEW_H/2 - 8);
+    ctx.fillText('已暫停', VIEW_W/2, VIEW_H/2 - 8);
     ctx.font = '12px monospace';
     ctx.fillStyle = '#fff';
-    ctx.fillText('(tab hidden — return to resume)', VIEW_W/2, VIEW_H/2 + 16);
+    if (pauseReason === 'manual') {
+      ctx.fillText('撳畫面／P／Esc 繼續', VIEW_W/2, VIEW_H/2 + 16);
+      ctx.fillStyle = '#9ef';
+      ctx.font = '10px monospace';
+      ctx.fillText('課堂用 · 計時已凍結', VIEW_W/2, VIEW_H/2 + 36);
+    } else {
+      ctx.fillText('（分頁切換中 — 返去即繼續）', VIEW_W/2, VIEW_H/2 + 16);
+    }
     drawScanlines(); drawFlash();
     ctx.restore();
     return;
@@ -1345,9 +1760,9 @@ function render() {
     ctx.shadowBlur = 0;
     ctx.font = '11px monospace';
     ctx.fillStyle = '#cde';
-    ctx.fillText('Doomsday · Save · the · Future', VIEW_W/2, VIEW_H/2 - 28);
+    ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.7.0 · pixel STG', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.8.0 · 像素射擊', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -1355,16 +1770,16 @@ function render() {
     if (bestScore > 0 || bestTime > 0) {
       ctx.fillStyle = '#ff6';
       ctx.font = 'bold 12px monospace';
-      ctx.fillText('BEST: ' + Math.floor(bestScore) + ' (' + (bestTime > 0 ? bestTime.toFixed(1) + 's' : '—') + ')', VIEW_W/2, VIEW_H/2 + 18);
+      ctx.fillText('最佳：' + Math.floor(bestScore) + '（' + (bestTime > 0 ? bestTime.toFixed(1) + ' 秒' : '—') + '）', VIEW_W/2, VIEW_H/2 + 18);
     } else {
       ctx.fillStyle = '#889';
       ctx.font = '11px monospace';
-      ctx.fillText('No record yet — first run!', VIEW_W/2, VIEW_H/2 + 18);
+      ctx.fillText('暫無紀錄 — 挑戰第一次！', VIEW_W/2, VIEW_H/2 + 18);
     }
     const pulse = 0.55 + 0.45 * Math.sin(performance.now() / 320);
     ctx.fillStyle = 'rgba(255,220,80,' + pulse.toFixed(2) + ')';
     ctx.font = 'bold 14px monospace';
-    ctx.fillText('→ TAP TO BEGIN ←', VIEW_W/2, VIEW_H - 56);
+    ctx.fillText('→ 點擊畫面開始 ←', VIEW_W/2, VIEW_H - 56);
     drawScanlines(); drawFlash();
     ctx.restore();
     return;
@@ -1376,25 +1791,25 @@ function render() {
     ctx.fillStyle = '#0ff';
     ctx.font = 'bold 16px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('CHOOSE CHASSIS', VIEW_W/2, 40);
+    ctx.fillText('選擇機體', VIEW_W/2, 40);
     ctx.font = '10px monospace';
     ctx.fillStyle = '#9ab';
-    ctx.fillText('pick your escape craft', VIEW_W/2, 56);
+    ctx.fillText('揀你嘅逃生船', VIEW_W/2, 56);
     const labels = [
-      { id:'A', n:'速', sub:'SPD  fire 10', col:'#0ff' },
-      { id:'B', n:'盾', sub:'SHIELD 3', col:'#4df' },
-      { id:'C', n:'火', sub:'HEAVY  fire 6', col:'#f6a' },
+      { id:'A', n:'速', sub:'高速 射速 10', col:'#0ff' },
+      { id:'B', n:'盾', sub:'護盾 3',       col:'#4df' },
+      { id:'C', n:'火', sub:'重火 射速 6',  col:'#f6a' },
     ];
     labels.forEach((lab, i) => {
-      const x = 60 + i * 100;
-      const y = VIEW_H/2;
+      const r = shipCardsLayout().rect(i);
+      const x = r.x + r.w / 2, y = shipCardsLayout().y;
       ctx.fillStyle = 'rgba(0,30,50,0.75)';
-      ctx.fillRect(x - 36, y - 40, 72, 84);
+      ctx.fillRect(r.x, r.y, r.w, r.h);
       ctx.strokeStyle = lab.col;
       ctx.lineWidth = 2;
-      ctx.strokeRect(x - 36, y - 40, 72, 84);
+      ctx.strokeRect(r.x, r.y, r.w, r.h);
       ctx.strokeStyle = 'rgba(0,255,255,0.25)';
-      ctx.strokeRect(x - 32, y - 36, 64, 48);
+      ctx.strokeRect(r.x + 4, r.y + 4, r.w - 8, 48);
       if (!drawSprite(SHIP_SPRITE[lab.id], x, y - 8, 3.2)) {
         ctx.fillStyle = lab.col;
         ctx.font = 'bold 22px monospace';
@@ -1409,7 +1824,7 @@ function render() {
     });
     ctx.fillStyle = '#ff6';
     ctx.font = '12px monospace';
-    ctx.fillText('A / B / C key or tap card', VIEW_W/2, VIEW_H - 48);
+    ctx.fillText('按 A / B / C 或點擊卡牌', VIEW_W/2, VIEW_H - 48);
     drawScanlines(); drawFlash();
     ctx.restore();
     return;
@@ -1423,11 +1838,14 @@ function render() {
     ctx.textAlign = 'center';
     ctx.shadowColor = '#f06';
     ctx.shadowBlur = 10;
-    ctx.fillText('GAME OVER', VIEW_W/2, VIEW_H/2 - 28);
+    ctx.fillText('任務失敗', VIEW_W/2, VIEW_H/2 - 28);
     ctx.shadowBlur = 0;
     ctx.font = '12px monospace';
     ctx.fillStyle = '#fcc';
-    ctx.fillText('ship destroyed · score ' + Math.floor(runScore), VIEW_W/2, VIEW_H/2 + 4);
+    ctx.fillText('戰機被擊毀 · 分數 ' + Math.floor(runScore), VIEW_W/2, VIEW_H/2 + 4);
+    ctx.fillStyle = '#9ab';
+    ctx.font = '11px monospace';
+    ctx.fillText('倒數第 ' + lastStage + ' 關', VIEW_W/2, VIEW_H/2 + 22);
     drawEndBtns();
     drawScanlines(); drawFlash();
     ctx.restore();
@@ -1447,26 +1865,28 @@ function render() {
       ctx.fillStyle = '#ff0';
       ctx.font = 'bold 14px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText('★ NEW BEST ★', VIEW_W/2, VIEW_H/2 - 82);
+      ctx.fillText('★ 新紀錄 ★', VIEW_W/2, VIEW_H/2 - 82);
     }
     ctx.fillStyle = '#0f6';
     ctx.font = 'bold 32px monospace';
     ctx.textAlign = 'center';
     ctx.shadowColor = '#0f6';
     ctx.shadowBlur = 12;
-    ctx.fillText('VICTORY', VIEW_W/2, VIEW_H/2 - 40);
+    ctx.fillText('逃出生天', VIEW_W/2, VIEW_H/2 - 40);
     ctx.shadowBlur = 0;
     ctx.font = '14px monospace';
     ctx.fillStyle = '#fff';
-    ctx.fillText('escaped · ' + finalRunSec.toFixed(1) + 's', VIEW_W/2, VIEW_H/2 - 4);
+    ctx.fillText('全 5 關完成 · 用時 ' + finalRunSec.toFixed(1) + ' 秒', VIEW_W/2, VIEW_H/2 - 4);
     ctx.fillStyle = '#ff6';
     ctx.font = 'bold 16px monospace';
-    ctx.fillText('SCORE: ' + scoreDisplay, VIEW_W/2, VIEW_H/2 + 28);
+    ctx.fillText('分數：' + scoreDisplay, VIEW_W/2, VIEW_H/2 + 28);
     ctx.font = '11px monospace';
     ctx.fillStyle = '#aaa';
-    ctx.fillText('(kill ' + Math.floor(runScore) + ' + time bonus ' + Math.floor(timeBonus) + ')', VIEW_W/2, VIEW_H/2 + 48);
+    ctx.fillText('（擊殺 ' + Math.floor(runScore - grazeScoreTotal)
+               + ' + 擦彈 ' + Math.floor(grazeScoreTotal) + '（' + grazeCount + ' 次）'
+               + ' + 時間獎金 ' + Math.floor(timeBonus) + '）', VIEW_W/2, VIEW_H/2 + 48);
     ctx.fillStyle = '#ff6';
-    ctx.fillText('BEST: ' + Math.floor(bestScore) + ' · ' + bestTime.toFixed(1) + 's', VIEW_W/2, VIEW_H/2 + 72);
+    ctx.fillText('最佳：' + Math.floor(bestScore) + ' · ' + bestTime.toFixed(1) + ' 秒', VIEW_W/2, VIEW_H/2 + 72);
     drawEndBtns();
     drawScanlines(); drawFlash();
     ctx.restore();
@@ -1474,21 +1894,19 @@ function render() {
   }
 
   if (fsm.cur === STATE.CHOICE) {
-    const cardW = 88, cardH = 108, gap = 12;
-    const totalW = cardW * 3 + gap * 2;
-    const startX = (VIEW_W - totalW) / 2;
-    const cardY = VIEW_H / 2 - 50;
+    const L = choiceLayout();
+    const cardW = L.cardW, cardH = L.cardH, startX = L.startX, cardY = L.cardY;
     ctx.fillStyle = 'rgba(0,0,0,0.72)';
     ctx.fillRect(0, 0, VIEW_W, VIEW_H);
     ctx.fillStyle = '#ff6';
     ctx.font = 'bold 14px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('CHOICE — pick an upgrade', VIEW_W/2, cardY - 18);
+    ctx.fillText('選擇 — 揀一個強化', VIEW_W/2, cardY - 18);
     for (let i = 0; i < 3; i++) {
       const up = choiceOffer[i];
       if (!up) continue;
-      const x = startX + i * (cardW + gap);
-      const y = cardY;
+      const r = L.rect(i);
+      const x = r.x, y = r.y;
       const grd = ctx.createLinearGradient(x, y, x, y + cardH);
       grd.addColorStop(0, 'rgba(0,60,90,0.95)');
       grd.addColorStop(1, 'rgba(0,20,40,0.95)');
@@ -1506,11 +1924,16 @@ function render() {
       ctx.font = 'bold 12px monospace';
       ctx.fillStyle = '#0ff';
       ctx.fillText(up.nameZh, x + cardW/2, y + 52);
-      ctx.font = '9px monospace';
+      ctx.font = '10px monospace';
       ctx.fillStyle = '#bcd';
-      const descLines = up.desc.match(/.{1,12}/g) || [up.desc];
+      /* 中文逐字斷行；Array.from 先拆 code point，唔會切爛 emoji */
+      const descLines = [];
+      {
+        const chars = Array.from(up.desc);
+        for (let li = 0; li < chars.length; li += 9) descLines.push(chars.slice(li, li + 9).join(''));
+      }
       for (let li = 0; li < Math.min(descLines.length, 3); li++) {
-        ctx.fillText(descLines[li], x + cardW/2, y + 68 + li * 10);
+        ctx.fillText(descLines[li], x + cardW/2, y + 68 + li * 11);
       }
       const n = playerStacks[up.id] || 0;
       if (n > 0) {
@@ -1522,14 +1945,14 @@ function render() {
       ctx.fillStyle = '#ff6';
       ctx.font = 'bold 10px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText('[' + (i+1) + '] tap', x + cardW/2, y + cardH - 8);
+      ctx.fillText('[' + (i+1) + '] 點擊', x + cardW/2, y + cardH - 8);
     }
     drawScanlines(); drawFlash();
     ctx.restore();
     return;
   }
 
-  /* ---- gameplay ---- */
+  /* ---- 遊戲畫面 ---- */
   for (const b of bullets) {
     if (b.owner === 'player') {
       if (!drawSprite('bullet_p', b.x, b.y, 1.4)) {
@@ -1539,7 +1962,48 @@ function render() {
     }
   }
   for (const e of enemies) {
-    if (e.kind === 'bullet') {
+    if (e._dead) continue;
+    if (e.kind === 'grunt') {
+      /* ---- P1-5 雜魚 ----
+         程序繪圖（冇現成 sprite），故意同 boss 嘅圓形外形區分：
+         玩家一眼分得出「呢啲係細怪，可以唔理」同「呢個係 boss」。 */
+      const R = e.elite ? 11 : 7;
+      const frac = clamp(e.hp / (e.maxHp || 1), 0, 1);
+      ctx.fillStyle = e.elite
+        ? (frac > 0.4 ? '#ffd54a' : '#ff9a3c')
+        : (frac > 0.4 ? '#ff9ec4' : '#ff6f9c');
+      ctx.beginPath();
+      ctx.moveTo(e.x, e.y + R);          /* 機頭朝下，方向感一致 */
+      ctx.lineTo(e.x - R * 0.85, e.y - R * 0.7);
+      ctx.lineTo(e.x + R * 0.85, e.y - R * 0.7);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = e.elite ? '#fff3c4' : '#ffd0e4';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      if (e.elite) {
+        /* 精英：外圈光環 + 生命條 + 詞綴 */
+        ctx.strokeStyle = 'rgba(255,220,120,0.55)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(e.x, e.y, R + 4, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(e.x - 14, e.y - R - 10, 28, 3);
+        ctx.fillStyle = frac > 0.4 ? '#ffd54a' : '#ff6b3c';
+        ctx.fillRect(e.x - 14, e.y - R - 10, 28 * frac, 3);
+      } else {
+        /* 普通雜魚：細小生命條，受傷時先睇得出 */
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillRect(e.x - 8, e.y - R - 5, 16, 2);
+        ctx.fillStyle = frac > 0.4 ? '#ffc8dd' : '#ff6f9c';
+        ctx.fillRect(e.x - 8, e.y - R - 5, 16 * frac, 2);
+      }
+      if (e.label) {
+        ctx.fillStyle = '#ffe9a8';
+        ctx.font = 'bold 8px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(e.label, e.x, e.y + R + 11);
+      }
+    } else if (e.kind === 'bullet') {
       if (!drawSprite('bullet_e', e.x, e.y, 1.2)) {
         ctx.fillStyle = '#f6c';
         ctx.fillRect(e.x - 2, e.y - 2, 4, 4);
@@ -1582,7 +2046,7 @@ function render() {
     }
   }
   if (ship) {
-    /* thruster */
+    /* 推進器焰 */
     const thName = (Math.floor(performance.now() / 80) % 2) ? 'thrust_1' : 'thrust_0';
     drawSprite(thName, ship.x, ship.y + 12, 1.6);
     if (ship.shield > 0) {
@@ -1610,9 +2074,55 @@ function render() {
       ctx.beginPath(); ctx.arc(ship.x, ship.y, 18, 0, Math.PI * 2); ctx.stroke();
     }
   }
+  /* ---------- P1-6 擦彈視覺反饋 ---------- */
+function drawGrazeFx() {
+  /* 光環：由擦彈點向外擴散並淡出 */
+  if (grazeRingT > 0) {
+    const t = grazeRingT;
+    ctx.strokeStyle = 'rgba(130,255,220,' + (t * 0.75).toFixed(3) + ')';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(grazeRingX, grazeRingY, GRAZE_RADIUS * (1 - t) + 3, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  /* 判定圈：淡淡的虛線提示，令玩家知道「呢個圈入面有分」 */
+  if (ship && isStage(fsm.cur)) {
+    ctx.strokeStyle = 'rgba(130,255,220,0.16)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(ship.x, ship.y, GRAZE_RADIUS, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
+function drawGrazeMeter() {
+  if (!ship || !isStage(fsm.cur)) return;
+  /* 能量條放喺底部正中央：兩個技能按鈕喺左右（x 8–72 / 248–312），
+     戰機活動下限係 396，所以 y=446 呢條係完全空嘅位置。 */
+  const w = 84, h = 5;
+  const x = (VIEW_W - w) / 2, y = VIEW_H - 34;
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(x, y, w, h);
+  const f = clamp(grazeEnergy / GRAZE_ENERGY_NEED, 0, 1);
+  ctx.fillStyle = f >= 1 ? '#ffffff' : '#4df5d0';
+  ctx.fillRect(x, y, w * f, h);
+  ctx.strokeStyle = grazeFlash > 0
+    ? 'rgba(255,255,255,' + (0.4 + grazeFlash * 0.6).toFixed(2) + ')'
+    : 'rgba(130,255,220,0.45)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x, y, w, h);
+  ctx.fillStyle = '#8ff';
+  ctx.font = '8px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('擦彈 ' + grazeCount + '　' + (GRAZE_ENERGY_NEED - grazeEnergy) + ' 次回充', VIEW_W / 2, y - 4);
+}
+
   drawAbilityBtns();
   drawHudChips();
-  /* stage name chip */
+  drawGrazeFx();
+  drawGrazeMeter();
+  drawPauseBtn();
+  /* 關卡名標籤 */
   if (isStage(fsm.cur)) {
     const th = STAGE_THEME[lastStage] || STAGE_THEME[1];
     ctx.fillStyle = 'rgba(0,0,0,0.4)';
@@ -1627,7 +2137,7 @@ function render() {
   ctx.restore();
 }
 
-/* ---------- 12. LOOP (PLAN v2 #13 fixed-timestep accumulator) ---------- */
+/* ---------- 12. 主迴圈（PLAN v2 #13 固定時間步累加器） ---------- */
 let lastFrame = performance.now();
 let accMs = 0;
 function loop(nowMs) {
@@ -1640,25 +2150,25 @@ function loop(nowMs) {
     tick(FIXED_DT_MS);
     accMs -= FIXED_DT_MS;
   }
-  /* HUD timer: full-run count-up only during STAGE_n (PAUSED/CHOICE freeze via clock shift) */
+  /* HUD 計時：只在 STAGE_n 行進（全局累計；暫停／選擇強化靠平移錨點凍結） */
   if (isStage(fsm.cur) && runStartMs) {
     const sec = (nowMs - runStartMs) / 1000;
-    hudEl.time.textContent = `TIME: ${sec.toFixed(1)}s`;
+    hudEl.time.textContent = `時間：${sec.toFixed(1)} 秒`;
   }
   render();
   requestAnimationFrame(loop);
 }
 
-/* ---------- 13. INIT ---------- */
-hudEl.state.textContent = `STATE: ${fsm.cur}`;
-console.log('[init] PLAN v2 S0 scaffold loaded');
-console.log('[init] FSM cur =', fsm.cur);
-console.log('[init] viewport =', window.innerWidth, 'x', window.innerHeight, 'dpr =', window.devicePixelRatio);
-hudEl.tip.textContent = 'tap canvas to begin';
+/* ---------- 13. 初始設定 ---------- */
+hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
+console.log('[啟動] 末日救未來 v0.9.0 已載入');
+console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur));
+console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
+hudEl.tip.textContent = '點擊畫面開始';
 requestAnimationFrame(loop);
 
-/* Expose for browser smoke test (console: window.__dsf.fsm.cur) */
-window.__dsf = { fsm, ship, bullets, enemies, shipS: SHIPS, stageS: STATE, InputState, SPRITE, sheetReady: () => sheetReady, drawSprite };
+/* 開放俾瀏覽器冒煙測試（主控台：window.__dsf.fsm.cur） */
+window.__dsf = { fsm, ship, bullets, enemies, shipS: SHIPS, stageS: STATE, InputState, SPRITE, sheetReady: () => sheetReady, drawSprite, enterPause, resumePause, pauseReason: () => pauseReason };
 </script>
 </body>
 </html>

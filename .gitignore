@@ -1,3 +1,9 @@
 node_modules/
 .DS_Store
 *.log
+
+# 一次性工具 / 暫存腳本
+.i18n_*.py
+
+# pxl 建置產物（runtime 用 index.html 內嵌 base64）
+out/

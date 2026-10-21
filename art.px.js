@@ -202,12 +202,50 @@ sprite("logo_mark", { w: 16, h: 16, outline: "k" },
   px(7, 6, "w"),
   glow("c", { r: 2, strength: 0.3, bands: 2 }))
 
+/* ========== ENEMIES（機頭朝下，對玩家） ========== */
+/* 普通雜魚：粉紅三角機，易認、細 */
+sprite("grunt_base", { mx: true, outline: "k" }, `
+  .pp
+  pPpp
+  PpPp
+  p.p.
+  .Y..`)
+sprite("grunt", { base: "grunt_base" },
+  px(3, 1, "w"), px(4, 2, "P"),
+  glow("p", { r: 1, strength: 0.28, bands: 1 }))
+
+/* 俯衝型：更尖、橙焰尾，讀作「快」 */
+sprite("dive_base", { mx: true, outline: "k" }, `
+  .p
+  pP
+  PPP
+  pYp
+  .Yo
+  ..o`)
+sprite("dive", { base: "dive_base" },
+  px(3, 1, "w"), px(3, 3, "Y"),
+  glow("oY", { r: 1, strength: 0.3, bands: 1 }))
+
+/* 精英：大金機 + 裝甲肩 + 光環感 */
+sprite("elite_base", { mx: true, outline: "k" }, `
+  ..y.
+  .yYy
+  yYYYy
+  YwYYy
+  yYPYy
+  .yYy.
+  ..Y..`)
+sprite("elite", { base: "elite_base" },
+  px(5, 2, "w"), px(4, 3, "c"), px(6, 3, "c"),
+  glow("yY", { r: 2, strength: 0.4, bands: 2 }))
+
 /* ========== ATLAS ========== */
 sheet("dsf_main", [
   "ship_a", "ship_b", "ship_c",
   "thrust_0", "thrust_1",
   "bullet_p", "bullet_e", "laser",
   "boss",
+  "grunt", "dive", "elite",
   "spark", "boom_0", "boom_1", "boom_2",
   "ui_focus", "ui_bomb", "ui_card", "ui_heart", "ui_shield",
   "star_0", "star_1", "star_2",

@@ -155,26 +155,29 @@ const SPRITE = Object.freeze({
   bullet_e: { x:51, y:0, w:9, h:9 },
   laser: { x:0, y:13, w:12, h:12 },
   boss: { x:13, y:13, w:12, h:10 },
-  spark: { x:26, y:13, w:5, h:5 },
-  boom_0: { x:32, y:13, w:14, h:14 },
-  boom_1: { x:47, y:13, w:16, h:16 },
-  boom_2: { x:64, y:13, w:16, h:16 },
-  ui_focus: { x:81, y:13, w:16, h:16 },
-  ui_bomb: { x:0, y:30, w:16, h:16 },
-  ui_card: { x:17, y:30, w:22, h:14 },
-  ui_heart: { x:40, y:30, w:7, h:7 },
-  ui_shield: { x:48, y:30, w:11, h:12 },
-  star_0: { x:60, y:30, w:3, h:3 },
-  star_1: { x:64, y:30, w:5, h:5 },
-  star_2: { x:70, y:30, w:5, h:5 },
-  bldg: { x:0, y:47, w:14, h:22 },
-  tower: { x:15, y:47, w:10, h:30 },
-  meteor: { x:26, y:47, w:12, h:12 },
-  debris: { x:39, y:47, w:12, h:10 },
-  gate: { x:52, y:47, w:26, h:18 },
-  logo_mark: { x:79, y:47, w:18, h:18 },
+  grunt: { x:26, y:13, w:10, h:7 },
+  dive: { x:37, y:13, w:8, h:8 },
+  elite: { x:46, y:13, w:12, h:9 },
+  spark: { x:59, y:13, w:5, h:5 },
+  boom_0: { x:65, y:13, w:14, h:14 },
+  boom_1: { x:0, y:28, w:16, h:16 },
+  boom_2: { x:17, y:28, w:16, h:16 },
+  ui_focus: { x:34, y:28, w:16, h:16 },
+  ui_bomb: { x:51, y:28, w:16, h:16 },
+  ui_card: { x:68, y:28, w:22, h:14 },
+  ui_heart: { x:91, y:28, w:7, h:7 },
+  ui_shield: { x:99, y:28, w:11, h:12 },
+  star_0: { x:0, y:45, w:3, h:3 },
+  star_1: { x:4, y:45, w:5, h:5 },
+  star_2: { x:10, y:45, w:5, h:5 },
+  bldg: { x:16, y:45, w:14, h:22 },
+  tower: { x:31, y:45, w:10, h:30 },
+  meteor: { x:42, y:45, w:12, h:12 },
+  debris: { x:55, y:45, w:12, h:10 },
+  gate: { x:0, y:76, w:26, h:18 },
+  logo_mark: { x:27, y:76, w:18, h:18 },
 });
-const SHEET_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAGEAAABNCAMAAACBtvrcAAAAk1BMVEUAAAAAPkAAAAD/5Wb/mhj/aiAA9v/4//8AoMhA9///atUAt9Y9/4r/6Wr/MolArsn/Gmr/64wP9/8PqtMPHDNNjP//pUZAJwb/7ZQzFSv5//+gECizJEwz9/8SQVT/eiQAsNISGjD/TV6KoMjI2P8cJ0SxFDj/nCkAaIhaaog6SGj/6Gx1X24cS2USO08qNUhqTk9zr1dEAAAAAXRSTlMAQObYZgAAA8NJREFUeNrt2At30jAUAOBy06alc7MycJZOpUyYQ3H7/7/Om5t3H7Qp6NFzuMt6YAv5muQmzRZFUTSbRTKAiv+SxQyvcRLTT0H/PihmnEsCOGCRLxmkDJoC8FT/PoRCICUCeMbTjJqAOQNgczAC8wXI8xzGAzccy0wA2Tv8wjZgHt8C3MZE0PDECXMEyO/u7kYTVshUoMDfcyjERQtREvlCGiLwm5sPQljcZ4tFdr8AF1Ntt4SgPswYw0u0XK0+UlliS8W8wMIbjUybh2gWA8RippdSWNJMx/O5nIZOITBtTeov4yUWevkQP2CJeoWp4ay4ByotgZ8pDN/Cpz8M2C7+g+FmRknl0sB6bYgyL7HI17z3hhrZWok4UQNiDNBAkWMhgqXMfsD9eCIC/PY9QySdm3aOgMBjvv6sCO5UgAZgiYpVhQhLAP8iwhDwlQIU8Jh/fnws8rLRR0MIAN9aopJAUbDKApvNxhKQCIDqlwhg6+JSusB6vdaEAixBAGOMeqGBrK7rzBCukGO9nC4nBPXeERgjwgibOk3TemMEO0pIqPAH6UyhkUsiW3NvRXjzcLYQlaX8bhKNiQ6aB3GyYDCw5v1k7c6lKunJpcauMbwDNNdDVSWn10P4JhO8pidslIH70jWmjnIj/JTtGuJs/AMY6o4Qp5Dtdquk1UoZqbg8jbtvu+Sg5q1AAbYpfglpRWHqP317Ej3gp3vhbQv1rhUkbKkTAuDcI0Z1YVjQowQCEASEzAPsn5+f93BaQIKuQkjbwgBAgiJ6BZkNsg+rIAEB2hoV0S+o6kisQrtQFGsiRgkymYI2Hdir/X2kIIiwXS1YiEK3zdY8fG9FfeZOLAmbS927xrnEXgP9O9/52+n1qTI0RP3vO0cPeqIHeMFwmzxg2KdF8gNaDyqbbnQuaqecz0nB/swTAMzBiGpwqgQe4BD6HwbyuASecDDtwoFzLcDhpxZkDVkJBVrqxyM1dTyqla+2YM5/iTBHsrZg+gCH1zcliFpNAYGjCE1IATi1Tob86KsT4AkIvLy+vdEbEpgnUNN4AjbEJEGE0zVXoIYzbDjThDySyLbxWisCBeYK4FqOEDkZaYTNDv8S2W1agnjOmk6YPrCWIIlDO8tHCLwhsM4+yKHpWEZDgjxktfrQJfT8L2xoHk4LeN+s88abwolc0sJgLg0IvetBhyOwacLINX1GHwRBsfOE5r5kBRYiBOytE/vQHZ0f6xLYgBD2BJrSh8Bn6F8XQApw4YOAHUd6HjWe3Bc+eFyFq/DfCNHF/ibR8RsMd+OXN39h0AAAAABJRU5ErkJggg==';
+const SHEET_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAG4AAABeCAMAAAD1/9FkAAAAulBMVEUAAAAAPkAAAAD/5Wb/mhj/aiAA9v/4//8AoMhA9///atUAt9Y9/4r/6Wr/MolArsn/Gmr/64wP9/8PqtMPHDNNjP//pUZAJwb/7ZQzFStHHjwzLhT5///6////NY1NLgezJEwz9///Q24z+P//eiT/hdb/hdf/Q3ZNLgpNIAozHwWgECgSGjD/TV4SQVQcJ0QAsNKxFDj/nCkAaIiKoMhaaog6SGj/6GzI2P91X24qNUhqTk8cS2USO097H+qoAAAAAXRSTlMAQObYZgAABExJREFUeNrt2Qt/2jYQAHBzkmXjrJmbQlPAa9J0fQKLyVK2Jez7f63dnSRLtoGCI+hjHIp+BBz90dsoURRFvV6kAzjVnwopMJex5FfBvt89ekppDxRg0k8FJAKaHKjEvt/ZRS1hD1SqkpTLg74AEH2oOFHnIMsy6KidKUw90tJf8IEFQl8+A3gm2eNWlLHwOMjOz8+7eY5LTSCnflWQU2a5KI7qXNKZU2dnz4m7eJFeXKQvLsCXDdTiuteuJwRm0WA4fMlpgMXm/RyTapQYoO+ingSQNFQGmhvwUJH9vu66tdxTZkQ1xQZygImfXspLTNFGLkh40/ySU4tTIbmvf55Xx9Rc5X+o8MfZiBPHGF8ejxvdOqmyzlpRVN4oG2HSWvYbjLNszBMtAT3TJmJiMgzVSZMYYLU8wzRi7TU+MI1Ry68gJ2+CS3ZBGXkiEVXzQBcOteuseMMeGO01rmr5jby5yYE0+Va8xevZU14Ju3rwOwcY7Tp7c31N3jjDB2cRvJPv38t3yMkCJTQLOWl83l09iEmLmUMNKcqwemM5Nll0JeNYXnFbfiDugxQTXyuKYlfP57I8p77Lde+Bm2of4/ijHikI2b7rxrnGRM/EqHnVp09mHlArTvym3JNrjEyaCG3Nxecq69Z3NS4ajfTP3lNpj5kgBDx1WYKOi9gp/l8Ba6I+gmqjo3rfxpQi2naFv7PDbE3QDjmfzw07HLo/h5gC6lgNpJuixm0RuMkDM9UK5GCe4IPYIQf4mvOmYppTOA/UHxS+589smN22grk5V480paxHGv6t86Zay3MxdVpZljVvB842JpBGHjjNeawJIbh+VkuxN1LPg8Xd3d0CtnPocU5c4jizonucEOxVXDlLkmRWVhwsmDPeRs5sYVy7YXcONW5t423mzIdDz+u6DlyeF+ztxOmhCVHUse9gYQbTjhx54M269SNzGm8YmXtz/qrSmnfTabx93rX67s9WzGDLzdG+q4r23Mhcv4htXWL3WjPRW1ht8xIdeBM47YWbI62aqdls4e6iEsruvfK+YPjlLzG8rfEvePKX5/u/76luiuqnOTcSahxANWH4CtWtsq3aLSsElkpZDpb/WE5f4Ve8W9+1uapMWD48Go6ueirH5Tx4ATUOtS8Pj4/8C3Pi0ByFV+kgnPA58GGPi8IsVlXtRIvT3jLo0gWWatdOt2DYhbLZdzUuCr/St4eKCF2l3UbmoThxXO7hW3Dip66d48RPXbsjcqC5w3m1W1PebBt3L4c8wjhxJ+7EBbvh+q7OIg9XHfc1ng8X2l/lw9pQ0zzP3ivrMwcIx/Gxy2rF5a5W5hTGHKEp9S9FsP8oGw61FYX1NAeKKQYhIMdOWZaVd1COlRSV1Hr66FpDmM9CeRVX3iZJclu2ODpoDVe9HTh1RE4f04fnNvTdIbgtI9NyQSfCxnlnIzB35FWFPI7bGneINfOb7Ah7nCX/MNvrfwQ5KIXLdIdqAAAAAElFTkSuQmCC';
 const sheetImg = new Image();
 let sheetReady = false;
 sheetImg.onload = () => { sheetReady = true; console.log('[貼圖] 圖集就緒 ·', Object.keys(SPRITE).length, '格'); };
@@ -2016,25 +2019,29 @@ function render() {
   for (const e of enemies) {
     if (e._dead) continue;
     if (e.kind === 'grunt') {
-      /* ---- P1-5 雜魚 ----
-         程序繪圖（冇現成 sprite），故意同 boss 嘅圓形外形區分：
-         玩家一眼分得出「呢啲係細怪，可以唔理」同「呢個係 boss」。 */
-      const R = e.elite ? 11 : 7;
+      /* pxl：grunt / dive / elite 機頭朝下；失敗先回退三角 */
       const frac = clamp(e.hp / (e.maxHp || 1), 0, 1);
-      ctx.fillStyle = e.elite
-        ? (frac > 0.4 ? '#ffd54a' : '#ff9a3c')
-        : (frac > 0.4 ? '#ff9ec4' : '#ff6f9c');
-      ctx.beginPath();
-      ctx.moveTo(e.x, e.y + R);          /* 機頭朝下，方向感一致 */
-      ctx.lineTo(e.x - R * 0.85, e.y - R * 0.7);
-      ctx.lineTo(e.x + R * 0.85, e.y - R * 0.7);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = e.elite ? '#fff3c4' : '#ffd0e4';
-      ctx.lineWidth = 1;
-      ctx.stroke();
+      const spr = e.elite ? 'elite' : (e.diving ? 'dive' : 'grunt');
+      const scale = e.elite ? 2.0 : (e.diving ? 1.7 : 1.55);
+      const drawn = drawSprite(spr, e.x, e.y, scale);
+      const R = e.elite ? 12 : (e.diving ? 9 : 8);
+      if (!drawn) {
+        ctx.fillStyle = e.elite
+          ? (frac > 0.4 ? '#ffd54a' : '#ff9a3c')
+          : (e.diving
+            ? (frac > 0.4 ? '#ff9a4a' : '#ff6a30')
+            : (frac > 0.4 ? '#ff9ec4' : '#ff6f9c'));
+        ctx.beginPath();
+        ctx.moveTo(e.x, e.y + R);
+        ctx.lineTo(e.x - R * 0.85, e.y - R * 0.7);
+        ctx.lineTo(e.x + R * 0.85, e.y - R * 0.7);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = e.elite ? '#fff3c4' : '#ffd0e4';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
       if (e.elite) {
-        /* 精英：外圈光環 + 生命條 + 詞綴 */
         ctx.strokeStyle = 'rgba(255,220,120,0.55)';
         ctx.lineWidth = 1.5;
         ctx.beginPath(); ctx.arc(e.x, e.y, R + 4, 0, Math.PI * 2); ctx.stroke();
@@ -2042,11 +2049,13 @@ function render() {
         ctx.fillRect(e.x - 14, e.y - R - 10, 28, 3);
         ctx.fillStyle = frac > 0.4 ? '#ffd54a' : '#ff6b3c';
         ctx.fillRect(e.x - 14, e.y - R - 10, 28 * frac, 3);
-      } else {
-        /* 普通雜魚：細小生命條，受傷時先睇得出 */
+      } else if (frac < 0.99) {
+        /* 普通／俯衝：受傷先出生命條，減少畫面噪音 */
         ctx.fillStyle = 'rgba(0,0,0,0.5)';
         ctx.fillRect(e.x - 8, e.y - R - 5, 16, 2);
-        ctx.fillStyle = frac > 0.4 ? '#ffc8dd' : '#ff6f9c';
+        ctx.fillStyle = e.diving
+          ? (frac > 0.4 ? '#ffc090' : '#ff6a30')
+          : (frac > 0.4 ? '#ffc8dd' : '#ff6f9c');
         ctx.fillRect(e.x - 8, e.y - R - 5, 16 * frac, 2);
       }
       if (e.label) {
@@ -2213,7 +2222,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.9.2 已載入');
+console.log('[啟動] 末日救未來 v0.9.3 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur));
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 hudEl.tip.textContent = '點擊畫面開始';

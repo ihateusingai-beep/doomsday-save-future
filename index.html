@@ -107,6 +107,7 @@ const DRAG_SPEED_MULT = 2.4;
 /* 狀態機列舉（PLAN v2 #16） */
 const STATE = Object.freeze({
   TITLE:       'TITLE',
+  DIFF_SELECT: 'DIFF_SELECT',
   SHIP_SELECT: 'SHIP_SELECT',
   STAGE_1:     'STAGE_1',
   STAGE_2:     'STAGE_2',
@@ -121,6 +122,7 @@ const STATE = Object.freeze({
 
 const STATE_LABEL = Object.freeze({
   TITLE:       '標題',
+  DIFF_SELECT: '選擇難度',
   SHIP_SELECT: '選擇機體',
   STAGE_1:     '第一關',
   STAGE_2:     '第二關',
@@ -143,6 +145,19 @@ const SHIPS = Object.freeze({
 
 const isStage = (s) => s && s.indexOf('STAGE_') === 0;
 const STAGES = [STATE.STAGE_1, STATE.STAGE_2, STATE.STAGE_3, STATE.STAGE_4, STATE.STAGE_5];
+
+/* ---------- 難度（現況數值 = 3 逃逸；只乘數，唔改 WAVE 腳本） ---------- */
+const DIFFICULTY = Object.freeze({
+  1: { id:1, name:'巡航', hpMul:0.55, bossMul:0.55, bulletSpdMul:0.70,
+       fireIntervalMul:1.6, fallMul:0.75, startHp:5, shieldBonus:1, bombCdMul:0.80 },
+  2: { id:2, name:'突破', hpMul:0.75, bossMul:0.75, bulletSpdMul:0.85,
+       fireIntervalMul:1.25, fallMul:0.90, startHp:4, shieldBonus:0, bombCdMul:1.00 },
+  3: { id:3, name:'逃逸', hpMul:1.00, bossMul:1.00, bulletSpdMul:1.00,
+       fireIntervalMul:1.00, fallMul:1.00, startHp:3, shieldBonus:0, bombCdMul:1.00 },
+});
+let diffId = 2; /* 預設突破；3 = 而家最高 */
+function D() { return DIFFICULTY[diffId] || DIFFICULTY[2]; }
+function diffName() { return D().name; }
 
 /* ---- 貼圖圖集（art.px.js → out/dsf_main.png，內嵌 base64 見 PLAN） ---- */
 const SPRITE = Object.freeze({
@@ -494,11 +509,11 @@ function onStateEnter(s, from) {
     victoryTimeBonus = timeBonus;
     /* 比較 + 寫入儲存 */
     let isNewBestScore = false, isNewBestTime = false;
-    if (finalScore > bestScore) { bestScore = finalScore; lsWrite(LS_KEY_SCORE, bestScore); isNewBestScore = true; }
-    if (bestTime === 0 || finalRunSec < bestTime) { bestTime = finalRunSec; lsWrite(LS_KEY_TIME, bestTime); isNewBestTime = true; }
+    if (finalScore > bestScore) { bestScore = finalScore; lsWrite(scoreKey(diffId), bestScore); isNewBestScore = true; }
+    if (bestTime === 0 || finalRunSec < bestTime) { bestTime = finalRunSec; lsWrite(timeKey(diffId), bestTime); isNewBestTime = true; }
     isNewBest = isNewBestScore || isNewBestTime;
-    console.log(`[勝利] 最終=${Math.floor(finalScore)} 最佳=${Math.floor(bestScore)} 用時=${finalRunSec.toFixed(1)}秒 最佳時間=${bestTime.toFixed(1)}秒 新紀錄=${isNewBest}`);
-    hudEl.tip.textContent = `任務完成 · 分數 ${Math.floor(finalScore)}`;
+    console.log(`[勝利] 難度=${diffName()} 最終=${Math.floor(finalScore)} 最佳=${Math.floor(bestScore)} 用時=${finalRunSec.toFixed(1)}秒 最佳時間=${bestTime.toFixed(1)}秒 新紀錄=${isNewBest}`);
+    hudEl.tip.textContent = `任務完成 · ${diffName()} · 分數 ${Math.floor(finalScore)}`;
   } else if (s === STATE.PAUSED) {
     hudEl.tip.textContent = pauseReason === 'manual'
       ? '已暫停 — 撳畫面／P／Esc 繼續'
@@ -507,13 +522,16 @@ function onStateEnter(s, from) {
     hudEl.tip.textContent = '點擊畫面開始';
     bullets.length = 0; enemies.length = 0;
     /* 保留戰機同 playerStacks 方便重試 */
+  } else if (s === STATE.DIFF_SELECT) {
+    loadBestForDiff();
+    hudEl.tip.textContent = '1 巡航 · 2 突破 · 3 逃逸（最難＝而家）';
   } else if (s === STATE.SHIP_SELECT) {
-    /* 新的一局：重置分數同計時 */
+    /* 新的一局：重置分數同計時（保留已選難度） */
     runScore = 0;
     runStartMs = null;
     stageStartMs = null;
     pausedAtMs = null;
-    hudEl.tip.textContent = 'A / B / C（或點擊機體卡）';
+    hudEl.tip.textContent = `難度：${diffName()} · A / B / C（或點擊機體卡）`;
   }
 }
 
@@ -559,18 +577,19 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
 function pickShip(id) {
   const c = SHIPS[id];
+  const d = D();
   ship = {
     chassis: id,
     x: VIEW_W / 2,
     y: VIEW_H - 60,
-    hp: 3, maxHp: 3,
-    shield: c.shield,
+    hp: d.startHp, maxHp: d.startHp,
+    shield: c.shield + (d.shieldBonus || 0),
     speed: c.speed,
     fireRate: c.fireRate,
     fireCD: 0,
     bulletCount: 2,
     bulletDmg: 1,
-    bombCD: 12000,
+    bombCD: 12000 * d.bombCdMul,
     focusFactor: 0.3,
     focusDuration: 4000,
     focusCD: 8000,
@@ -586,15 +605,16 @@ function pickShip(id) {
 
 function applyUpgrades() {
   if (!ship) return;
-  /* 先重設返基礎值 */
+  /* 先重設返基礎值（含難度開局） */
   const c = SHIPS[ship.chassis];
-  ship.maxHp        = 3;
-  ship.shield       = c.shield;
+  const d = D();
+  ship.maxHp        = d.startHp;
+  ship.shield       = c.shield + (d.shieldBonus || 0);
   ship.speed        = c.speed;
   ship.fireRate     = c.fireRate;
   ship.bulletCount  = 2;
   ship.bulletDmg    = 1;
-  ship.bombCD       = 12000;
+  ship.bombCD       = 12000 * d.bombCdMul;
   ship.focusFactor  = 0.3;
   ship.focusDuration= 4000;
   ship.focusCD      = 8000;
@@ -774,13 +794,14 @@ let runGrunts = 0;         /* 雜魚擊殺數 */
 
 function spawnBossFor(stageId) {
   const st = STAGE_TABLE[stageId] || STAGE_TABLE[1];
+  const hp = Math.max(1, Math.round(st.bossHp * D().bossMul));
   enemies.push({
     kind: 'spiral',
     stage: stageId,
     pattern: st.pattern,
     x: VIEW_W / 2, y: 60,
-    hp: st.bossHp,
-    maxHp: st.bossHp,
+    hp: hp,
+    maxHp: hp,
     t: 0,
     ang0: 0,
     spiralCD: 0,
@@ -788,7 +809,7 @@ function spawnBossFor(stageId) {
     laserWarm: 0,
     label: `${st.name} · S${stageId}`,
   });
-  console.log(`[第 ${stageId} 關] ${st.name} · boss 生命 ${st.bossHp} · 招式 ${st.pattern}`);
+  console.log(`[第 ${stageId} 關] ${st.name} · boss 生命 ${hp}（${diffName()}） · 招式 ${st.pattern}`);
 }
 
 /* P1-5：雜魚編隊產生器。
@@ -796,32 +817,32 @@ function spawnBossFor(stageId) {
    強化根本無處生效（見 UPGRADES 註釋）。加入雜魚之後先有東西可以貫穿。 */
 function spawnGruntFormation(opt) {
   const n = opt.count || 1;
-  const hp = opt.hp || GRUNT_HP;
+  const d = D();
   const elite = opt.type === 'elite';
   const diving = opt.type === 'dive';
+  const baseHp = elite ? (opt.hp || ELITE_HP) : (opt.hp || GRUNT_HP);
+  const hp = Math.max(1, Math.round(baseHp * d.hpMul));
   const score = elite ? ELITE_SCORE : GRUNT_SCORE;
   for (let i = 0; i < n; i++) {
     /* 一排平均分佈喺畫面寬度中央 80% 範圍內 */
     const t = n === 1 ? 0.5 : i / (n - 1);
     const x = clamp(VIEW_W / 2 + (t - 0.5) * VIEW_W * 0.8, 20, VIEW_W - 20);
+    const baseVy = diving ? (elite ? 0.07 : 0.09) : (elite ? 0.042 : 0.055);
     enemies.push({
       kind: 'grunt',
       x,
       y: -14 - (elite ? 0 : i * 6),
       vx: 0,
-      /* P1-5 雜魚慢落，但唔可以慢到變成殘留物資：
-         0.035 px/ms 橫跨全屏要 12 秒，實測會令畫面堆滿慢慢漂嘅目標。
-         0.055 約 8 秒、俯衝 0.09 約 5 秒，密度同可瞄準時間比較平衡。 */
-      vy: diving ? (elite ? 0.07 : 0.09) : (elite ? 0.042 : 0.055),
-      hp: elite ? (opt.hp || ELITE_HP) : hp,
-      maxHp: elite ? (opt.hp || ELITE_HP) : hp,
+      vy: baseVy * d.fallMul,
+      hp,
+      maxHp: hp,
       elite,
       diving,
       score,
       affix: elite ? (opt.affix || ELITE_AFFIX[i % ELITE_AFFIX.length]) : '',
       t: i * 120,                    /* 錯開發炮時間，避免全機同時開火 */
       sway: diving ? 0 : 0.022 + (i % 3) * 0.008,
-      fireCD: 1600 + i * 420,
+      fireCD: (1600 + i * 420) * d.fireIntervalMul,
       label: '',
     });
   }
@@ -830,6 +851,7 @@ function spawnGruntFormation(opt) {
 function emitWaveType(s, stageId) {
   /* 由畫面頂部產生指定類型嘅彈幕／雜魚 */
   const cx = VIEW_W / 2;
+  const bMul = D().bulletSpdMul;
   switch (s.type) {
     case 'grunt':
     case 'dive':
@@ -839,14 +861,15 @@ function emitWaveType(s, stageId) {
     }
     case 'spray': {
       const baseA = Math.PI / 2;
+      const spd = s.speed * bMul;
       for (let i = 0; i < s.count; i++) {
         const a = baseA + (i - (s.count - 1) / 2) * s.spread;
         enemies.push({
           kind: 'bullet',
           x: cx + (Math.random() - 0.5) * VIEW_W * 0.6,
           y: 20,
-          vx: Math.cos(a) * s.speed,
-          vy: Math.sin(a) * s.speed,
+          vx: Math.cos(a) * spd,
+          vy: Math.sin(a) * spd,
         });
       }
       break;
@@ -855,24 +878,27 @@ function emitWaveType(s, stageId) {
       /* 直接瞄準戰機現時位置 */
       const sx = ship ? ship.x : cx;
       const sy = ship ? ship.y : VIEW_H - 60;
+      const spd = s.speed * bMul;
       for (let i = 0; i < s.count; i++) {
         const a = Math.atan2(sy - 20, sx - cx) + (i - (s.count - 1) / 2) * 0.08;
-        enemies.push({ kind:'bullet', x: cx + (Math.random()-0.5)*VIEW_W*0.5, y: 20, vx: Math.cos(a)*s.speed, vy: Math.sin(a)*s.speed });
+        enemies.push({ kind:'bullet', x: cx + (Math.random()-0.5)*VIEW_W*0.5, y: 20, vx: Math.cos(a)*spd, vy: Math.sin(a)*spd });
       }
       break;
     }
     case 'ring': {
       const ang0 = Math.random() * Math.PI * 2;
+      const spd = s.speed * bMul;
       for (let i = 0; i < s.count; i++) {
         const a = ang0 + i * (Math.PI * 2 / s.count);
-        enemies.push({ kind:'bullet', x: cx, y: 80, vx: Math.cos(a)*s.speed, vy: Math.sin(a)*s.speed });
+        enemies.push({ kind:'bullet', x: cx, y: 80, vx: Math.cos(a)*spd, vy: Math.sin(a)*spd });
       }
       break;
     }
     case 'meteor': {
+      const spd = s.speed * bMul;
       for (let i = 0; i < s.count; i++) {
         const x = 30 + Math.random() * (VIEW_W - 60);
-        enemies.push({ kind:'bullet', x, y: 10, vx: (Math.random()-0.5)*0.02, vy: s.speed * (0.8 + Math.random()*0.4) });
+        enemies.push({ kind:'bullet', x, y: 10, vx: (Math.random()-0.5)*0.02, vy: spd * (0.8 + Math.random()*0.4) });
       }
       break;
     }
@@ -886,7 +912,12 @@ canvas.addEventListener('pointerdown', (e) => {
   const cx = e.clientX, cy = e.clientY;
   const px = (cx - rect.left) * VIEW_W / rect.width;
   const py = (cy - rect.top)  * VIEW_H / rect.height;
-  if (fsm.cur === STATE.TITLE) { fsm.set(STATE.SHIP_SELECT); return; }
+  if (fsm.cur === STATE.TITLE) { fsm.set(STATE.DIFF_SELECT); return; }
+  if (fsm.cur === STATE.DIFF_SELECT) {
+    const id = hitDiffCard(px, py);
+    if (id) selectDiffAndContinue(id);
+    return;
+  }
   if (fsm.cur === STATE.SHIP_SELECT) {
     const id = hitShipCard(px, py);
     if (id) pickShipAndStart(id);
@@ -1036,6 +1067,12 @@ window.addEventListener('keydown', (e) => {
     tryBomb();
     e.preventDefault();
   }
+  /* 用鍵盤揀難度 */
+  if (fsm.cur === STATE.DIFF_SELECT) {
+    if (k === '1') selectDiffAndContinue(1);
+    if (k === '2') selectDiffAndContinue(2);
+    if (k === '3') selectDiffAndContinue(3);
+  }
   /* 用鍵盤揀機體 */
   if (fsm.cur === STATE.SHIP_SELECT) {
     if (k === 'a') pickShipAndStart('A');
@@ -1070,6 +1107,29 @@ window.addEventListener('keyup', (e) => {
 function pickShipAndStart(id) {
   pickShip(id);
   fsm.set(STATE.STAGE_1);
+}
+
+function selectDiffAndContinue(id) {
+  setDifficulty(id);
+  fsm.set(STATE.SHIP_SELECT);
+}
+
+function diffCardsLayout() {
+  const w = 88, h = 120, gap = 10;
+  const startX = (VIEW_W - (w * 3 + gap * 2)) / 2;
+  const y = VIEW_H / 2 - 40;
+  return {
+    w, h, gap, startX, y,
+    rect: (i) => ({ x: startX + i * (w + gap), y, w, h }),
+  };
+}
+function hitDiffCard(px, py) {
+  const L = diffCardsLayout();
+  for (let i = 0; i < 3; i++) {
+    const r = L.rect(i);
+    if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return i + 1;
+  }
+  return null;
 }
 
 /* ---- 版面幾何：render 同 hit-test 共用同一份數據 ----
@@ -1313,9 +1373,10 @@ let finalScore = 0;          /* computed on VICTORY entry; displayed on render *
 let victoryRunSec = 0;       /* frozen full-run seconds at VICTORY entry */
 let victoryTimeBonus = 0;    /* frozen timeBonus at VICTORY entry */
 
-/* localStorage 持久化（PLAN v2 #22） */
-const LS_KEY_SCORE = 'dsf.bestScore';
-const LS_KEY_TIME  = 'dsf.bestTime';
+/* localStorage 持久化（PLAN v2 #22 + 按難度分 key） */
+const LS_KEY_DIFF = 'dsf.diff';
+function scoreKey(d) { return 'dsf.bestScore.' + d; }
+function timeKey(d)  { return 'dsf.bestTime.' + d; }
 let bestScore = 0, bestTime = 0;
 function lsRead(key) {
   try {
@@ -1326,8 +1387,33 @@ function lsRead(key) {
 function lsWrite(key, val) {
   try { localStorage.setItem(key, String(val)); } catch (e) { /* quota / private mode — silent */ }
 }
-bestScore = lsRead(LS_KEY_SCORE);
-bestTime  = lsRead(LS_KEY_TIME);
+function loadBestForDiff() {
+  bestScore = lsRead(scoreKey(diffId));
+  bestTime  = lsRead(timeKey(diffId));
+  /* 舊 key 遷移：無分難度紀錄 → 算 3 逃逸 */
+  if (diffId === 3 && bestScore === 0 && bestTime === 0) {
+    const legacyS = lsRead('dsf.bestScore');
+    const legacyT = lsRead('dsf.bestTime');
+    if (legacyS > 0 || legacyT > 0) {
+      bestScore = legacyS; bestTime = legacyT;
+      lsWrite(scoreKey(3), bestScore);
+      lsWrite(timeKey(3), bestTime);
+    }
+  }
+}
+function setDifficulty(id) {
+  const n = clamp(id | 0, 1, 3);
+  diffId = n;
+  lsWrite(LS_KEY_DIFF, n);
+  loadBestForDiff();
+  console.log('[難度]', diffName(), '· id', diffId);
+}
+/* 開機讀難度（預設 2 突破） */
+{
+  const saved = lsRead(LS_KEY_DIFF);
+  diffId = (saved === 1 || saved === 2 || saved === 3) ? saved : 2;
+  loadBestForDiff();
+}
 let isNewBest = false;          /* set on VICTORY entry, displayed on render */
 
 /* 聚焦／炸彈冷卻（PLAN v2 #6-#7）—— 啟動時由戰機讀取時長同冷卻 */
@@ -1532,8 +1618,9 @@ function tick(dtMs) {
       e.y = 80       + Math.sin(e.t / 400) * 30;
       e.ang0 = e.t / 1000;
 
-      /* 各招式的射速、彈數、彈速 */
+      /* 各招式的射速、彈數、彈速（再乘難度） */
       const P = e.pattern || 'A';
+      const d = D();
       let nWay = 8, fireEvery = 1000, bulletSpd = 0.06;
       if (P === 'A') {                       /* stage 1: classic 8-way */
         nWay = 8; fireEvery = 1000; bulletSpd = 0.06;
@@ -1546,6 +1633,8 @@ function tick(dtMs) {
       } else if (P === 'E') {                /* stage 5: 12-way faster */
         nWay = 12; fireEvery = 700; bulletSpd = 0.07;
       }
+      fireEvery *= d.fireIntervalMul;
+      bulletSpd *= d.bulletSpdMul;
 
       e.spiralCD = (e.spiralCD || 0) + dtMs;
       if (e.spiralCD >= fireEvery) {
@@ -1566,10 +1655,11 @@ function tick(dtMs) {
             /* 發射：1 發瞄準戰機嘅高速彈 */
             const sx = ship ? ship.x : VIEW_W/2;
             const a = Math.atan2(ship ? ship.y - e.y : VIEW_H/2, sx - e.x);
-            enemies.push({ kind:'laser', x: e.x, y: e.y, vx: Math.cos(a)*0.20, vy: Math.sin(a)*0.20, lifeMs: 1500 });
+            const lspd = 0.20 * d.bulletSpdMul;
+            enemies.push({ kind:'laser', x: e.x, y: e.y, vx: Math.cos(a)*lspd, vy: Math.sin(a)*lspd, lifeMs: 1500 });
             e.laserFiring = true;
             setTimeout(() => { e.laserFiring = false; }, 100);
-            e.laserCD = 4500;
+            e.laserCD = 4500 * d.fireIntervalMul;
             e.laserWarn = undefined;
           }
         }
@@ -1602,12 +1692,13 @@ function tick(dtMs) {
 
       e.fireCD -= dtMs;
       if (e.fireCD <= 0 && e.y > 24 && e.y < VIEW_H - 120) {
-        e.fireCD = e.elite ? 1500 : 2800;
+        const d = D();
+        e.fireCD = (e.elite ? 1500 : 2800) * d.fireIntervalMul;
         const sx = ship ? ship.x : VIEW_W / 2;
         const sy = ship ? ship.y : VIEW_H - 60;
         const base = Math.atan2(sy - e.y, sx - e.x);
         const n = e.elite ? 3 : 1;
-        const spd = e.elite ? 0.075 : 0.06;
+        const spd = (e.elite ? 0.075 : 0.06) * d.bulletSpdMul;
         for (let i = 0; i < n; i++) {
           const a = base + (i - (n - 1) / 2) * 0.24;
           enemies.push({ kind:'bullet', x: e.x, y: e.y, vx: Math.cos(a)*spd, vy: Math.sin(a)*spd });
@@ -1817,7 +1908,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.8.0 · 像素射擊', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.10.0 · 三難度', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -1825,7 +1916,7 @@ function render() {
     if (bestScore > 0 || bestTime > 0) {
       ctx.fillStyle = '#ff6';
       ctx.font = 'bold 12px monospace';
-      ctx.fillText('最佳：' + Math.floor(bestScore) + '（' + (bestTime > 0 ? bestTime.toFixed(1) + ' 秒' : '—') + '）', VIEW_W/2, VIEW_H/2 + 18);
+      ctx.fillText(diffName() + ' 最佳：' + Math.floor(bestScore) + '（' + (bestTime > 0 ? bestTime.toFixed(1) + ' 秒' : '—') + '）', VIEW_W/2, VIEW_H/2 + 18);
     } else {
       ctx.fillStyle = '#889';
       ctx.font = '11px monospace';
@@ -1834,7 +1925,56 @@ function render() {
     const pulse = 0.55 + 0.45 * Math.sin(performance.now() / 320);
     ctx.fillStyle = 'rgba(255,220,80,' + pulse.toFixed(2) + ')';
     ctx.font = 'bold 14px monospace';
-    ctx.fillText('→ 點擊畫面開始 ←', VIEW_W/2, VIEW_H - 56);
+    ctx.fillText('→ 點擊選擇難度 ←', VIEW_W/2, VIEW_H - 56);
+    drawScanlines(); drawFlash();
+    ctx.restore();
+    return;
+  }
+
+  if (fsm.cur === STATE.DIFF_SELECT) {
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillRect(0, 0, VIEW_W, 72);
+    ctx.fillStyle = '#0ff';
+    ctx.font = 'bold 16px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('選擇難度', VIEW_W/2, 36);
+    ctx.font = '10px monospace';
+    ctx.fillStyle = '#9ab';
+    ctx.fillText('而家數值 = 3 逃逸（最高）', VIEW_W/2, 54);
+    const cards = [
+      { id:1, name:'巡航', sub:'易 · 白板／初玩', col:'#3dff8a', detail:'血×0.55 彈慢' },
+      { id:2, name:'突破', sub:'中 · 預設',       col:'#4d8cff', detail:'血×0.75 平衡' },
+      { id:3, name:'逃逸', sub:'難 · 而家',       col:'#ff6ad5', detail:'全數值 硬核' },
+    ];
+    const L = diffCardsLayout();
+    cards.forEach((c, i) => {
+      const r = L.rect(i);
+      const on = diffId === c.id;
+      ctx.fillStyle = on ? 'rgba(0,50,80,0.92)' : 'rgba(0,20,40,0.78)';
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.strokeStyle = c.col;
+      ctx.lineWidth = on ? 3 : 2;
+      ctx.strokeRect(r.x, r.y, r.w, r.h);
+      ctx.fillStyle = c.col;
+      ctx.font = 'bold 22px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(String(c.id), r.x + r.w/2, r.y + 28);
+      ctx.font = 'bold 14px monospace';
+      ctx.fillText(c.name, r.x + r.w/2, r.y + 50);
+      ctx.font = '9px monospace';
+      ctx.fillStyle = '#cde';
+      ctx.fillText(c.sub, r.x + r.w/2, r.y + 70);
+      ctx.fillStyle = '#9ab';
+      ctx.fillText(c.detail, r.x + r.w/2, r.y + 88);
+      if (on) {
+        ctx.fillStyle = '#ff6';
+        ctx.font = 'bold 10px monospace';
+        ctx.fillText('上次', r.x + r.w/2, r.y + r.h - 10);
+      }
+    });
+    ctx.fillStyle = '#ff6';
+    ctx.font = '12px monospace';
+    ctx.fillText('按 1 / 2 / 3 或點擊卡牌', VIEW_W/2, VIEW_H - 40);
     drawScanlines(); drawFlash();
     ctx.restore();
     return;
@@ -1900,7 +2040,7 @@ function render() {
     ctx.fillText('戰機被擊毀 · 分數 ' + Math.floor(runScore), VIEW_W/2, VIEW_H/2 + 4);
     ctx.fillStyle = '#9ab';
     ctx.font = '11px monospace';
-    ctx.fillText('倒數第 ' + lastStage + ' 關', VIEW_W/2, VIEW_H/2 + 22);
+    ctx.fillText('難度 ' + diffName() + ' · 倒數第 ' + lastStage + ' 關', VIEW_W/2, VIEW_H/2 + 22);
     drawEndBtns();
     drawScanlines(); drawFlash();
     ctx.restore();
@@ -1941,7 +2081,7 @@ function render() {
                + ' + 擦彈 ' + Math.floor(grazeScoreTotal) + '（' + grazeCount + ' 次）'
                + ' + 時間獎金 ' + Math.floor(timeBonus) + '）', VIEW_W/2, VIEW_H/2 + 48);
     ctx.fillStyle = '#ff6';
-    ctx.fillText('最佳：' + Math.floor(bestScore) + ' · ' + bestTime.toFixed(1) + ' 秒', VIEW_W/2, VIEW_H/2 + 72);
+    ctx.fillText(diffName() + ' 最佳：' + Math.floor(bestScore) + ' · ' + bestTime.toFixed(1) + ' 秒', VIEW_W/2, VIEW_H/2 + 72);
     drawEndBtns();
     drawScanlines(); drawFlash();
     ctx.restore();
@@ -2222,14 +2362,14 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.9.3 已載入');
-console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur));
+console.log('[啟動] 末日救未來 v0.10.0 已載入');
+console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 hudEl.tip.textContent = '點擊畫面開始';
 requestAnimationFrame(loop);
 
 /* 開放俾瀏覽器冒煙測試（主控台：window.__dsf.fsm.cur） */
-window.__dsf = { fsm, ship, bullets, enemies, shipS: SHIPS, stageS: STATE, InputState, SPRITE, sheetReady: () => sheetReady, drawSprite, enterPause, resumePause, pauseReason: () => pauseReason };
+window.__dsf = { fsm, ship, bullets, enemies, shipS: SHIPS, stageS: STATE, InputState, SPRITE, sheetReady: () => sheetReady, drawSprite, enterPause, resumePause, pauseReason: () => pauseReason, D, diffId: () => diffId, setDifficulty };
 </script>
 </body>
 </html>

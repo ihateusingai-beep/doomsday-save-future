@@ -284,6 +284,7 @@ STATE = {
 
 ## 改動紀錄
 
+- **v3.5（2026-10-21）**：+sniper／shield／swarm；warn 預警線；shield 正面擋彈；swarm 死後裂 mini；shield 死裂 3 彈；S2–S5 波次插入；版號 v0.11.0
 - **v3.4（2026-10-21）**：三難度。`DIFFICULTY` 乘數表；流程 標題→選難度→選機；`dsf.diff` + `dsf.bestScore.{1,2,3}`；3 逃逸＝舊數值；版號 v0.10.0
 - **v3.3.1（2026-10-21）**：PC 滑鼠 hover 跟機（唔使 click-drag）；確認一般子彈 `tick` 自動開火；版號 v0.9.1
 - **v3.3（2026-10-21）**：手動暫停（`P`／`Esc`／右上⏸，`pauseReason` 區分 tab／manual）；`STAGE_TABLE.waveCount` 對齊 WAVE 7/7/8/8/11；S5 名「逃逸門」；`out/` gitignore + 移出版本庫；刪 `.i18n_comments.py`；版號 v0.9.0

@@ -239,6 +239,40 @@ sprite("elite", { base: "elite_base" },
   px(5, 2, "w"), px(4, 3, "c"), px(6, 3, "c"),
   glow("yY", { r: 2, strength: 0.4, bands: 2 }))
 
+/* 狙擊：細長機 + 青瞄準感 */
+sprite("sniper_base", { mx: true, outline: "k" }, `
+  .c.
+  cNc
+  .c.
+  .Y.
+  .Y.
+  .o.`)
+sprite("sniper", { base: "sniper_base" },
+  px(2, 1, "w"),
+  glow("cN", { r: 1, strength: 0.35, bands: 1 }))
+
+/* 護盾機：寬體 + 藍盾面朝下 */
+sprite("shield_base", { mx: true, outline: "k" }, `
+  .bb.
+  bBBb
+  BbBBb
+  b..b.
+  .YY..`)
+sprite("shield_e", { base: "shield_base" },
+  px(3, 1, "w"), px(4, 2, "c"),
+  glow("bB", { r: 2, strength: 0.35, bands: 2 }))
+
+/* 分裂蟲：綠團，死後裂 */
+sprite("swarm_base", { mx: true, outline: "k" }, `
+  .g.
+  gGg
+  GgGg
+  .gY.
+  ..Y.`)
+sprite("swarm", { base: "swarm_base" },
+  px(2, 1, "w"),
+  glow("gG", { r: 1, strength: 0.3, bands: 1 }))
+
 /* ========== ATLAS ========== */
 sheet("dsf_main", [
   "ship_a", "ship_b", "ship_c",
@@ -246,6 +280,7 @@ sheet("dsf_main", [
   "bullet_p", "bullet_e", "laser",
   "boss",
   "grunt", "dive", "elite",
+  "sniper", "shield_e", "swarm",
   "spark", "boom_0", "boom_1", "boom_2",
   "ui_focus", "ui_bomb", "ui_card", "ui_heart", "ui_shield",
   "star_0", "star_1", "star_2",

@@ -173,26 +173,29 @@ const SPRITE = Object.freeze({
   grunt: { x:26, y:13, w:10, h:7 },
   dive: { x:37, y:13, w:8, h:8 },
   elite: { x:46, y:13, w:12, h:9 },
-  spark: { x:59, y:13, w:5, h:5 },
-  boom_0: { x:65, y:13, w:14, h:14 },
-  boom_1: { x:0, y:28, w:16, h:16 },
-  boom_2: { x:17, y:28, w:16, h:16 },
-  ui_focus: { x:34, y:28, w:16, h:16 },
-  ui_bomb: { x:51, y:28, w:16, h:16 },
-  ui_card: { x:68, y:28, w:22, h:14 },
-  ui_heart: { x:91, y:28, w:7, h:7 },
-  ui_shield: { x:99, y:28, w:11, h:12 },
-  star_0: { x:0, y:45, w:3, h:3 },
-  star_1: { x:4, y:45, w:5, h:5 },
-  star_2: { x:10, y:45, w:5, h:5 },
-  bldg: { x:16, y:45, w:14, h:22 },
-  tower: { x:31, y:45, w:10, h:30 },
-  meteor: { x:42, y:45, w:12, h:12 },
-  debris: { x:55, y:45, w:12, h:10 },
-  gate: { x:0, y:76, w:26, h:18 },
-  logo_mark: { x:27, y:76, w:18, h:18 },
+  sniper: { x:59, y:13, w:8, h:8 },
+  shield_e: { x:68, y:13, w:12, h:7 },
+  swarm: { x:0, y:26, w:10, h:7 },
+  spark: { x:11, y:26, w:5, h:5 },
+  boom_0: { x:17, y:26, w:14, h:14 },
+  boom_1: { x:32, y:26, w:16, h:16 },
+  boom_2: { x:49, y:26, w:16, h:16 },
+  ui_focus: { x:66, y:26, w:16, h:16 },
+  ui_bomb: { x:83, y:26, w:16, h:16 },
+  ui_card: { x:0, y:43, w:22, h:14 },
+  ui_heart: { x:23, y:43, w:7, h:7 },
+  ui_shield: { x:31, y:43, w:11, h:12 },
+  star_0: { x:43, y:43, w:3, h:3 },
+  star_1: { x:47, y:43, w:5, h:5 },
+  star_2: { x:53, y:43, w:5, h:5 },
+  bldg: { x:59, y:43, w:14, h:22 },
+  tower: { x:0, y:66, w:10, h:30 },
+  meteor: { x:11, y:66, w:12, h:12 },
+  debris: { x:24, y:66, w:12, h:10 },
+  gate: { x:37, y:66, w:26, h:18 },
+  logo_mark: { x:64, y:66, w:18, h:18 },
 });
-const SHEET_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAG4AAABeCAMAAAD1/9FkAAAAulBMVEUAAAAAPkAAAAD/5Wb/mhj/aiAA9v/4//8AoMhA9///atUAt9Y9/4r/6Wr/MolArsn/Gmr/64wP9/8PqtMPHDNNjP//pUZAJwb/7ZQzFStHHjwzLhT5///6////NY1NLgezJEwz9///Q24z+P//eiT/hdb/hdf/Q3ZNLgpNIAozHwWgECgSGjD/TV4SQVQcJ0QAsNKxFDj/nCkAaIiKoMhaaog6SGj/6GzI2P91X24qNUhqTk8cS2USO097H+qoAAAAAXRSTlMAQObYZgAABExJREFUeNrt2Qt/2jYQAHBzkmXjrJmbQlPAa9J0fQKLyVK2Jez7f63dnSRLtoGCI+hjHIp+BBz90dsoURRFvV6kAzjVnwopMJex5FfBvt89ekppDxRg0k8FJAKaHKjEvt/ZRS1hD1SqkpTLg74AEH2oOFHnIMsy6KidKUw90tJf8IEFQl8+A3gm2eNWlLHwOMjOz8+7eY5LTSCnflWQU2a5KI7qXNKZU2dnz4m7eJFeXKQvLsCXDdTiuteuJwRm0WA4fMlpgMXm/RyTapQYoO+ingSQNFQGmhvwUJH9vu66tdxTZkQ1xQZygImfXspLTNFGLkh40/ySU4tTIbmvf55Xx9Rc5X+o8MfZiBPHGF8ejxvdOqmyzlpRVN4oG2HSWvYbjLNszBMtAT3TJmJiMgzVSZMYYLU8wzRi7TU+MI1Ry68gJ2+CS3ZBGXkiEVXzQBcOteuseMMeGO01rmr5jby5yYE0+Va8xevZU14Ju3rwOwcY7Tp7c31N3jjDB2cRvJPv38t3yMkCJTQLOWl83l09iEmLmUMNKcqwemM5Nll0JeNYXnFbfiDugxQTXyuKYlfP57I8p77Lde+Bm2of4/ijHikI2b7rxrnGRM/EqHnVp09mHlArTvym3JNrjEyaCG3Nxecq69Z3NS4ajfTP3lNpj5kgBDx1WYKOi9gp/l8Ba6I+gmqjo3rfxpQi2naFv7PDbE3QDjmfzw07HLo/h5gC6lgNpJuixm0RuMkDM9UK5GCe4IPYIQf4mvOmYppTOA/UHxS+589smN22grk5V480paxHGv6t86Zay3MxdVpZljVvB842JpBGHjjNeawJIbh+VkuxN1LPg8Xd3d0CtnPocU5c4jizonucEOxVXDlLkmRWVhwsmDPeRs5sYVy7YXcONW5t423mzIdDz+u6DlyeF+ztxOmhCVHUse9gYQbTjhx54M269SNzGm8YmXtz/qrSmnfTabx93rX67s9WzGDLzdG+q4r23Mhcv4htXWL3WjPRW1ht8xIdeBM47YWbI62aqdls4e6iEsruvfK+YPjlLzG8rfEvePKX5/u/76luiuqnOTcSahxANWH4CtWtsq3aLSsElkpZDpb/WE5f4Ve8W9+1uapMWD48Go6ueirH5Tx4ATUOtS8Pj4/8C3Pi0ByFV+kgnPA58GGPi8IsVlXtRIvT3jLo0gWWatdOt2DYhbLZdzUuCr/St4eKCF2l3UbmoThxXO7hW3Dip66d48RPXbsjcqC5w3m1W1PebBt3L4c8wjhxJ+7EBbvh+q7OIg9XHfc1ng8X2l/lw9pQ0zzP3ivrMwcIx/Gxy2rF5a5W5hTGHKEp9S9FsP8oGw61FYX1NAeKKQYhIMdOWZaVd1COlRSV1Hr66FpDmM9CeRVX3iZJclu2ODpoDVe9HTh1RE4f04fnNvTdIbgtI9NyQSfCxnlnIzB35FWFPI7bGneINfOb7Ah7nCX/MNvrfwQ5KIXLdIdqAAAAAElFTkSuQmCC';
+const SHEET_B64 = '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';
 const sheetImg = new Image();
 let sheetReady = false;
 sheetImg.onload = () => { sheetReady = true; console.log('[貼圖] 圖集就緒 ·', Object.keys(SPRITE).length, '格'); };
@@ -670,8 +673,8 @@ const STAGE_TABLE = {
 };
 
 /* 每個波次 = {at（毫秒）, spawn:[{type, ...}]}。
-   彈幕型：spray 向下弧形散彈、aim 鎖定戰機、ring 八方向環彈、meteor 三至五發快彈
-   敵機型：grunt 一排雜魚、dive 俯衝雜魚、elite 精英（多血 + 三向射擊 + 詞綴） */
+   彈幕型：spray / aim(+warn) / ring / meteor
+   敵機型：grunt / dive / elite / sniper / shield / swarm */
 const WAVE_TEMPLATES = {
   1: [   /* 維港起飛 — 教學關：單排雜魚 + 輕量彈幕 */
     { at: 1500, spawn: [{ type:'grunt', count: 3, hp: 8 }] },
@@ -682,47 +685,47 @@ const WAVE_TEMPLATES = {
     { at:19000, spawn: [{ type:'spray', count: 8, spread: 0.5, speed: 0.08 }] },
     { at:23000, spawn: [{ type:'grunt', count: 4, hp: 8 }] },
   ],
-  2: [   /* 九龍煙柱 — 扇形散彈 + 兩排雜魚 */
+  2: [   /* 九龍煙柱 — 扇形 + 短預警 */
     { at: 1500, spawn: [{ type:'grunt', count: 4, hp: 9 }] },
     { at: 5000, spawn: [{ type:'spray', count: 9, spread: 0.6, speed: 0.07 }] },
     { at: 9000, spawn: [{ type:'grunt', count: 5, hp: 9 }] },
-    { at:13000, spawn: [{ type:'spray', count: 9, spread: 0.6, speed: 0.09 }] },
+    { at:13000, spawn: [{ type:'spray', count: 9, spread: 0.6, speed: 0.09, warn:true }] },
     { at:17000, spawn: [{ type:'grunt', count: 4, hp: 9 }] },
-    { at:21000, spawn: [{ type:'aim',   count: 4, speed: 0.11 }] },
+    { at:21000, spawn: [{ type:'aim',   count: 3, speed: 0.11, warn:true }] },
     { at:25000, spawn: [{ type:'grunt', count: 6, hp: 9 }] },
   ],
-  3: [   /* 大氣層 — 流星 + 俯衝雜魚（考走位） */
+  3: [   /* 大氣層 — dive + sniper */
     { at: 1200, spawn: [{ type:'meteor', count: 4, speed: 0.13 }] },
     { at: 5000, spawn: [{ type:'grunt', count: 4, hp: 10 }] },
     { at: 8500, spawn: [{ type:'dive',  count: 4, hp: 8 }] },
     { at:12500, spawn: [{ type:'ring',  count: 8, speed: 0.07 }] },
-    { at:16000, spawn: [{ type:'grunt', count: 5, hp: 10 }] },
-    { at:20000, spawn: [{ type:'dive',  count: 6, hp: 8 }] },
+    { at:16000, spawn: [{ type:'sniper', count: 2 }] },
+    { at:20000, spawn: [{ type:'dive',  count: 5, hp: 8 }] },
     { at:24000, spawn: [{ type:'meteor', count: 6, speed: 0.14 }] },
-    { at:28000, spawn: [{ type:'grunt', count: 4, hp: 10 }] },
+    { at:28000, spawn: [{ type:'sniper', count: 1 }, { type:'grunt', count: 3, hp: 10 }] },
   ],
-  4: [   /* 軌道殘骸 — 彈幕 + 首隻精英 */
+  4: [   /* 軌道殘骸 — elite + shield */
     { at: 1200, spawn: [{ type:'ring',  count: 8, speed: 0.09 }] },
     { at: 4500, spawn: [{ type:'grunt', count: 5, hp: 10 }] },
-    { at: 8500, spawn: [{ type:'spray', count: 6, spread: 0.4, speed: 0.09 }] },
+    { at: 8500, spawn: [{ type:'shield', count: 1 }] },
     { at:13000, spawn: [{ type:'elite', count: 1, hp: 24, affix:'重裝' }] },
     { at:18000, spawn: [{ type:'dive',  count: 5, hp: 9 }] },
     { at:22000, spawn: [{ type:'ring',  count: 8, speed: 0.10 }] },
-    { at:26000, spawn: [{ type:'grunt', count: 6, hp: 10 }] },
+    { at:26000, spawn: [{ type:'shield', count: 1 }, { type:'grunt', count: 4, hp: 10 }] },
     { at:30000, spawn: [{ type:'elite', count: 1, hp: 24, affix:'狙擊' }] },
   ],
-  5: [   /* 逃逸門 — 全開，密集雜魚 + 四隻精英（2+2） */
+  5: [   /* 逃逸門 — swarm + 全開 */
     { at: 1200, spawn: [{ type:'meteor', count: 5, speed: 0.13 }] },
     { at: 4200, spawn: [{ type:'grunt', count: 6, hp: 11 }] },
     { at: 7500, spawn: [{ type:'ring',  count: 8, speed: 0.10 }] },
     { at:11000, spawn: [{ type:'dive',  count: 6, hp: 9 }] },
     { at:14500, spawn: [{ type:'elite', count: 2, hp: 26, affix:'重裝' }] },
-    { at:19000, spawn: [{ type:'spray', count: 8, spread: 0.5, speed: 0.11 }] },
-    { at:23000, spawn: [{ type:'grunt', count: 7, hp: 11 }] },
-    { at:27000, spawn: [{ type:'dive',  count: 8, hp: 9 }] },
+    { at:19000, spawn: [{ type:'swarm', count: 3 }] },
+    { at:23000, spawn: [{ type:'spray', count: 8, spread: 0.5, speed: 0.11, warn:true }] },
+    { at:27000, spawn: [{ type:'dive',  count: 6, hp: 9 }] },
     { at:31000, spawn: [{ type:'elite', count: 2, hp: 26, affix:'狙擊' }] },
-    { at:35000, spawn: [{ type:'meteor', count: 8, speed: 0.15 }] },
-    { at:39000, spawn: [{ type:'grunt', count: 8, hp: 11 }] },
+    { at:35000, spawn: [{ type:'swarm', count: 4 }, { type:'sniper', count: 1 }] },
+    { at:39000, spawn: [{ type:'shield', count: 1 }, { type:'grunt', count: 5, hp: 11 }] },
   ],
 };
 
@@ -739,8 +742,14 @@ let waveQueueDoneAt = null;   /* 佇列清空嘅時間戳，用嚟做保險超�
    實戰命中率約四成）而訂，令普通雜魚要打約 1 秒、精英約 3 秒。 */
 const GRUNT_HP = 8, GRUNT_SCORE = 100;
 const ELITE_HP = 24, ELITE_SCORE = 200;
+const SNIPER_HP = 10, SNIPER_SCORE = 150;
+const SHIELD_HP = 18, SHIELD_SCORE = 180;
+const SWARM_HP = 6, SWARM_SCORE = 120;
 const BOSS_SCORE = 800;    /* P1-5：加入雜魚後 boss 分數由 200 調高，見 PLAN #27 */
 const ELITE_AFFIX = ['重裝', '狙擊', '急速', '護盾'];
+const SNIPER_WARN_MS = 600;
+const SHIELD_ON_MS = 1800;
+const SHIELD_OFF_MS = 700;
 
 /* ---------- 擦彈（P1-6） ----------
    STG 個核心：「擦住彈走」要比重彈更有回饋。之前呢個遊戲完全冇擦彈，
@@ -814,38 +823,87 @@ function spawnBossFor(stageId) {
 
 /* P1-5：雜魚編隊產生器。
    P1-5 之前場上只有 boss一種可擊殺目標，所以「貫穿」呢類需要多目標嘅
-   強化根本無處生效（見 UPGRADES 註釋）。加入雜魚之後先有東西可以貫穿。 */
+   強化根本無處生效（見 UPGRADES 註釋）。加入雜魚之後先有東西可以貫穿。
+   v0.11：+sniper / shield / swarm（仍 kind=grunt，用 role 旗標） */
 function spawnGruntFormation(opt) {
   const n = opt.count || 1;
   const d = D();
-  const elite = opt.type === 'elite';
-  const diving = opt.type === 'dive';
-  const baseHp = elite ? (opt.hp || ELITE_HP) : (opt.hp || GRUNT_HP);
+  const type = opt.type || 'grunt';
+  const elite = type === 'elite';
+  const diving = type === 'dive';
+  const sniper = type === 'sniper';
+  const shield = type === 'shield';
+  const swarm = type === 'swarm';
+  const mini = !!opt.mini;
+  let baseHp = GRUNT_HP;
+  let score = GRUNT_SCORE;
+  if (elite) { baseHp = opt.hp || ELITE_HP; score = ELITE_SCORE; }
+  else if (sniper) { baseHp = opt.hp || SNIPER_HP; score = SNIPER_SCORE; }
+  else if (shield) { baseHp = opt.hp || SHIELD_HP; score = SHIELD_SCORE; }
+  else if (swarm) { baseHp = opt.hp || SWARM_HP; score = SWARM_SCORE; }
+  else if (mini) { baseHp = opt.hp || 3; score = 40; }
+  else { baseHp = opt.hp || GRUNT_HP; score = GRUNT_SCORE; }
   const hp = Math.max(1, Math.round(baseHp * d.hpMul));
-  const score = elite ? ELITE_SCORE : GRUNT_SCORE;
   for (let i = 0; i < n; i++) {
     /* 一排平均分佈喺畫面寬度中央 80% 範圍內 */
     const t = n === 1 ? 0.5 : i / (n - 1);
-    const x = clamp(VIEW_W / 2 + (t - 0.5) * VIEW_W * 0.8, 20, VIEW_W - 20);
-    const baseVy = diving ? (elite ? 0.07 : 0.09) : (elite ? 0.042 : 0.055);
+    let x = clamp(VIEW_W / 2 + (t - 0.5) * VIEW_W * 0.8, 20, VIEW_W - 20);
+    if (opt.x != null) x = clamp(opt.x + (i - (n - 1) / 2) * 14, 16, VIEW_W - 16);
+    let baseVy = diving ? (elite ? 0.07 : 0.09) : (elite ? 0.042 : 0.055);
+    if (sniper) baseVy = 0.028;
+    if (shield) baseVy = 0.038;
+    if (swarm) baseVy = 0.05;
+    if (mini) baseVy = 0.07;
+    const y0 = opt.y != null ? opt.y : (-14 - (elite || sniper || shield ? 0 : i * 6));
     enemies.push({
       kind: 'grunt',
       x,
-      y: -14 - (elite ? 0 : i * 6),
+      y: y0,
       vx: 0,
       vy: baseVy * d.fallMul,
       hp,
       maxHp: hp,
       elite,
       diving,
+      sniper,
+      shield,
+      swarm,
+      mini,
       score,
       affix: elite ? (opt.affix || ELITE_AFFIX[i % ELITE_AFFIX.length]) : '',
-      t: i * 120,                    /* 錯開發炮時間，避免全機同時開火 */
-      sway: diving ? 0 : 0.022 + (i % 3) * 0.008,
-      fireCD: (1600 + i * 420) * d.fireIntervalMul,
-      label: '',
+      t: i * 120,
+      sway: diving || sniper ? 0 : 0.022 + (i % 3) * 0.008,
+      fireCD: (sniper ? 2200 : shield ? 2000 : 1600 + i * 420) * d.fireIntervalMul,
+      warnMs: 0,
+      warnTx: 0,
+      warnTy: 0,
+      shieldOn: shield,
+      shieldT: shield ? SHIELD_ON_MS : 0,
+      splitOnDeath: swarm || !!opt.splitOnDeath,
+      label: sniper ? '狙擊' : (shield ? '護盾' : (swarm ? '分裂' : '')),
     });
   }
+}
+
+/** 死後裂彈：由 (x,y) 向下扇 3 細彈 */
+function spawnSplitBurst(x, y) {
+  const d = D();
+  const spd = 0.09 * d.bulletSpdMul;
+  for (let i = 0; i < 3; i++) {
+    const a = Math.PI / 2 + (i - 1) * 0.45;
+    enemies.push({
+      kind: 'bullet',
+      x, y,
+      vx: Math.cos(a) * spd,
+      vy: Math.sin(a) * spd,
+      split: true,
+    });
+  }
+}
+
+/** 分裂蟲死亡 → 2 隻 mini grunt */
+function spawnSwarmChildren(ex, ey) {
+  spawnGruntFormation({ type: 'grunt', count: 2, hp: 3, mini: true, x: ex, y: ey });
 }
 
 function emitWaveType(s, stageId) {
@@ -855,13 +913,17 @@ function emitWaveType(s, stageId) {
   switch (s.type) {
     case 'grunt':
     case 'dive':
-    case 'elite': {
+    case 'elite':
+    case 'sniper':
+    case 'shield':
+    case 'swarm': {
       spawnGruntFormation(s);
       break;
     }
     case 'spray': {
       const baseA = Math.PI / 2;
       const spd = s.speed * bMul;
+      const warn = !!s.warn;
       for (let i = 0; i < s.count; i++) {
         const a = baseA + (i - (s.count - 1) / 2) * s.spread;
         enemies.push({
@@ -870,18 +932,42 @@ function emitWaveType(s, stageId) {
           y: 20,
           vx: Math.cos(a) * spd,
           vy: Math.sin(a) * spd,
+          warnMs: warn ? 280 : 0,
+          warnFromX: cx,
+          warnFromY: 20,
+          warnTx: cx + Math.cos(a) * 220,
+          warnTy: 20 + Math.sin(a) * 220,
         });
       }
       break;
     }
     case 'aim': {
-      /* 直接瞄準戰機現時位置 */
+      /* 直接瞄準戰機現時位置；warn=true 先劃線再出彈 */
       const sx = ship ? ship.x : cx;
       const sy = ship ? ship.y : VIEW_H - 60;
       const spd = s.speed * bMul;
-      for (let i = 0; i < s.count; i++) {
-        const a = Math.atan2(sy - 20, sx - cx) + (i - (s.count - 1) / 2) * 0.08;
-        enemies.push({ kind:'bullet', x: cx + (Math.random()-0.5)*VIEW_W*0.5, y: 20, vx: Math.cos(a)*spd, vy: Math.sin(a)*spd });
+      if (s.warn) {
+        for (let i = 0; i < s.count; i++) {
+          const a = Math.atan2(sy - 20, sx - cx) + (i - (s.count - 1) / 2) * 0.08;
+          const bx = cx + (Math.random()-0.5)*VIEW_W*0.3;
+          enemies.push({
+            kind: 'bullet',
+            x: bx, y: 20,
+            vx: 0, vy: 0,
+            pending: true,
+            warnMs: 500,
+            fireSpd: spd,
+            fireA: a,
+            warnFromX: bx, warnFromY: 20,
+            warnTx: bx + Math.cos(a) * 280,
+            warnTy: 20 + Math.sin(a) * 280,
+          });
+        }
+      } else {
+        for (let i = 0; i < s.count; i++) {
+          const a = Math.atan2(sy - 20, sx - cx) + (i - (s.count - 1) / 2) * 0.08;
+          enemies.push({ kind:'bullet', x: cx + (Math.random()-0.5)*VIEW_W*0.5, y: 20, vx: Math.cos(a)*spd, vy: Math.sin(a)*spd });
+        }
       }
       break;
     }
@@ -1674,38 +1760,83 @@ function tick(dtMs) {
         e._dead = true;
       }
     } else if (e.kind === 'bullet') {
-      const slow = focusSlowFactor();
-      e.x += e.vx * dtMs * slow;
-      e.y += e.vy * dtMs * slow;
-    } else if (e.kind === 'grunt') {
-      /* ---- P1-5 雜魚 AI：慢慢落下 + 蛇形擺動 + 間歇瞄準射擊 ----
-         俯衝型快好多，用嚟考走位。 */
-      e.t += dtMs;
-      if (!e.diving) {
-        e.x += Math.sin(e.t / 620) * e.sway * dtMs;
+      /* 預警彈：pending 時定住，warn 完先飛 */
+      if (e.pending) {
+        e.warnMs = (e.warnMs || 0) - dtMs;
+        if (e.warnMs <= 0) {
+          e.pending = false;
+          const a = e.fireA != null ? e.fireA : Math.PI / 2;
+          const spd = e.fireSpd != null ? e.fireSpd : 0.1;
+          e.vx = Math.cos(a) * spd;
+          e.vy = Math.sin(a) * spd;
+          e.warnMs = 0;
+        }
       } else {
-        /* 俯衝：落到底就加速，形成壓迫感 */
+        if (e.warnMs > 0) e.warnMs -= dtMs;
+        const slow = focusSlowFactor();
+        e.x += e.vx * dtMs * slow;
+        e.y += e.vy * dtMs * slow;
+      }
+    } else if (e.kind === 'grunt') {
+      /* ---- 雜魚 AI：grunt/dive/elite/sniper/shield/swarm ---- */
+      e.t += dtMs;
+      if (e.shield) {
+        e.shieldT -= dtMs;
+        if (e.shieldT <= 0) {
+          e.shieldOn = !e.shieldOn;
+          e.shieldT = e.shieldOn ? SHIELD_ON_MS : SHIELD_OFF_MS;
+        }
+      }
+      if (!e.diving && !e.sniper) {
+        e.x += Math.sin(e.t / 620) * (e.sway || 0) * dtMs;
+      } else if (e.diving) {
         e.vy += 0.000012 * dtMs;
       }
       e.x = clamp(e.x, 12, VIEW_W - 12);
       e.y += e.vy * dtMs;
 
-      e.fireCD -= dtMs;
-      if (e.fireCD <= 0 && e.y > 24 && e.y < VIEW_H - 120) {
-        const d = D();
-        e.fireCD = (e.elite ? 1500 : 2800) * d.fireIntervalMul;
-        const sx = ship ? ship.x : VIEW_W / 2;
-        const sy = ship ? ship.y : VIEW_H - 60;
-        const base = Math.atan2(sy - e.y, sx - e.x);
-        const n = e.elite ? 3 : 1;
-        const spd = (e.elite ? 0.075 : 0.06) * d.bulletSpdMul;
-        for (let i = 0; i < n; i++) {
-          const a = base + (i - (n - 1) / 2) * 0.24;
-          enemies.push({ kind:'bullet', x: e.x, y: e.y, vx: Math.cos(a)*spd, vy: Math.sin(a)*spd });
+      if (e.sniper) {
+        /* 狙擊：預警線 → 一發高速 */
+        if (e.warnMs > 0) {
+          e.warnMs -= dtMs;
+          if (e.warnMs <= 0) {
+            e.warnMs = 0;
+            const d = D();
+            const spd = 0.22 * d.bulletSpdMul;
+            const a = Math.atan2(e.warnTy - e.y, e.warnTx - e.x);
+            enemies.push({
+              kind: 'bullet', x: e.x, y: e.y,
+              vx: Math.cos(a) * spd, vy: Math.sin(a) * spd,
+              sniperShot: true,
+            });
+            e.fireCD = 2600 * d.fireIntervalMul;
+          }
+        } else {
+          e.fireCD -= dtMs;
+          if (e.fireCD <= 0 && e.y > 20 && e.y < VIEW_H - 140) {
+            e.warnMs = SNIPER_WARN_MS;
+            e.warnTx = ship ? ship.x : VIEW_W / 2;
+            e.warnTy = ship ? ship.y : VIEW_H - 60;
+            e.fireCD = 99999; /* 等 warn 完再重設 */
+          }
+        }
+      } else {
+        e.fireCD -= dtMs;
+        if (e.fireCD <= 0 && e.y > 24 && e.y < VIEW_H - 120) {
+          const d = D();
+          e.fireCD = (e.elite ? 1500 : e.shield ? 2200 : e.swarm ? 3200 : 2800) * d.fireIntervalMul;
+          const sx = ship ? ship.x : VIEW_W / 2;
+          const sy = ship ? ship.y : VIEW_H - 60;
+          const base = Math.atan2(sy - e.y, sx - e.x);
+          const n = e.elite ? 3 : 1;
+          const spd = (e.elite ? 0.075 : 0.06) * d.bulletSpdMul;
+          for (let i = 0; i < n; i++) {
+            const a = base + (i - (n - 1) / 2) * 0.24;
+            enemies.push({ kind:'bullet', x: e.x, y: e.y, vx: Math.cos(a)*spd, vy: Math.sin(a)*spd });
+          }
         }
       }
-      /* 精英第一次開火之前先顯示詞綴，等玩家睇得見 */
-      if (e.elite && !e.label) e.label = '精英 · ' + e.affix;
+      if (e.elite && e.label.indexOf('精英') < 0) e.label = '精英 · ' + e.affix;
     }
   }
 
@@ -1718,46 +1849,61 @@ function tick(dtMs) {
       const b = bullets[i];
       if (b.owner !== 'player') continue;
       if (Math.abs(b.x - e.x) < halfW && Math.abs(b.y - e.y) < halfW) {
-        /* 貫穿：仲有餘數就唔清走粒彈，繼續打下一個目標。
-           b._lastHit 防止同一粒彈喺連續幾幀重複扣同一隻怪嘅血。 */
-        if (b.pierceLeft > 0) {
-          if (e === b._lastHit) continue;
-          b.pierceLeft--;
-          b._lastHit = e;
-        } else {
-          bullets.splice(i, 1);
-        }
-        e.hp -= (b.dmg || 1);
-        spawnSparks(b.x, b.y, 3, 0.08);
-        if (e.hp <= 0) {
-          spawnBoom(e.x, e.y);
-          if (e.kind === 'spiral') {
-            console.log('[擊破] boss @', (performance.now()/1000).toFixed(2));
-            /* P1-5：加入雜魚之後雜魚分數佔大多數，boss 係場面高潮，
-               所以由 200 調高做 800（約佔總分三成）。見 PLAN #27。 */
-            runScore += BOSS_SCORE;
-            runKills++;
-            /* 第五關 boss 擊破 → 勝利；其他 → 強化選擇 */
-            if (lastStage >= STAGES.length) {
-              fsm.set(STATE.VICTORY);
-            } else {
-              fsm.set(STATE.CHOICE);
+              /* 護盾機：正面（朝下弧）擋玩家彈；側擊／盾滅先入肉 */
+              if (e.shield && e.shieldOn) {
+                const ang = Math.atan2(b.y - e.y, b.x - e.x);
+                if (Math.abs(ang - Math.PI / 2) < 1.05) {
+                  if (b.pierceLeft > 0) {
+                    if (e === b._lastHit) continue;
+                    b.pierceLeft--;
+                    b._lastHit = e;
+                  } else {
+                    bullets.splice(i, 1);
+                  }
+                  spawnSparks(b.x, b.y, 4, 0.1);
+                  screenFlash = Math.max(screenFlash, 0.12);
+                  continue;
+                }
+              }
+              /* 貫穿：仲有餘數就唔清走粒彈，繼續打下一個目標。
+                 b._lastHit 防止同一粒彈喺連續幾幀重複扣同一隻怪嘅血。 */
+              if (b.pierceLeft > 0) {
+                if (e === b._lastHit) continue;
+                b.pierceLeft--;
+                b._lastHit = e;
+              } else {
+                bullets.splice(i, 1);
+              }
+              e.hp -= (b.dmg || 1);
+              spawnSparks(b.x, b.y, 3, 0.08);
+              if (e.hp <= 0) {
+                spawnBoom(e.x, e.y);
+                if (e.kind === 'spiral') {
+                  console.log('[擊破] boss @', (performance.now()/1000).toFixed(2));
+                  runScore += BOSS_SCORE;
+                  runKills++;
+                  if (lastStage >= STAGES.length) {
+                    fsm.set(STATE.VICTORY);
+                  } else {
+                    fsm.set(STATE.CHOICE);
+                  }
+                  return;
+                }
+                runScore += (e.score || GRUNT_SCORE);
+                runKills++;
+                runGrunts++;
+                e._dead = true;
+                /* 分裂蟲 → mini；護盾機死 → 裂彈 */
+                if (e.swarm || e.splitOnDeath) spawnSwarmChildren(e.x, e.y);
+                if (e.shield) spawnSplitBurst(e.x, e.y);
+                if (e.elite) console.log('[擊破] 精英「' + e.affix + '」· +' + (e.score || ELITE_SCORE));
+                else if (e.sniper) console.log('[擊破] 狙擊 · +' + (e.score || SNIPER_SCORE));
+                else if (e.shield) console.log('[擊破] 護盾機 · +' + (e.score || SHIELD_SCORE));
+                else if (e.swarm) console.log('[擊破] 分裂 · +' + (e.score || SWARM_SCORE));
+                break;
+              }
+              break;
             }
-            return;
-          }
-          runScore += (e.score || GRUNT_SCORE);
-          runKills++;
-          runGrunts++;
-          /* ⚠️ 必須標記死亡：雜魚唔會即時離開 enemies 陣列，
-             如果唔標，疊喺屍體上嘅子彈會喺之後每一幀再扣一次血，
-             再加一次分 —— 變成無限刷分。boss 原本因為即刻轉狀態
-             所以掩蓋咗呢個問題。真正移除交由下方 cull 處理。 */
-          e._dead = true;
-          if (e.elite) console.log('[擊破] 精英「' + e.affix + '」· +' + (e.score || ELITE_SCORE));
-          break;
-        }
-        break;
-      }
     }
   }
 
@@ -1765,6 +1911,7 @@ function tick(dtMs) {
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
     if (e.kind !== 'bullet' && e.kind !== 'laser' && e.kind !== 'grunt') continue;
+    if (e.pending) continue; /* 預警未發射唔撞 */
     /* P1-5：雜魚有撞擊傷害 —— 撞到玩家會自己死。
        冇呢條規則嘅話，最優策略就係完全唔理雜魚任由佢飛走，
        「擊殺雜魚」變成冇誘因，等 P1-5 個設計目標失效。 */
@@ -1908,7 +2055,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.10.0 · 三難度', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.11.0 · 新敵+預警', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -2159,53 +2306,96 @@ function render() {
   for (const e of enemies) {
     if (e._dead) continue;
     if (e.kind === 'grunt') {
-      /* pxl：grunt / dive / elite 機頭朝下；失敗先回退三角 */
+      /* pxl：role 決定 sprite；失敗回退三角 */
       const frac = clamp(e.hp / (e.maxHp || 1), 0, 1);
-      const spr = e.elite ? 'elite' : (e.diving ? 'dive' : 'grunt');
-      const scale = e.elite ? 2.0 : (e.diving ? 1.7 : 1.55);
+      let spr = 'grunt', scale = e.mini ? 1.2 : 1.55, R = e.mini ? 6 : 8;
+      if (e.elite) { spr = 'elite'; scale = 2.0; R = 12; }
+      else if (e.diving) { spr = 'dive'; scale = 1.7; R = 9; }
+      else if (e.sniper) { spr = 'sniper'; scale = 1.75; R = 9; }
+      else if (e.shield) { spr = 'shield_e'; scale = 1.9; R = 11; }
+      else if (e.swarm) { spr = 'swarm'; scale = 1.6; R = 8; }
       const drawn = drawSprite(spr, e.x, e.y, scale);
-      const R = e.elite ? 12 : (e.diving ? 9 : 8);
       if (!drawn) {
-        ctx.fillStyle = e.elite
-          ? (frac > 0.4 ? '#ffd54a' : '#ff9a3c')
-          : (e.diving
-            ? (frac > 0.4 ? '#ff9a4a' : '#ff6a30')
-            : (frac > 0.4 ? '#ff9ec4' : '#ff6f9c'));
+        ctx.fillStyle = e.elite ? (frac > 0.4 ? '#ffd54a' : '#ff9a3c')
+          : e.sniper ? '#6cf' : e.shield ? '#4af' : e.swarm ? '#6f6'
+          : e.diving ? (frac > 0.4 ? '#ff9a4a' : '#ff6a30')
+          : (frac > 0.4 ? '#ff9ec4' : '#ff6f9c');
         ctx.beginPath();
         ctx.moveTo(e.x, e.y + R);
         ctx.lineTo(e.x - R * 0.85, e.y - R * 0.7);
         ctx.lineTo(e.x + R * 0.85, e.y - R * 0.7);
         ctx.closePath();
         ctx.fill();
-        ctx.strokeStyle = e.elite ? '#fff3c4' : '#ffd0e4';
+        ctx.strokeStyle = '#ffd0e4';
         ctx.lineWidth = 1;
         ctx.stroke();
       }
-      if (e.elite) {
-        ctx.strokeStyle = 'rgba(255,220,120,0.55)';
+      /* 狙擊預警線 */
+      if (e.sniper && e.warnMs > 0) {
+        const pulse = 0.45 + 0.55 * Math.sin(performance.now() / 80);
+        ctx.strokeStyle = 'rgba(255,220,60,' + pulse.toFixed(2) + ')';
         ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.arc(e.x, e.y, R + 4, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(e.x, e.y);
+        ctx.lineTo(e.warnTx, e.warnTy);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      /* 護盾弧 */
+      if (e.shield && e.shieldOn) {
+        ctx.strokeStyle = 'rgba(80,200,255,0.75)';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(e.x, e.y + 2, R + 3, Math.PI * 0.15, Math.PI * 0.85);
+        ctx.stroke();
+      }
+      if (e.elite || e.shield || e.sniper) {
         ctx.fillStyle = 'rgba(0,0,0,0.6)';
         ctx.fillRect(e.x - 14, e.y - R - 10, 28, 3);
-        ctx.fillStyle = frac > 0.4 ? '#ffd54a' : '#ff6b3c';
+        ctx.fillStyle = frac > 0.4 ? (e.sniper ? '#6cf' : e.shield ? '#4af' : '#ffd54a') : '#ff6b3c';
         ctx.fillRect(e.x - 14, e.y - R - 10, 28 * frac, 3);
+        if (e.elite) {
+          ctx.strokeStyle = 'rgba(255,220,120,0.55)';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.arc(e.x, e.y, R + 4, 0, Math.PI * 2); ctx.stroke();
+        }
       } else if (frac < 0.99) {
-        /* 普通／俯衝：受傷先出生命條，減少畫面噪音 */
         ctx.fillStyle = 'rgba(0,0,0,0.5)';
         ctx.fillRect(e.x - 8, e.y - R - 5, 16, 2);
-        ctx.fillStyle = e.diving
-          ? (frac > 0.4 ? '#ffc090' : '#ff6a30')
-          : (frac > 0.4 ? '#ffc8dd' : '#ff6f9c');
+        ctx.fillStyle = e.swarm ? '#8f8' : e.diving ? '#ffc090' : '#ffc8dd';
         ctx.fillRect(e.x - 8, e.y - R - 5, 16 * frac, 2);
       }
       if (e.label) {
-        ctx.fillStyle = '#ffe9a8';
+        ctx.fillStyle = e.sniper ? '#9ef' : e.shield ? '#8cf' : e.swarm ? '#afa' : '#ffe9a8';
         ctx.font = 'bold 8px monospace';
         ctx.textAlign = 'center';
         ctx.fillText(e.label, e.x, e.y + R + 11);
       }
     } else if (e.kind === 'bullet') {
-      if (!drawSprite('bullet_e', e.x, e.y, 1.2)) {
+      /* 預警線（pending aim / 短 warn spray） */
+      if (e.warnMs > 0 && (e.pending || e.warnFromX != null)) {
+        const pulse = 0.4 + 0.5 * Math.sin(performance.now() / 70);
+        ctx.strokeStyle = 'rgba(255,210,50,' + pulse.toFixed(2) + ')';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(e.warnFromX != null ? e.warnFromX : e.x, e.warnFromY != null ? e.warnFromY : e.y);
+        ctx.lineTo(e.warnTx != null ? e.warnTx : e.x, e.warnTy != null ? e.warnTy : e.y + 120);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      if (e.pending) {
+        /* 未發射：細點提示 */
+        ctx.fillStyle = 'rgba(255,220,80,0.8)';
+        ctx.beginPath(); ctx.arc(e.x, e.y, 2.5, 0, Math.PI * 2); ctx.fill();
+      } else if (e.split) {
+        ctx.fillStyle = '#fa6';
+        ctx.beginPath(); ctx.arc(e.x, e.y, 2.2, 0, Math.PI * 2); ctx.fill();
+      } else if (e.sniperShot) {
+        ctx.fillStyle = '#8ff';
+        ctx.fillRect(e.x - 1.5, e.y - 3, 3, 6);
+      } else if (!drawSprite('bullet_e', e.x, e.y, 1.2)) {
         ctx.fillStyle = '#f6c';
         ctx.fillRect(e.x - 2, e.y - 2, 4, 4);
       }
@@ -2362,7 +2552,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.10.0 已載入');
+console.log('[啟動] 末日救未來 v0.11.0 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 hudEl.tip.textContent = '點擊畫面開始';

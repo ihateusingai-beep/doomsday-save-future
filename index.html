@@ -467,7 +467,7 @@ function onStateEnter(s, from) {
     } else {
       runScore = 0;
     }
-    hudEl.tip.textContent = `第 ${lastStage} 關 · ${STAGE_TABLE[lastStage].name} · 拖曳／WASD · 空白鍵聚焦 · Shift 炸彈 · P／⏸ 暫停`;
+    hudEl.tip.textContent = `第 ${lastStage} 關 · ${STAGE_TABLE[lastStage].name} · 滑鼠跟機／拖曳／WASD · 自動開火 · 空白聚焦 · Shift 炸彈 · P 暫停`;
   } else if (s === STATE.CHOICE) {
     beginFreezeClocks();               /* modal freezes run timer (PLAN §Score) */
     choiceOffer = generateChoiceOffer();
@@ -924,21 +924,33 @@ canvas.addEventListener('pointerdown', (e) => {
 });
 
 canvas.addEventListener('pointermove', (e) => {
-  if (e.pointerId !== InputState.dragId) return;
+  if (!isStage(fsm.cur) || !ship) return;
   const rect = canvas.getBoundingClientRect();
   const cx = e.clientX, cy = e.clientY;
+  const px = (cx - rect.left) * VIEW_W / rect.width;
+  const py = (cy - rect.top)  * VIEW_H / rect.height;
+
+  /* PC／滑鼠／筆：hover 即跟機，唔使 click-drag。
+     一般子彈喺 tick() 自動開火 —— 只需移動滑鼠。 */
+  if (e.pointerType === 'mouse' || e.pointerType === 'pen') {
+    InputState.targetX = clamp(px, 8, VIEW_W - 8);
+    InputState.targetY = clamp(py, 8, PLAY_BOTTOM);
+    return;
+  }
+
+  /* 觸控／智慧白板：相對拖曳 + 8px 容差（PLAN #19） */
+  if (e.pointerId !== InputState.dragId) return;
   const dxCss = cx - InputState.dragOrigin.x;
   const dyCss = cy - InputState.dragOrigin.y;
   const distCss = Math.hypot(dxCss, dyCss);
   if (!InputState.touchMoved && distCss > DRAG_TOLERANCE_PX) {
     InputState.touchMoved = true;
   }
-  if (InputState.touchMoved && ship) {
-    /* 用畫布 rect 將 CSS 位移換算成內部座標位移 */
+  if (InputState.touchMoved) {
     const newX = InputState.shipOrigin.x + dxCss * VIEW_W / rect.width;
     const newY = InputState.shipOrigin.y + dyCss * VIEW_H / rect.height;
     InputState.targetX = clamp(newX, 8, VIEW_W - 8);
-    InputState.targetY = clamp(newY, 8, VIEW_H - 8);
+    InputState.targetY = clamp(newY, 8, PLAY_BOTTOM);
   }
 });
 
@@ -1182,7 +1194,7 @@ function resumePause() {
   hudEl.state.textContent = `狀態：${stateLabel(resumeTo)}`;
   hudEl.paused.textContent = '';
   if (STAGE_TABLE[lastStage]) {
-    hudEl.tip.textContent = `第 ${lastStage} 關 · ${STAGE_TABLE[lastStage].name} · 拖曳／WASD · 空白鍵聚焦 · Shift 炸彈 · P／⏸ 暫停`;
+    hudEl.tip.textContent = `第 ${lastStage} 關 · ${STAGE_TABLE[lastStage].name} · 滑鼠跟機／拖曳／WASD · 自動開火 · 空白聚焦 · Shift 炸彈 · P 暫停`;
   }
   console.log(`[狀態機] 已暫停 → ${stateLabel(resumeTo)} @ ${(performance.now()/1000).toFixed(2)}秒（唔補時間）`);
   return true;
@@ -1432,7 +1444,7 @@ function tick(dtMs) {
     ship.y = clamp(ship.y, 8, PLAY_BOTTOM);
   }
 
-  /* ---- 自動開火（彈數同傷害讀自強化） ---- */
+  /* ---- 自動開火（PC／觸控都唔使撳射；只需移動） ---- */
   ship.fireCD -= dtMs;
   if (ship.fireCD <= 0) {
     const n = Math.max(1, ship.bulletCount | 0);
@@ -2161,7 +2173,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.9.0 已載入');
+console.log('[啟動] 末日救未來 v0.9.1 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur));
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 hudEl.tip.textContent = '點擊畫面開始';

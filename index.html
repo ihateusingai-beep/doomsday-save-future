@@ -355,13 +355,17 @@ const InputState = {
   keys: { up:false, down:false, left:false, right:false },
 
   /* 聚焦／炸彈而家由冷卻時間驅動（focusActiveUntil、bombCDUntil
-     係模組層級全域變數），唔係讀取後即清嘅旗標 */
+     係模組層級變量變數），唔係讀取後即清嘅旗標 */
 
-  /* 拖曳記帳 */
+  /* 拖曳記帳（觸控用） */
   dragId: null,
   dragOrigin: { x:0, y:0 },
   shipOrigin: { x:0, y:0 },
   touchMoved: false,
+
+  /* 輸入裝置：mouse 用絕對跟機；touch 用相對拖曳 */
+  device: 'mouse',           /* 'mouse' | 'touch' | 'key' */
+  touchActive: false,        /* 觸控拖曳進行中 → 忽略合成 mouse 事件 */
 };
 
 /* 智慧白板去噪：8px 觸控容差（PLAN v2 #19） */
@@ -910,36 +914,70 @@ canvas.addEventListener('pointerdown', (e) => {
     }
     return;
   }
-  /* STAGE_n：暫停掣 → 技能鍵 → 拖曳 */
+  /* STAGE_n：暫停掣 → 技能鍵 → 觸控先起拖（滑鼠唔使 drag） */
   if (isStage(fsm.cur)) {
     if (hitPauseBtn(px, py)) { enterPause('manual'); return; }
     const ab = hitAbilityBtn(px, py);
     if (ab === 'focus') { tryFocus(); return; }
     if (ab === 'bomb')  { tryBomb();  return; }
-    InputState.dragId = e.pointerId;
-    InputState.dragOrigin = { x: cx, y: cy };
-    InputState.shipOrigin = { x: ship.x, y: ship.y };
-    InputState.touchMoved = false;
+    /* 只有 touch 先記 drag；mouse 已由 window mousemove 絕對跟機 */
+    if (e.pointerType === 'touch') {
+      InputState.device = 'touch';
+      InputState.touchActive = true;
+      InputState.dragId = e.pointerId;
+      InputState.dragOrigin = { x: cx, y: cy };
+      InputState.shipOrigin = { x: ship.x, y: ship.y };
+      InputState.touchMoved = false;
+      try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+    } else {
+      /* mouse/pen click on empty：即刻對準游標（兼 autofocus 頁面） */
+      InputState.device = 'mouse';
+      aimFromClient(cx, cy);
+    }
   }
 });
 
-canvas.addEventListener('pointermove', (e) => {
+/* 客戶端座標 → 內部 320×480（含 CSS 縮放） */
+function aimFromClient(clientX, clientY) {
+  if (!ship) return;
+  const rect = canvas.getBoundingClientRect();
+  if (rect.width < 1 || rect.height < 1) return;
+  /* 游標唔喺畫布上：保持上一個目標（唔甩去邊） */
+  if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return;
+  const px = (clientX - rect.left) * VIEW_W / rect.width;
+  const py = (clientY - rect.top)  * VIEW_H / rect.height;
+  InputState.targetX = clamp(px, 8, VIEW_W - 8);
+  InputState.targetY = clamp(py, 8, PLAY_BOTTOM);
+}
+
+/* PC 滑鼠：window 級 mousemove —— 唔依賴 canvas hover、唔使撳住左鍵。
+   舊實作只 listen canvas pointermove，部分瀏覽器／嵌入環境
+   無 buttons 時唔派 pointermove 去 canvas，導致一定要 click-drag。 */
+function onDesktopAimMove(e) {
   if (!isStage(fsm.cur) || !ship) return;
+  /* iPad 合成 mouse：touch 進行中忽略，避免拖完彈一次 */
+  if (InputState.touchActive) return;
+  if (e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents) return;
+  InputState.device = 'mouse';
+  aimFromClient(e.clientX, e.clientY);
+}
+window.addEventListener('mousemove', onDesktopAimMove, { passive: true });
+/* 兼容只派 pointer 事件嘅環境（同樣唔使 buttons） */
+window.addEventListener('pointermove', (e) => {
+  if (e.pointerType === 'touch') return; /* 觸控行下面 canvas handler */
+  if (!isStage(fsm.cur) || !ship) return;
+  if (InputState.touchActive) return;
+  InputState.device = (e.pointerType === 'pen') ? 'pen' : 'mouse';
+  aimFromClient(e.clientX, e.clientY);
+}, { passive: true });
+
+canvas.addEventListener('pointermove', (e) => {
+  /* 觸控／智慧白板：相對拖曳 + 8px 容差（PLAN #19） */
+  if (e.pointerType !== 'touch') return;
+  if (!isStage(fsm.cur) || !ship) return;
+  if (e.pointerId !== InputState.dragId) return;
   const rect = canvas.getBoundingClientRect();
   const cx = e.clientX, cy = e.clientY;
-  const px = (cx - rect.left) * VIEW_W / rect.width;
-  const py = (cy - rect.top)  * VIEW_H / rect.height;
-
-  /* PC／滑鼠／筆：hover 即跟機，唔使 click-drag。
-     一般子彈喺 tick() 自動開火 —— 只需移動滑鼠。 */
-  if (e.pointerType === 'mouse' || e.pointerType === 'pen') {
-    InputState.targetX = clamp(px, 8, VIEW_W - 8);
-    InputState.targetY = clamp(py, 8, PLAY_BOTTOM);
-    return;
-  }
-
-  /* 觸控／智慧白板：相對拖曳 + 8px 容差（PLAN #19） */
-  if (e.pointerId !== InputState.dragId) return;
   const dxCss = cx - InputState.dragOrigin.x;
   const dyCss = cy - InputState.dragOrigin.y;
   const distCss = Math.hypot(dxCss, dyCss);
@@ -957,7 +995,8 @@ canvas.addEventListener('pointermove', (e) => {
 function endDrag(e) {
   if (e.pointerId === InputState.dragId) {
     InputState.dragId = null;
-    /* 如果從未過容差線，當作點擊（pointerdown 已處理） */
+    InputState.touchActive = false;
+    try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
   }
 }
 canvas.addEventListener('pointerup',    endDrag);
@@ -1422,6 +1461,7 @@ function tick(dtMs) {
   if (InputState.keys.up)    vy -= 1;
   if (InputState.keys.down)  vy += 1;
   if (vx || vy) {
+    InputState.device = 'key';
     const len = Math.hypot(vx, vy);
     const step = ship.speed * (dtMs / 16.67);  /* ship.speed is per-frame @60fps */
     ship.x = clamp(ship.x + (vx/len) * step, 8, VIEW_W - 8);
@@ -2173,7 +2213,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.9.1 已載入');
+console.log('[啟動] 末日救未來 v0.9.2 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur));
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 hudEl.tip.textContent = '點擊畫面開始';

@@ -7,3 +7,5 @@ node_modules/
 
 # pxl 建置產物（runtime 用 index.html 內嵌 base64）
 out/
+# 一次性驗證腳本殘留（正式版見 test_wave.js）
+.t_wave_test.js

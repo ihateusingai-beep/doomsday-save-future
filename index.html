@@ -474,8 +474,9 @@ function onStateEnter(s, from) {
        舊代碼喺呢度再覆寫一次 SHIPS[chassis].shield，令玩家揀咗嘅護盾卡
        每關一入去就即刻被清走 —— 100% 死卡。 */
     ship.hp = ship.maxHp;
-    /* 重置波次排程 */
-    waveQueue = (WAVE_TEMPLATES[lastStage] || []).map(w => ({ at: w.at, spawn: w.spawn, fired: false }));
+    /* 重置波次排程 —— v3.7 P0：由 runSeed 組波（同 seed → 同序列）。
+       S1 亦經 assembleWaves，但用 STAGE_RAND[1].slots 鎖死教學類別順序（#49）。 */
+    waveQueue = assembleWaves(lastStage, runSeed);
     waveCursor = 0;
     /* P1-5：boss 唔喺呢度出。改為波次清完之後由 tick() 召喚，
        令每關有「雜魚 → boss」嘅正確節奏。 */
@@ -730,6 +731,146 @@ const WAVE_TEMPLATES = {
     { at:39000, spawn: [{ type:'shield', count: 1 }, { type:'grunt', count: 5, hp: 11 }] },
   ],
 };
+
+/* ---------- 8b. 隨機波次（PLAN v3.7 #34–#35；S1 內容 roll 見 v3.8 #49） ---------- */
+/* 設計要點：
+   1) at[] 唔重複抄 —— 直接由 WAVE_TEMPLATES 抽出，令
+      「waveCount === ats.length === STAGE_TABLE.waveCount」自動成立（#33）。
+   2) WAVE_CHUNKS[].spawn 嘅欄位同舊 WAVE_TEMPLATES 完全一致，
+      所以 assembleWaves 之後 game logic 一行都唔使改。
+   3) 玩法 random 全部走 seed，tick() 內唔准用 Math.random()（RNG 規則 4）。 */
+
+/* mulberry32：32 位種子 → [0,1) 序列。同 seed 必出完全相同序列。 */
+function mulberry32(a) {
+  let s = a >>> 0;
+  return function () {
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+/* 每關由 hash(runSeed, stageId) 派生獨立 rng —— 關之間互不影響但都可複現（RNG 規則 1）。 */
+function stageRngFor(seed, stageId) {
+  let h = (seed ^ 0x9E3779B9) >>> 0;
+  h = Math.imul(h ^ Math.imul(stageId | 0, 0x85EBCA6B), 0xC2B2AE35) >>> 0;
+  return mulberry32(h);
+}
+
+/* 本局種子（#34）：?seed=N 就鎖 N；否則時間 ^ 隨機。重開一局換新 seed。 */
+let runSeed = 0;
+function initRunSeed() {
+  const m = /[?&]seed=(\d+)/.exec(location.search);
+  if (m) {
+    runSeed = (parseInt(m[1], 10) || 0) >>> 0;
+  } else {
+    runSeed = (Date.now() ^ Math.floor(Math.random() * 1e9)) >>> 0;
+  }
+  console.log('[種子] 本局 runSeed =', runSeed);
+  return runSeed;
+}
+
+/* 波肉：可重用 chunk。tags 供 P3 入關標籤統計用。 */
+const WAVE_CHUNKS = {
+  /* 雜兵 */
+  g_s:    { tags:['雜兵'], spawn:[{type:'grunt', count:3, hp:8}] },
+  g_m:    { tags:['雜兵'], spawn:[{type:'grunt', count:4, hp:9}] },
+  g_l:    { tags:['雜兵'], spawn:[{type:'grunt', count:5, hp:10}] },
+  g_xl:   { tags:['雜兵'], spawn:[{type:'grunt', count:6, hp:11}] },
+  /* 彈幕（sp_w 有預警線，唔可以出現喺教學關） */
+  sp_s:   { tags:['彈幕'], spawn:[{type:'spray', count:6, spread:0.40, speed:0.070}] },
+  sp_m:   { tags:['彈幕'], spawn:[{type:'spray', count:9, spread:0.60, speed:0.070}] },
+  sp_l:   { tags:['彈幕'], spawn:[{type:'spray', count:8, spread:0.50, speed:0.080}] },
+  sp_l2:  { tags:['彈幕'], spawn:[{type:'spray', count:10, spread:0.55, speed:0.085}] },
+  sp_w:   { tags:['彈幕'], spawn:[{type:'spray', count:8, spread:0.50, speed:0.110, warn:true}] },
+  /* 瞄準 */
+  ai_s:   { tags:['瞄準'], spawn:[{type:'aim', count:3, speed:0.100}] },
+  ai_s2:  { tags:['瞄準'], spawn:[{type:'aim', count:4, speed:0.105}] },
+  ai_w:   { tags:['瞄準'], spawn:[{type:'aim', count:3, speed:0.110, warn:true}] },
+  /* 環射 / 流星 */
+  rg_s:   { tags:['環射'], spawn:[{type:'ring', count:8, speed:0.070}] },
+  rg_m:   { tags:['環射'], spawn:[{type:'ring', count:8, speed:0.090}] },
+  rg_l:   { tags:['環射'], spawn:[{type:'ring', count:8, speed:0.100}] },
+  mt_s:   { tags:['流星'], spawn:[{type:'meteor', count:4, speed:0.130}] },
+  mt_m:   { tags:['流星'], spawn:[{type:'meteor', count:5, speed:0.130}] },
+  mt_l:   { tags:['流星'], spawn:[{type:'meteor', count:6, speed:0.140}] },
+  /* 俯衝 / 狙擊 / 護盾 / 精英 / 群 */
+  dv_s:   { tags:['俯衝'], spawn:[{type:'dive', count:4, hp:8}] },
+  dv_m:   { tags:['俯衝'], spawn:[{type:'dive', count:5, hp:8}] },
+  dv_l:   { tags:['俯衝'], spawn:[{type:'dive', count:6, hp:9}] },
+  sn_1:   { tags:['狙擊'], spawn:[{type:'sniper', count:1}] },
+  sn_2:   { tags:['狙擊'], spawn:[{type:'sniper', count:2}] },
+  sh_1:   { tags:['護盾'], spawn:[{type:'shield', count:1}] },
+  el_1:   { tags:['精英'], spawn:[{type:'elite', count:1, hp:24, affix:'重裝'}] },
+  el_2:   { tags:['精英'], spawn:[{type:'elite', count:2, hp:26, affix:'重裝'}] },
+  sw_2:   { tags:['群'], spawn:[{type:'swarm', count:2}] },
+  sw_3:   { tags:['群'], spawn:[{type:'swarm', count:3}] },
+  /* 混編 */
+  mix_gr_sn: { tags:['狙擊','雜兵'], spawn:[{type:'grunt', count:3, hp:10}, {type:'sniper', count:1}] },
+  mix_sh_gr: { tags:['護盾','雜兵'], spawn:[{type:'shield', count:1}, {type:'grunt', count:4, hp:10}] },
+  mix_sw_sn: { tags:['群','狙擊'], spawn:[{type:'swarm', count:4}, {type:'sniper', count:1}] },
+};
+
+/* 每關抽波池（#35：8–12 個 chunk，可跨關共用）。
+   S1 用 slots：每槽鎖死類別同規模（教學順序），只喺同規模內抽變體（#49）。
+   ⚠️ S1 七波冇 dive／elite／warn —— 俯衝教學喺 S3 先出現。 */
+const STAGE_RAND = {
+  1: { slots: [
+        ['g_s'],                    // 1 波 1500  基本雜魚
+        ['sp_s'],                   // 2 波 4500  第一次彈幕
+        ['g_s','g_m'],              // 3 波 7500
+        ['ai_s','ai_s2'],           // 4 波 11000 第一次被瞄準
+        ['g_m','g_l'],              // 5 波 15000
+        ['sp_l','sp_l2'],           // 6 波 19000 彈幕升級（無 warn）
+        ['g_m','g_l'],              // 7 波 23000
+     ] },
+  2: { pool: ['g_m','g_l','g_xl','sp_s','sp_m','sp_l','sp_w','ai_s','ai_w','rg_s'] },
+  3: { pool: ['mt_s','mt_m','mt_l','g_l','dv_s','dv_m','dv_l','rg_m','sn_1','sn_2','mix_gr_sn'] },
+  4: { pool: ['rg_m','rg_l','g_l','g_xl','dv_m','sh_1','el_1','el_2','sn_1','sn_2','mix_sh_gr'] },
+  5: { pool: ['mt_m','mt_l','g_xl','dv_l','el_1','el_2','sw_2','sw_3','sp_w','rg_l','mix_sw_sn','mix_sh_gr'] },
+};
+
+/* at[] 由 WAVE_TEMPLATES 動態抽出（單一真相，唔重複維護） */
+const STAGE_ATS = {};
+for (const k of Object.keys(WAVE_TEMPLATES)) {
+  STAGE_ATS[k] = WAVE_TEMPLATES[k].map(w => w.at);
+}
+
+/* 抽一個 chunk id。相鄰唔可以同 id（cooldown ≥ 1 槽，#35）；
+   最多重抽 8 次，之後強制接受，避免細 pool 死循環（RNG 規則 2）。 */
+function pickChunkId(pool, rng, lastId) {
+  let pick = pool[Math.floor(rng() * pool.length)] || pool[0];
+  for (let t = 0; t < 8; t++) {
+    pick = pool[Math.floor(rng() * pool.length)] || pool[0];
+    if (pick !== lastId) return pick;
+  }
+  return pick;   /* 強制接受 */
+}
+
+/* 組波：同 seed → 同序列。回傳欄位同舊格式相容（at / spawn / fired）。 */
+function assembleWaves(stageId, seed) {
+  const cfg = STAGE_RAND[stageId] || STAGE_RAND[1];
+  const ats = STAGE_ATS[stageId] || STAGE_ATS[1];
+  const rng = stageRngFor(seed, stageId);
+  const out = [];
+  let lastId = null;
+  for (let i = 0; i < ats.length; i++) {
+    const pool = cfg.slots ? (cfg.slots[i] || cfg.slots[0]) : cfg.pool;
+    const id = pickChunkId(pool, rng, lastId);
+    lastId = id;
+    const ch = WAVE_CHUNKS[id];
+    /* 深拷貝 spawn，避免 enemy 生成時改欄位污染 WAVE_CHUNKS（每次入關都新嘅） */
+    out.push({ at: ats[i], chunk: id, spawn: ch.spawn.map(s => Object.assign({}, s)), fired: false });
+  }
+  /* 不變式自檢：波數必須同 STAGE_TABLE 一致，唔一致要響（#33 / 驗收煙測） */
+  const expect = (STAGE_TABLE[stageId] || {}).waveCount;
+  if (expect != null && out.length !== expect) {
+    console.warn('[波次] 不變式失敗：S' + stageId + ' 組出 ' + out.length + ' 波，STAGE_TABLE 寫 ' + expect);
+  }
+  console.log('[波次] S' + stageId + ' · seed ' + seed + ' · ' + out.length + ' 波 ·',
+              out.map(w => w.chunk).join(' → '));
+  return out;
+}
 
 /* 波次產生佇列（隨關卡時間推進而消耗） */
 let waveQueue = [];
@@ -1192,7 +1333,12 @@ window.addEventListener('keyup', (e) => {
   if (k === 'arrowright' || k === 'd') InputState.keys.right = false;
 });
 
+/* 開局唯一入口：每次開一局喺呢度產生新 seed。
+   ⚠️ 唔可以放喺 resetRunFresh() —— 嗰度只喺一局完結（goRetry / goTitle）時叫，
+   今次開局唔經過佢，會令 runSeed 永遠係 0（實測踩過）。
+   放喺呢度就保證「一局一次」，兩條路徑（首次開局 / 重試）都覆蓋到。 */
 function pickShipAndStart(id) {
+  initRunSeed();
   pickShip(id);
   fsm.set(STATE.STAGE_1);
 }
@@ -2002,7 +2148,7 @@ function tick(dtMs) {
   /* 必須喺 tip 賦值之後，否則下一行會即刻覆蓋咗 */
   if (DEBUG) {
     hudEl.tip.textContent =
-      `擊殺 ${runKills}（雜魚 ${runGrunts} · boss ${runKills - runGrunts}）　擦彈 ${grazeCount}（能量 ${grazeEnergy}/${GRAZE_ENERGY_NEED}）　` +
+      `種子 ${runSeed}　擊殺 ${runKills}（雜魚 ${runGrunts} · boss ${runKills - runGrunts}）　擦彈 ${grazeCount}（能量 ${grazeEnergy}/${GRAZE_ENERGY_NEED}）　` +
       hudEl.tip.textContent;
   }
 }
@@ -2057,7 +2203,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.12.0 · 三機六軸', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.13.0 · 隨機波次', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -2554,7 +2700,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.12.0 已載入');
+console.log('[啟動] 末日救未來 v0.13.0 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 hudEl.tip.textContent = '點擊畫面開始';

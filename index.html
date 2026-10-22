@@ -136,11 +136,11 @@ const STATE_LABEL = Object.freeze({
 });
 const stateLabel = (s) => STATE_LABEL[s] || s;
 
-/* SHIPS（PLAN v2 #1：1 架 × 3 種機體 A/B/C） */
+/* SHIPS（PLAN #1：A速/B盾/C火 — 移速·子彈數·傷害·彈速·射速·盾 六軸） */
 const SHIPS = Object.freeze({
-  A: { id:'A', name:'速', speed:3.2, shield:1, fireRate:10 },
-  B: { id:'B', name:'盾', speed:2.4, shield:3, fireRate:14 },
-  C: { id:'C', name:'火', speed:2.0, shield:1, fireRate:6  },
+  A: { id:'A', name:'速', speed:3.6, shield:1, fireRate:14, bulletCount:1, bulletDmg:1, bulletSpd:0.38 },
+  B: { id:'B', name:'盾', speed:2.2, shield:3, fireRate:8,  bulletCount:2, bulletDmg:1, bulletSpd:0.28 },
+  C: { id:'C', name:'火', speed:1.8, shield:0, fireRate:5,  bulletCount:3, bulletDmg:2, bulletSpd:0.24 },
 });
 
 const isStage = (s) => s && s.indexOf('STAGE_') === 0;
@@ -590,8 +590,9 @@ function pickShip(id) {
     speed: c.speed,
     fireRate: c.fireRate,
     fireCD: 0,
-    bulletCount: 2,
-    bulletDmg: 1,
+    bulletCount: c.bulletCount,
+    bulletDmg: c.bulletDmg,
+    bulletSpd: c.bulletSpd,
     bombCD: 12000 * d.bombCdMul,
     focusFactor: 0.3,
     focusDuration: 4000,
@@ -608,15 +609,16 @@ function pickShip(id) {
 
 function applyUpgrades() {
   if (!ship) return;
-  /* 先重設返基礎值（含難度開局） */
+  /* 先重設返基礎值（含難度開局 + 機體六軸） */
   const c = SHIPS[ship.chassis];
   const d = D();
   ship.maxHp        = d.startHp;
   ship.shield       = c.shield + (d.shieldBonus || 0);
   ship.speed        = c.speed;
   ship.fireRate     = c.fireRate;
-  ship.bulletCount  = 2;
-  ship.bulletDmg    = 1;
+  ship.bulletCount  = c.bulletCount;
+  ship.bulletDmg    = c.bulletDmg;
+  ship.bulletSpd    = c.bulletSpd;
   ship.bombCD       = 12000 * d.bombCdMul;
   ship.focusFactor  = 0.3;
   ship.focusDuration= 4000;
@@ -1664,8 +1666,8 @@ function tick(dtMs) {
   if (ship.fireCD <= 0) {
     const n = Math.max(1, ship.bulletCount | 0);
     const mid = (n - 1) / 2;
-    const spread = n <= 2 ? 0.08 : 0.12;   /* rad fan; 2-way stays tight */
-    const spd = 0.30;
+    const spread = n <= 1 ? 0 : (n <= 2 ? 0.08 : 0.12); /* 1 彈直射；2 緊；3+ 散 */
+    const spd = ship.bulletSpd || 0.30;
     const dmg = ship.bulletDmg || 1;
     for (let i = 0; i < n; i++) {
       const a = -Math.PI / 2 + (i - mid) * spread;  /* upward */
@@ -2055,7 +2057,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.11.0 · 新敵+預警', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.12.0 · 三機六軸', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -2138,9 +2140,9 @@ function render() {
     ctx.fillStyle = '#9ab';
     ctx.fillText('揀你嘅逃生船', VIEW_W/2, 56);
     const labels = [
-      { id:'A', n:'速', sub:'高速 射速 10', col:'#0ff' },
-      { id:'B', n:'盾', sub:'護盾 3',       col:'#4df' },
-      { id:'C', n:'火', sub:'重火 射速 6',  col:'#f6a' },
+      { id:'A', n:'速', sub:'1彈·快·傷1', col:'#0ff' },
+      { id:'B', n:'盾', sub:'2彈·盾3·傷1', col:'#4df' },
+      { id:'C', n:'火', sub:'3彈·慢·傷2',  col:'#f6a' },
     ];
     labels.forEach((lab, i) => {
       const r = shipCardsLayout().rect(i);
@@ -2552,7 +2554,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.11.0 已載入');
+console.log('[啟動] 末日救未來 v0.12.0 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 hudEl.tip.textContent = '點擊畫面開始';

@@ -250,6 +250,267 @@ function spawnBoom(x, y) {
   spawnSparks(x, y, 10, 0.18);
   screenFlash = Math.max(screenFlash, 0.55);
 }
+
+/* ---------- 音訊（PLAN v3.9 #50–#56）---------- */
+/* 全部 WebAudio 即時合成：零位元組、零網絡請求、可即時調參（#51）。
+   AudioContext 延後到玩家第一次開音效先建立，並喺同一個手勢內 resume()（#56）。
+   係咪開／幾大聲 → dsf.audio / dsf.vol.bgm / dsf.vol.sfx（#52）。 */
+const LS_AUDIO = 'dsf.audio', LS_VOL_BGM = 'dsf.vol.bgm', LS_VOL_SFX = 'dsf.vol.sfx';
+const VOL_STEPS = 5;          /* 0–5 檔 */
+const MAX_VOICES = 12;        /* 同時發聲上限，超出丟棄新聲（#55） */
+const SFX_THROTTLE_MS = 70;   /* 開火音效節流：射速 14/秒唔可以逐發出聲 */
+
+let audioOn = false;
+let volBgm = 3, volSfx = 4;   /* 0–5 */
+let actx = null, masterGain = null, bgmGain = null, sfxGain = null;
+let noiseBuf = null;
+let voices = 0;
+const sfxLastAt = Object.create(null);   /* 每種音效上次出聲時間戳 */
+
+/* 建立音訊圖。只可以喺用戶手勢內叫（iOS #56）。 */
+function ensureAudio() {
+  if (actx) return actx;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return null;
+  actx = new AC();
+  masterGain = actx.createGain(); masterGain.gain.value = 1; masterGain.connect(actx.destination);
+  bgmGain = actx.createGain();    bgmGain.gain.value = 0;    bgmGain.connect(masterGain);
+  sfxGain = actx.createGain();    sfxGain.gain.value = 0;    sfxGain.connect(masterGain);
+  /* 1 秒白噪聲 buffer，畀所有噪聲類音效重用（免每次 new Buffer） */
+  noiseBuf = actx.createBuffer(1, actx.sampleRate, actx.sampleRate);
+  const d = noiseBuf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  applyVolumes();
+  return actx;
+}
+/* 音量檔 → 實際增益。用平方曲線，感知上更平均。 */
+function volToGain(v) { const n = Math.max(0, Math.min(VOL_STEPS, v | 0)); return (n / VOL_STEPS) * (n / VOL_STEPS); }
+function applyVolumes() {
+  if (!actx) return;
+  const on = audioOn ? 1 : 0;
+  masterGain.gain.setTargetAtTime(on, actx.currentTime, 0.02);
+  bgmGain.gain.setTargetAtTime(volToGain(volBgm), actx.currentTime, 0.02);
+  sfxGain.gain.setTargetAtTime(volToGain(volSfx), actx.currentTime, 0.02);
+}
+
+/* ---------- SFX 合成原語 ---------- */
+function tone(o) {
+  if (!actx || !audioOn) return;
+  if (voices >= MAX_VOICES) return;                       /* #55 聲音預算 */
+  const t0 = actx.currentTime + (o.delay || 0);
+  const dur = o.dur || 0.08;
+  const osc = actx.createOscillator();
+  osc.type = o.type || 'square';
+  osc.frequency.setValueAtTime(o.f0, t0);
+  if (o.f1 != null) osc.frequency.exponentialRampToValueAtTime(Math.max(1, o.f1), t0 + dur);
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0001, o.gain || 0.12), t0 + (o.atk || 0.006));
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  osc.connect(g); g.connect(sfxGain);
+  osc.start(t0); osc.stop(t0 + dur + 0.02);
+  voices++;
+  osc.onended = () => { voices = Math.max(0, voices - 1); };
+}
+function noise(o) {
+  if (!actx || !audioOn || !noiseBuf) return;
+  if (voices >= MAX_VOICES) return;
+  const t0 = actx.currentTime + (o.delay || 0);
+  const dur = o.dur || 0.06;
+  const src = actx.createBufferSource();
+  src.buffer = noiseBuf;
+  src.loop = true;
+  const flt = actx.createBiquadFilter();
+  flt.type = o.filter || 'bandpass';
+  flt.frequency.setValueAtTime(o.fc || 1800, t0);
+  if (o.fc1 != null) flt.frequency.exponentialRampToValueAtTime(Math.max(40, o.fc1), t0 + dur);
+  flt.Q.value = o.q == null ? 1.2 : o.q;
+  const g = actx.createGain();
+  g.gain.setValueAtTime(Math.max(0.0001, o.gain || 0.1), t0);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  src.connect(flt); flt.connect(g); g.connect(sfxGain);
+  src.start(t0); src.stop(t0 + dur + 0.02);
+  voices++;
+  src.onended = () => { voices = Math.max(0, voices - 1); };
+}
+
+/* ---------- 12 個 SFX（#53）---------- */
+const SFX = {
+  /* 開火：最高頻，節流 70ms，音量壓到極低（#55） */
+  shoot() { tone({ type:'square', f0:1180, f1:760, dur:0.035, gain:0.028 }); },
+  /* 擊中：最頻繁，所以最短最輕 */
+  hit()   { noise({ fc:2600, fc1:1400, dur:0.035, gain:0.05, q:0.9 }); },
+  /* 擊殺：比擊中有明確音高下跌，製造「收埋咗」嘅滿足感 */
+  kill()  { tone({ type:'square', f0:640, f1:210, dur:0.11, gain:0.075 });
+            noise({ fc:1500, fc1:500, dur:0.08, gain:0.045 }); },
+  /* 擦彈：獎勵聲要輕，唔可以蓋過危險提示 */
+  graze() { tone({ type:'triangle', f0:2100, f1:2750, dur:0.045, gain:0.035 }); },
+  /* 受傷：唯一要玩家「感覺到出事」嘅聲，低頻為主 */
+  hurt()  { tone({ type:'sawtooth', f0:180, f1:70, dur:0.2, gain:0.16 });
+            noise({ fc:700, fc1:200, dur:0.16, gain:0.1 }); },
+  /* 死亡：長下滑，戲劇性下墜 */
+  die()   { tone({ type:'sawtooth', f0:420, f1:55, dur:0.85, gain:0.16 });
+            tone({ type:'square', f0:210, f1:30, dur:0.9, gain:0.1, delay:0.04 }); },
+  /* 炸彈：全屏清彈要有重量 */
+  bomb()  { noise({ filter:'lowpass', fc:1400, fc1:160, dur:0.5, gain:0.24, q:0.6 });
+            tone({ type:'sine', f0:120, f1:34, dur:0.55, gain:0.22 }); },
+  /* 聚焦：上行掃頻，時間變慢嘅聽覺提示 */
+  focus() { tone({ type:'sine', f0:380, f1:1500, dur:0.3, gain:0.11 });
+            noise({ fc:700, fc1:3200, dur:0.3, gain:0.035 }); },
+  /* 強化出現：三音上行，提示「有嘢揀」 */
+  offer() { [0,0.07,0.14].forEach((d,i)=> tone({ type:'triangle', f0:[784,988,1319][i], dur:0.1, gain:0.09, delay:d })); },
+  /* 強化已揀：確認悶響 */
+  pick()  { tone({ type:'triangle', f0:1046, f1:1568, dur:0.13, gain:0.1 }); },
+  /* UI 點擊：極輕 */
+  click() { noise({ fc:3200, dur:0.022, gain:0.055, q:2 }); },
+  /* boss 出場：長低音，場面感 */
+  boss()  { tone({ type:'sawtooth', f0:70, dur:0.9, gain:0.19 });
+            tone({ type:'sawtooth', f0:105, dur:0.85, gain:0.13, delay:0.05 });
+            noise({ filter:'lowpass', fc:900, fc1:120, dur:0.7, gain:0.09 }); },
+};
+/* 統一入口：開 / 關都安全；非發聲類音效套用 60ms 去重（#55） */
+function sfx(name) {
+  if (!actx || !audioOn) return;
+  const fn = SFX[name];
+  if (!fn) return;
+  const now = performance.now();
+  const gap = name === 'shoot' ? SFX_THROTTLE_MS : 60;
+  if (now - (sfxLastAt[name] || 0) < gap) return;
+  sfxLastAt[name] = now;
+  fn();
+}
+
+/* ---------- 開關 / 音量 ---------- */
+function loadAudioPrefs() {
+  audioOn = lsRead(LS_AUDIO) === 1;
+  volBgm = Math.max(0, Math.min(VOL_STEPS, lsRead(LS_VOL_BGM) || 3));
+  volSfx = Math.max(0, Math.min(VOL_STEPS, lsRead(LS_VOL_SFX) || 4));
+}
+function setAudioOn(on) {
+  const first = !actx;
+  if (on) ensureAudio();                       /* iOS：必須喺手勢內叫 */
+  audioOn = !!on;
+  lsWrite(LS_AUDIO, audioOn ? 1 : 0);
+  if (audioOn && actx) {
+    if (actx.state === 'suspended') actx.resume();   /* #56 同一手勢內解鎖 */
+    if (first) sfx('click');
+    Bgm.setPlaying(audioOn && Bgm.wanted());
+  }
+  applyVolumes();
+}
+function bumpVol(which, d) {
+  if (which === 'bgm') volBgm = Math.max(0, Math.min(VOL_STEPS, volBgm + d));
+  else                volSfx = Math.max(0, Math.min(VOL_STEPS, volSfx + d));
+  lsWrite(which === 'bgm' ? LS_VOL_BGM : LS_VOL_SFX, which === 'bgm' ? volBgm : volSfx);
+  applyVolumes();
+  if (audioOn) sfx('click');
+}
+/* 分頁隱藏 → suspend，返回 → 跟返遊戲嘅暫停狀態（#56） */
+document.addEventListener('visibilitychange', () => {
+  if (!actx) return;
+  if (document.hidden) { if (actx.state === 'running') actx.suspend(); }
+  else if (audioOn && actx.state === 'suspended' && !audioPaused()) actx.resume();
+});
+function audioPaused() { return audioOn && (!Bgm.wanted()); }
+
+/* ---------- BGM：霓虹合成器 / synthwave（PLAN #54）---------- */
+/* lookahead 調度器：25ms 心跳、提前 100ms 排程。
+   唔可以用 setTimeout 逐音排程——會飄、會 jitter（瀏覽器 throttle 定時器）。 */
+const BGM_BPM = 128;
+const BGM_STEPS = 64;            /* 4 小節 × 16 分音符 */
+const midiHz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+/* 進行：Am – F – C – G（每小節一個和弦）。數字係 MIDI note。 */
+const BGM_CHORDS = [
+  [45, 52, 57, 60, 64],   /* Am */
+  [41, 48, 53, 57, 60],   /* F  */
+  [48, 52, 55, 60, 64],   /* C  */
+  [43, 50, 55, 59, 62],   /* G  */
+];
+/* arp 節奏型：16 分音符上落，1 = 發聲 */
+const BGM_ARP = [1,0,1,1, 0,1,0,1, 1,0,1,0, 0,1,1,0];
+
+const Bgm = {
+  timer: null, nextTime: 0, step: 0, playing: false,
+  /* 應該唔應該響：音效總開關開住 + 遊戲冇暫停 */
+  wanted() { return audioOn && actx && actx.state === 'running'; },
+  setPlaying(on) {
+    if (on && !this.playing) {
+      this.playing = true;
+      this.step = 0;
+      this.nextTime = actx.currentTime + 0.08;
+      this.timer = setInterval(() => this.sched(), 25);
+      this.sched();
+    } else if (!on && this.playing) {
+      this.playing = false;
+      if (this.timer) { clearInterval(this.timer); this.timer = null; }
+    }
+  },
+  sched() {
+    if (!actx || !this.playing) return;
+    const spb = 60 / BGM_BPM;                 /* 每拍秒 */
+    const stepDur = spb / 4;                  /* 16 分音符 */
+    while (this.nextTime < actx.currentTime + 0.1) {
+      this.step_(this.step, this.nextTime, stepDur);
+      this.nextTime += stepDur;
+      this.step = (this.step + 1) % BGM_STEPS;
+    }
+  },
+  /* 四層：bass / arp / pad / 鼓組 */
+  step_(i, t, stepDur) {
+    const chord = BGM_CHORDS[Math.floor(i / 16) % 4];
+    const inBar = i % 16;
+    const root = chord[0];
+
+    /* bass：八分音符，根音 + 每拍升八度，令節奏有推進 */
+    if (inBar % 2 === 0) {
+      this.voice('square', midiHz(root - 12), t, stepDur * 1.8, 0.055);
+      if (inBar % 8 === 4) this.voice('square', midiHz(root), t, stepDur * 1.2, 0.038);
+    }
+    /* arp：三角波十六分，走和弦音，帶一點音高輪廓 */
+    if (BGM_ARP[inBar]) {
+      const n = chord[(inBar * 3) % chord.length];
+      this.voice('triangle', midiHz(n + 12), t, stepDur * 0.9, 0.030);
+    }
+    /* pad：每小節頭兩個失諧鋸齒撐底 */
+    if (inBar === 0) {
+      this.voice('sawtooth', midiHz(chord[1]), t, stepDur * 15, 0.016, 4);
+      this.voice('sawtooth', midiHz(chord[2]), t + 0.02, stepDur * 15, 0.016, -4);
+    }
+    /* 鼓組：kick 喺第 1、3 拍；hi-hat 喺每個偶數 16 分 */
+    if (inBar === 0 || inBar === 8) {
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(150, t);
+      o.frequency.exponentialRampToValueAtTime(44, t + 0.13);
+      g.gain.setValueAtTime(0.16, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.15);
+      o.connect(g); g.connect(bgmGain);
+      o.start(t); o.stop(t + 0.17);
+    }
+    if (inBar % 2 === 0 && noiseBuf) {
+      const src = actx.createBufferSource();
+      src.buffer = noiseBuf; src.loop = true;
+      const flt = actx.createBiquadFilter();
+      flt.type = 'highpass'; flt.frequency.value = 7200;
+      const g = actx.createGain();
+      g.gain.setValueAtTime(0.030, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.035);
+      src.connect(flt); flt.connect(g); g.connect(bgmGain);
+      src.start(t); src.stop(t + 0.05);
+    }
+  },
+  voice(type, f, t, dur, gain, detune) {
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type;
+    o.frequency.value = f;
+    if (detune) o.detune.value = detune;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(bgmGain);
+    o.start(t); o.stop(t + dur + 0.03);
+  },
+};
 function tickVfx(dtMs) {
   bgScroll += dtMs * 0.025;
   /* P1-6 擦彈光環：每次擦彈重設為 1，然後一路衰減到 0。
@@ -498,6 +759,7 @@ function onStateEnter(s, from) {
     beginFreezeClocks();               /* modal freezes run timer (PLAN §Score) */
     choiceOffer = generateChoiceOffer();
     choicePicked = -1;
+    sfx('offer');
     hudEl.tip.textContent = '選擇強化 · 點擊卡牌或按 1/2/3';
   } else if (s === STATE.GAMEOVER) {
     hudEl.tip.textContent = '重試 / 返回標題';
@@ -660,6 +922,7 @@ function applyPickedUpgrade(idx) {
   if (idx < 0 || idx >= choiceOffer.length) return;
   const up = choiceOffer[idx];
   playerStacks[up.id] = (playerStacks[up.id] || 0) + 1;
+  sfx('pick');
   console.log('[選擇強化] 揀咗', up.id, '· 疊加 =', playerStacks[up.id]);
   applyUpgrades();
 }
@@ -917,6 +1180,7 @@ let grazeFlash = 0;          /* 集滿能量時嘅提示閃光 */
 
 function doGraze(ex, ey) {
   grazeCount++;
+  sfx('graze');
   const gained = GRAZE_SCORE * (ship.grazeMult || 1);
   runScore += gained;
   grazeScoreTotal += gained;
@@ -947,6 +1211,7 @@ let runGrunts = 0;         /* 雜魚擊殺數 */
 function spawnBossFor(stageId) {
   const st = STAGE_TABLE[stageId] || STAGE_TABLE[1];
   const hp = Math.max(1, Math.round(st.bossHp * D().bossMul));
+  sfx('boss');
   enemies.push({
     kind: 'spiral',
     stage: stageId,
@@ -1141,6 +1406,8 @@ canvas.addEventListener('pointerdown', (e) => {
   const cx = e.clientX, cy = e.clientY;
   const px = (cx - rect.left) * VIEW_W / rect.width;
   const py = (cy - rect.top)  * VIEW_H / rect.height;
+  /* v3.9：音效面板／音效掣優先於底下所有點擊（面板開住時唔會漏去遊戲） */
+  if (handleAudioPanelTap(px, py)) return;
   if (fsm.cur === STATE.TITLE) { fsm.set(STATE.DIFF_SELECT); return; }
   if (fsm.cur === STATE.DIFF_SELECT) {
     const id = hitDiffCard(px, py);
@@ -1511,6 +1778,7 @@ function enterPause(reason) {
   fsm.prev = fsm.cur;
   pauseReason = reason || 'manual';
   fsm.set(STATE.PAUSED);
+  Bgm.setPlaying(false);        /* v3.9：暫停就唔響，唔好仲喺背後播 */
   hudEl.paused.textContent = pauseReason === 'tab' ? '⏸ 已隱藏' : '⏸ 手動暫停';
   console.log('[暫停]', pauseReason, '@', (performance.now()/1000).toFixed(2) + '秒');
   return true;
@@ -1525,6 +1793,7 @@ function resumePause() {
   fsm.prev = STATE.PAUSED;
   endFreezeClocks();
   pauseReason = null;
+  Bgm.setPlaying(audioOn);
   InputState.dragId = null;
   InputState.keys.up = InputState.keys.down = InputState.keys.left = InputState.keys.right = false;
   hudEl.state.textContent = `狀態：${stateLabel(resumeTo)}`;
@@ -1671,6 +1940,7 @@ function tryFocus() {
   const cd  = ship.focusCD || 8000;
   focusActiveUntil = now + dur;
   focusCDUntil     = focusActiveUntil + cd;   /* CD starts after focus ends */
+  sfx('focus');
   console.log('[聚焦] 開啟', (dur/1000).toFixed(1) + '秒 · 係數', ship.focusFactor, '@', (now/1000).toFixed(2));
   return true;
 }
@@ -1688,6 +1958,7 @@ function tryBomb() {
   }
   if (ship) spawnBoom(ship.x, ship.y);
   screenFlash = Math.max(screenFlash, 0.7);
+  sfx('bomb');
   console.log('[炸彈] 開啟無敵', (BOMB_IFRAME_MS/1000).toFixed(1) + '秒 · 冷卻', (cd/1000).toFixed(1) + '秒 @', (now/1000).toFixed(2));
   return true;
 }
@@ -1830,6 +2101,7 @@ function tick(dtMs) {
       });
     }
     ship.fireCD = 1000 / ship.fireRate;
+    sfx('shoot');
   }
 
   /* ---- 玩家子彈移動（原本漏咗，令子彈卡喺槍口） ---- */
@@ -2024,10 +2296,12 @@ function tick(dtMs) {
               }
               e.hp -= (b.dmg || 1);
               spawnSparks(b.x, b.y, 3, 0.08);
+              sfx('hit');
               if (e.hp <= 0) {
                 spawnBoom(e.x, e.y);
                 if (e.kind === 'spiral') {
                   console.log('[擊破] boss @', (performance.now()/1000).toFixed(2));
+                  sfx('kill');
                   runScore += BOSS_SCORE;
                   runKills++;
                   if (lastStage >= STAGES.length) {
@@ -2041,6 +2315,7 @@ function tick(dtMs) {
                 runKills++;
                 runGrunts++;
                 e._dead = true;
+                sfx(e.elite ? 'kill' : 'hit');
                 /* 分裂蟲 → mini；護盾機死 → 裂彈 */
                 if (e.swarm || e.splitOnDeath) spawnSwarmChildren(e.x, e.y);
                 if (e.shield) spawnSplitBurst(e.x, e.y);
@@ -2078,6 +2353,7 @@ function tick(dtMs) {
       if (isBody) spawnBoom(e.x, e.y); else spawnSparks(ship.x, ship.y, 6, 0.14);
       hitShake = 1;
       screenFlash = Math.max(screenFlash, 0.35);
+      sfx('hurt');
       if (ship.shield > 0) {
         ship.shield -= 1;
       } else {
@@ -2096,6 +2372,7 @@ function tick(dtMs) {
           }
           console.log('[戰機] 被擊毀');
           spawnBoom(ship.x, ship.y);
+          sfx('die');
           fsm.set(STATE.GAMEOVER);
           return;
         }
@@ -2153,7 +2430,139 @@ function tick(dtMs) {
   }
 }
 
+/* ---------- 音效掣 + 音量面板（PLAN v3.9 #52）---------- */
+/* 位置：暫停掣下面（右上 y=68）。⚠️ 唔可以放 y=6 —— 護盾 icon 由 VIEW_W-16
+   向左排 5 個，佔 y≈14–26，會同右上角掣重疊（暫停掣本身已經喺嗰區，
+   屬 v3.3 既有情況，今次唔擴大）。 */
+let audioPanelOpen = false;
+function audioBtnRect() {
+  const s = 56;
+  return { x: VIEW_W - s - 6, y: isStage(fsm.cur) ? 68 : 6, w: s, h: s };
+}
+function audioPanelRect() {
+  const w = 252, h = 248;
+  return { x: (VIEW_W - w) / 2, y: (VIEW_H - h) / 2 - 24, w, h };
+}
+/* 行距 6px：原本 row2 用 y+168，同 row1（y+116、h=56）重疊 4px，
+   而且 row2 底部仲超出面板 10px —— test_audio.js 捉到。觸控目標一撞就
+   會撳錯行，所以間距要留夠。 */
+function audioPanelBtns(p) {
+  return {
+    power:   { x: p.x + (p.w - 184) / 2, y: p.y + 40,  w: 184, h: 56 },
+    bgmMinus:{ x: p.x + 18,  y: p.y + 108, w: 56, h: 56 },
+    bgmPlus: { x: p.x + p.w - 74, y: p.y + 108, w: 56, h: 56 },
+    sfxMinus:{ x: p.x + 18,  y: p.y + 170, w: 56, h: 56 },
+    sfxPlus: { x: p.x + p.w - 74, y: p.y + 170, w: 56, h: 56 },
+  };
+}
+const inRect = (px, py, r) => px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
+
+/* 音效掣 / 面板點擊。面板開住時全部吃掉（唔會漏去遊戲）。 */
+function handleAudioPanelTap(px, py) {
+  if (audioPanelOpen) {
+    const p = audioPanelRect(), b = audioPanelBtns(p);
+    if (inRect(px, py, b.power)) {
+      setAudioOn(!audioOn);
+      Bgm.setPlaying(audioOn);
+      return true;
+    }
+    if (inRect(px, py, b.bgmMinus)) { bumpVol('bgm', -1); return true; }
+    if (inRect(px, py, b.bgmPlus))  { bumpVol('bgm', +1); return true; }
+    if (inRect(px, py, b.sfxMinus)) { bumpVol('sfx', -1); return true; }
+    if (inRect(px, py, b.sfxPlus))  { bumpVol('sfx', +1); return true; }
+    audioPanelOpen = false;   /* 撳面板以外 = 關閉 */
+    return true;
+  }
+  if (inRect(px, py, audioBtnRect())) { audioPanelOpen = true; return true; }
+  return false;
+}
+
+/* 細喇叭（唔用 emoji，各平台先一致）。
+   ⚠️ 關閉狀態唔可以用太深嘅灰 —— 之前用 #556，深色底上智慧白板根本睇唔到，
+   學生會以為冇呢個掣。改 #9bb。 */
+function drawSpeakerIcon(cx, cy, on) {
+  ctx.fillStyle = on ? '#0ff' : '#9bb';
+  ctx.beginPath();
+  ctx.moveTo(cx - 9, cy - 4); ctx.lineTo(cx - 4, cy - 4); ctx.lineTo(cx + 2, cy - 10);
+  ctx.lineTo(cx + 2, cy + 10); ctx.lineTo(cx - 4, cy + 4); ctx.lineTo(cx - 9, cy + 4);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = on ? '#0ff' : '#9bb';
+  ctx.lineWidth = 2;
+  for (let i = 0; i < (on ? 2 : 1); i++) {
+    ctx.beginPath(); ctx.arc(cx + 2, cy, 6 + i * 5, -0.8, 0.8); ctx.stroke();
+  }
+  if (!on) {
+    ctx.strokeStyle = '#f55'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(cx - 12, cy - 12); ctx.lineTo(cx + 12, cy + 12); ctx.stroke();
+  }
+}
+function drawAudioUi() {
+  /* 面板開住就算已暫停都要畫（否則玩家喺暫停畫面開咗音效就見唔到） */
+  if (fsm.cur === STATE.PAUSED && !audioPanelOpen) return;
+  const r = audioBtnRect();
+  ctx.fillStyle = 'rgba(0,20,40,0.72)';
+  ctx.fillRect(r.x, r.y, r.w, r.h);
+  ctx.strokeStyle = audioPanelOpen ? '#ff5e8a' : 'rgba(0,255,255,0.55)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(r.x, r.y, r.w, r.h);
+  drawSpeakerIcon(r.x + r.w / 2, r.y + r.h / 2, audioOn);
+  if (!audioPanelOpen) return;
+
+  const p = audioPanelRect(), b = audioPanelBtns(p);
+  ctx.fillStyle = 'rgba(2,10,20,0.88)';
+  ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+  ctx.fillStyle = 'rgba(0,28,44,0.96)';
+  ctx.fillRect(p.x, p.y, p.w, p.h);
+  ctx.strokeStyle = '#0ff'; ctx.lineWidth = 2;
+  ctx.strokeRect(p.x, p.y, p.w, p.h);
+
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#0ff'; ctx.font = 'bold 16px ui-monospace, monospace';
+  ctx.fillText('音效設定', p.x + p.w / 2, p.y + 22);
+
+  /* 總開關 */
+  ctx.fillStyle = audioOn ? 'rgba(0,90,70,0.95)' : 'rgba(90,30,40,0.95)';
+  ctx.fillRect(b.power.x, b.power.y, b.power.w, b.power.h);
+  ctx.strokeStyle = audioOn ? '#0f6' : '#f66';
+  ctx.strokeRect(b.power.x, b.power.y, b.power.w, b.power.h);
+  drawSpeakerIcon(b.power.x + 34, b.power.y + b.power.h / 2, audioOn);
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 17px ui-monospace, monospace';
+  ctx.fillText(audioOn ? '音效 開' : '音效 關', b.power.x + 116, b.power.y + b.power.h / 2);
+
+  /* 音量列：[−] 標籤 + 進度點 [+]，唔用滑條（智慧白板要粗撳得中） */
+  const step = (rc, sign) => {
+    ctx.fillStyle = 'rgba(0,60,80,0.95)'; ctx.fillRect(rc.x, rc.y, rc.w, rc.h);
+    ctx.strokeStyle = '#0ff'; ctx.lineWidth = 2; ctx.strokeRect(rc.x, rc.y, rc.w, rc.h);
+    ctx.fillStyle = '#0ff'; ctx.font = 'bold 22px ui-monospace, monospace'; ctx.textAlign = 'center';
+    ctx.fillText(sign, rc.x + rc.w / 2, rc.y + rc.h / 2 + 1);
+  };
+  const row = (label, val, minus, plus) => {
+    const midY = minus.y + minus.h / 2;
+    ctx.textAlign = 'left'; ctx.fillStyle = '#9ff'; ctx.font = '14px ui-monospace, monospace';
+    ctx.fillText(label, p.x + 84, midY - 10);
+    for (let i = 0; i < VOL_STEPS; i++) {
+      ctx.fillStyle = i < val ? '#0ff' : 'rgba(0,255,255,0.18)';
+      ctx.fillRect(p.x + 84 + i * 13, midY + 2, 10, 5);
+    }
+    step(minus, '−'); step(plus, '+');
+  };
+  row('音樂', volBgm, b.bgmMinus, b.bgmPlus);
+  row('音效', volSfx, b.sfxMinus, b.sfxPlus);
+
+  ctx.fillStyle = '#889'; ctx.font = '12px ui-monospace, monospace'; ctx.textAlign = 'center';
+  ctx.fillText('撳面板以外 = 關閉', p.x + p.w / 2, p.y + p.h - 13);
+}
+
 /* ---------- 11. 繪製 ---------- */
+/* render() 收尾：所有畫面共用。
+   ⚠️ 音效 UI 一定要畫喺每個狀態 —— 原本放喺戰鬥分支尾部，結果標題／難度／
+   結算畫面因為提早 return 完全畫唔到掣（實機踩過，靜態掃描捉唔到）。
+   抽出嚟做單一收尾，六條返回路徑 + 戰鬥尾都經過同一個函式。 */
+function renderTail() {
+  drawAudioUi();
+  drawScanlines(); drawFlash();
+  ctx.restore();
+}
 function render() {
   const shakeX = hitShake > 0 ? (Math.random() - 0.5) * 4 * hitShake : 0;
   const shakeY = hitShake > 0 ? (Math.random() - 0.5) * 4 * hitShake : 0;
@@ -2185,8 +2594,7 @@ function render() {
     } else {
       ctx.fillText('（分頁切換中 — 返去即繼續）', VIEW_W/2, VIEW_H/2 + 16);
     }
-    drawScanlines(); drawFlash();
-    ctx.restore();
+    renderTail();
     return;
   }
 
@@ -2203,7 +2611,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.13.0 · 隨機波次', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.14.0 · 霓虹音效', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -2221,8 +2629,7 @@ function render() {
     ctx.fillStyle = 'rgba(255,220,80,' + pulse.toFixed(2) + ')';
     ctx.font = 'bold 14px monospace';
     ctx.fillText('→ 點擊選擇難度 ←', VIEW_W/2, VIEW_H - 56);
-    drawScanlines(); drawFlash();
-    ctx.restore();
+    renderTail();
     return;
   }
 
@@ -2270,8 +2677,7 @@ function render() {
     ctx.fillStyle = '#ff6';
     ctx.font = '12px monospace';
     ctx.fillText('按 1 / 2 / 3 或點擊卡牌', VIEW_W/2, VIEW_H - 40);
-    drawScanlines(); drawFlash();
-    ctx.restore();
+    renderTail();
     return;
   }
 
@@ -2315,8 +2721,7 @@ function render() {
     ctx.fillStyle = '#ff6';
     ctx.font = '12px monospace';
     ctx.fillText('按 A / B / C 或點擊卡牌', VIEW_W/2, VIEW_H - 48);
-    drawScanlines(); drawFlash();
-    ctx.restore();
+    renderTail();
     return;
   }
 
@@ -2337,8 +2742,7 @@ function render() {
     ctx.font = '11px monospace';
     ctx.fillText('難度 ' + diffName() + ' · 倒數第 ' + lastStage + ' 關', VIEW_W/2, VIEW_H/2 + 22);
     drawEndBtns();
-    drawScanlines(); drawFlash();
-    ctx.restore();
+    renderTail();
     return;
   }
 
@@ -2378,8 +2782,7 @@ function render() {
     ctx.fillStyle = '#ff6';
     ctx.fillText(diffName() + ' 最佳：' + Math.floor(bestScore) + ' · ' + bestTime.toFixed(1) + ' 秒', VIEW_W/2, VIEW_H/2 + 72);
     drawEndBtns();
-    drawScanlines(); drawFlash();
-    ctx.restore();
+    renderTail();
     return;
   }
 
@@ -2437,8 +2840,7 @@ function render() {
       ctx.textAlign = 'center';
       ctx.fillText('[' + (i+1) + '] 點擊', x + cardW/2, y + cardH - 8);
     }
-    drawScanlines(); drawFlash();
-    ctx.restore();
+    renderTail();
     return;
   }
 
@@ -2671,9 +3073,7 @@ function drawGrazeMeter() {
     ctx.textAlign = 'center';
     ctx.fillText('S' + lastStage + ' · ' + th.name, VIEW_W/2, 17);
   }
-  drawScanlines();
-  drawFlash();
-  ctx.restore();
+  renderTail();
 }
 
 /* ---------- 12. 主迴圈（PLAN v2 #13 固定時間步累加器） ---------- */
@@ -2700,9 +3100,11 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.13.0 已載入');
+console.log('[啟動] 末日救未來 v0.14.0 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
+loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */
+console.log('[啟動] 音效 =', audioOn ? '開' : '關', '· 音樂檔', volBgm, '· 音效檔', volSfx);
 hudEl.tip.textContent = '點擊畫面開始';
 requestAnimationFrame(loop);
 

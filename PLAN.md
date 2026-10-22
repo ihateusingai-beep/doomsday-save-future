@@ -357,6 +357,7 @@ STATE = {
 ## 改動紀錄
 
 - **v3.7-plan（2026-10-22）**：freeze 隨機波次／敵人 #33–#38；S1 固定、S2–S5 seeded pool；敵人 count/elite/special roll；boss mod 三選一；`?seed=`；實作切片 P0–P3。**碼未動**；runtime 仍 v0.12.0
+- **v3.6.1（2026-10-22）**：純文件修正，**無碼改動、無版號 bump**。改參考表 **#22**（持久化：補 `dsf.diff` + 分難度 `bestScore/bestTime` + 舊 key 遷移規則）同 **#32**（擦彈率 0.35 → 0.55 次／秒，對齊 v3.2 實測）；持久化章節 + 鎖定項目「存檔」行同步；刪走「v1 無難度選擇」殘留（v3.4 已加難度）；關卡數據註由過期嘅「實際一局 60–90 秒」改為寫清目標秒數未校準嘅真實後果（實測 175–275 秒 < 目標 300 秒 → 時間獎金每局攞盡，快慢分差被壓窄）；計分章節「時間獎金仍然係第二大項」→ 實佔 2–10%
 - **v3.6（2026-10-22）**：三機六軸差異。`SHIPS` + pickShip/applyUpgrades 讀 bulletCount/Dmg/Spd；autofire 彈速跟機體；選機卡文案；版號 v0.12.0
 - **v3.5（2026-10-21）**：+sniper／shield／swarm；warn 預警線；shield 正面擋彈；swarm 死後裂 mini；shield 死裂 3 彈；S2–S5 波次插入；版號 v0.11.0
 - **v3.4（2026-10-21）**：三難度。`DIFFICULTY` 乘數表；流程 標題→選難度→選機；`dsf.diff` + `dsf.bestScore.{1,2,3}`；3 逃逸＝舊數值；版號 v0.10.0

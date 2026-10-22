@@ -630,6 +630,35 @@ function drawHudChips() {
   for (let i = 0; i < Math.min(ship.shield, 5); i++) {
     drawSprite('ui_shield', VIEW_W - 16 - i * 14, 20, 1);
   }
+  /* #44 裝備欄：血心下面一行細 icon（唔佔卡位、零選擇，只顯示）。
+     重複持有同一件會畫多個（最多 5 個），疊加效果由 getter 處理。 */
+  const ids = Object.keys(loots);
+  for (let i = 0; i < Math.min(ids.length, 5); i++) {
+    const d = LOOT_DEFS.find(x => x.id === ids[i]);
+    if (!d) continue;
+    ctx.font = '13px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(d.icon, 12 + i * 17, 41);
+  }
+  if (ids.length > 5) {
+    ctx.font = '9px monospace';
+    ctx.fillStyle = '#8ad';
+    ctx.textAlign = 'left';
+    ctx.fillText('+' + (ids.length - 5), 12 + 5 * 17, 41);
+  }
+  /* 裝備掉落橫幅（2.6 秒，同詞綴橫幅節奏一致） */
+  if (lootShownAt && performance.now() - lootShownAt < 2600 && isStage(fsm.cur)) {
+    const last = LOOT_DEFS.find(x => x.id === Object.keys(loots).slice(-1)[0]);
+    const a = Math.min(1, (performance.now() - lootShownAt) / 300);
+    ctx.globalAlpha = a;
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(0, 56, VIEW_W, 22);
+    ctx.font = 'bold 12px monospace';
+    ctx.fillStyle = '#fd6';
+    ctx.textAlign = 'center';
+    ctx.fillText('裝備 ' + (last ? last.icon + ' ' + last.name + ' · ' + last.desc : ''), VIEW_W / 2, 71);
+    ctx.globalAlpha = 1;
+  }
 }
 
 /* ---------- 2. 輸入層（PLAN v2 #15、#18-19） ---------- */
@@ -907,7 +936,7 @@ function applyUpgrades() {
   const c = SHIPS[ship.chassis];
   const d = D();
   ship.maxHp        = Math.max(1, d.startHp + affHpDelta);   /* #43 玻璃：生命 −1 */
-  ship.shield       = c.shield + (d.shieldBonus || 0);
+  ship.shield       = c.shield + (d.shieldBonus || 0) + lootShieldBonus();   /* #44 加固：每關多 1 盾 */
   ship.speed        = c.speed;
   ship.fireRate     = c.fireRate;
   ship.bulletCount  = c.bulletCount;
@@ -1313,6 +1342,86 @@ function styleHasMatch(stageId, style) {
   const base = (STAGE_RAND[stageId] || {}).pool;
   if (!base) return false;
   return base.some(id => style.prefer[id.split('_')[0]] > 1);
+}
+
+/* ---------- Boss 裝備（PLAN v3.8 #44）----------
+   boss 死後必掉 1 件**被動裝備**：唔佔卡位、**零選擇**（只顯示）。
+   裝備欄顯示於機體狀態列（HUD 血心嗰行下面）。
+   ⚠️ 每個欄位都必須有 game logic 讀，否則就係死卡（項目驗收標準）。 */
+const LOOT_DEFS = [
+  /* 穿甲彈：子彈傷害 +1。⚠️ 原案寫「子彈破精英護盾」，但查證：shield 類敵人
+     同 elite 類係唔同 type，遊戲內根本冇「護盾擋子彈傷害」機制——照原案實作
+     會變成零效果嘅死卡。改為純傷害加值，對所有敵人有效、可實測。 */
+  { id:'ap',    name:'穿甲彈', icon:'\u{1F4A5}', desc:'子彈傷害+1', bulletDmgBonus:1 },
+  /* 節能：聚焦冷卻 −2 秒。淨係減 cd，唔減生效時間。 */
+  { id:'eco',   name:'節能',   icon:'\u{1F50B}', desc:'聚焦冷卻−2秒',
+    focusCdDelta:-2000 },
+  /* 保險：受致命傷時免疫 1 次（hp 扣到 ≤0 就救返，唔會即刻死）。 */
+  { id:'guard', name:'保險',   icon:'\u{1F6E1}', desc:'致命傷免疫1次', armor:1 },
+  /* 加固：每關開始多 1 個護盾。簡單直接，唔使記住規則。 */
+  { id:'plate', name:'加固',   icon:'\u{1F6E2}', desc:'每關多1個護盾', shieldBonus:1 },
+  /* 散熱：炸彈冷卻 −3 秒。 */
+  { id:'cool',  name:'散熱',   icon:'\u{1F525}', desc:'炸彈冷卻−3秒', bombCdDelta:-3000 },
+];
+/* 已持有嘅裝備（id → 件數）。boss 每死一次掉 1 件，所以可以重複持有。
+   裝備係純被動，冇上限壓力，所以重複疊加唔設上限（但同 id 只讀一次效果）。 */
+let loots = Object.create(null);
+let lootShownAt = 0;          /* 裝備掉落橫幅時間戳 */
+let armorUsed = false;        /* 「保險」用咗未（一次性） */
+
+/* 裝備加總 → 一個純數值 getter，避免散落四處加總邏輯 */
+function lootFocusCd() {
+  let ms = 0;
+  for (const id in loots) {
+    const d = LOOT_DEFS.find(x => x.id === id);
+    if (d && d.focusCdDelta) ms += d.focusCdDelta;
+  }
+  return ms;   /* 負數 = 冷卻縮短 */
+}
+function lootBombCd() {
+  let ms = 0;
+  for (const id in loots) {
+    const d = LOOT_DEFS.find(x => x.id === id);
+    if (d && d.bombCdDelta) ms += d.bombCdDelta;
+  }
+  return ms;
+}
+function lootShieldBonus() {
+  let n = 0;
+  for (const id in loots) {
+    const d = LOOT_DEFS.find(x => x.id === id);
+    if (d && d.shieldBonus) n += d.shieldBonus;
+  }
+  return n;
+}
+function hasArmor() {
+  for (const id in loots) {
+    if (LOOT_DEFS.some(x => x.id === id && x.armor)) return true;
+  }
+  return false;
+}
+function lootBulletDmg() {
+  let n = 0;
+  for (const id in loots) {
+    const d = LOOT_DEFS.find(x => x.id === id);
+    if (d && d.bulletDmgBonus) n += d.bulletDmgBonus;
+  }
+  return n;
+}
+/* boss 死 → 掉 1 件裝備。用 stage 獨立 stream，唔污染波次 / 詞綴 / 風格。 */
+function rollLoot(stageId) {
+  const rng = stageRngFor(runSeed, 5000 + stageId);
+  const def = LOOT_DEFS[Math.floor(rng() * LOOT_DEFS.length)] || LOOT_DEFS[0];
+  loots[def.id] = (loots[def.id] || 0) + 1;
+  lootShownAt = performance.now();
+  sfx('pick');
+  console.log('[裝備] boss S' + stageId + ' 掉落 →', def.name, '·', def.desc);
+  return def;
+}
+function resetLoots() {
+  loots = Object.create(null);
+  lootShownAt = 0;
+  armorUsed = false;
 }
 
 /* ---------- 雜魚小詞綴（PLAN v3.8 #45）----------
@@ -1948,6 +2057,7 @@ function drawEndBtns() {
 function resetRunFresh() {
   resetAffix();          /* v3.8 #43：詞綴唔跨局 */
   resetStyle();          /* v3.8 #41：風格唔跨局 */
+  resetLoots();          /* v3.8 #44：裝備唔跨局 */
   runStartMs = null;
   stageStartMs = null;
   pausedAtMs = null;
@@ -2185,7 +2295,8 @@ function tryFocus() {
   const now = performance.now();
   if (now < focusCDUntil) return false;
   const dur = ship.focusDuration || 4000;
-  const cd  = ship.focusCD || 8000;
+  /* #44 裝備：聚焦冷卻 −N ms（負數 = 縮短）。下限夾到 3000ms，唔會變成無限連環。 */
+  const cd  = Math.max(3000, (ship.focusCD || 8000) + lootFocusCd());
   focusActiveUntil = now + dur;
   focusCDUntil     = focusActiveUntil + cd;   /* CD starts after focus ends */
   sfx('focus');
@@ -2196,7 +2307,8 @@ function tryBomb() {
   if (!isStage(fsm.cur) || !ship) return false;
   const now = performance.now();
   if (now < bombCDUntil) return false;
-  const cd = ship.bombCD || 12000;
+  /* #44 裝備：炸彈冷卻 −N ms（負數 = 縮短）。下限夾到 5000ms。 */
+  const cd = Math.max(5000, (ship.bombCD || 12000) + lootBombCd());
   bombCDUntil = now + cd;
   iFrameUntil = now + BOMB_IFRAME_MS;
   /* 清除敵方彈幕（子彈 + 雷射） */
@@ -2333,7 +2445,8 @@ function tick(dtMs) {
     const mid = (n - 1) / 2;
     const spread = n <= 1 ? 0 : (n <= 2 ? 0.08 : 0.12); /* 1 彈直射；2 緊；3+ 散 */
     const spd = ship.bulletSpd || 0.30;
-    const dmg = ship.bulletDmg || 1;
+    /* #44 穿甲彈：子彈傷害 +N（被動，同所有強化疊加） */
+    const dmg = (ship.bulletDmg || 1) + lootBulletDmg();
     for (let i = 0; i < n; i++) {
       const a = -Math.PI / 2 + (i - mid) * spread;  /* upward */
       bullets.push({
@@ -2553,6 +2666,7 @@ function tick(dtMs) {
                   sfx('kill');
                   runScore += BOSS_SCORE * affScore * styScore;
                   runKills++;
+                  rollLoot(lastStage);          /* #44 boss 死必掉 1 件裝備（零選擇） */
                   if (lastStage >= STAGES.length) {
                     fsm.set(STATE.VICTORY);
                   } else {
@@ -2608,6 +2722,19 @@ function tick(dtMs) {
       } else {
         ship.hp -= 1;
         if (ship.hp <= 0) {
+          /* #44「保險」：致命傷免疫 1 次。優先過 life_st 復活——
+             兩者都係「唔好死」，但保險係裝備、復活係強化，唔應該互相吞噬。
+             保險嗰次用完之後（armorUsed = true）之後唔會再擋。 */
+          if (hasArmor() && !armorUsed) {
+            armorUsed = true;
+            ship.hp = 1;
+            iFrameUntil = performance.now() + 2500;
+            spawnBoom(ship.x, ship.y);
+            screenFlash = Math.max(screenFlash, 0.6);
+            sfx('focus');
+            console.log('[保險] 抵銷一次致命傷 · 之後失效');
+            continue;
+          }
           /* life_st 復活：消耗一次機會、補滿血、送 2.5 秒無敵，
              否則先判定 GAME OVER。之前呢個欄位只係寫入從來冇讀過。 */
           if (ship.resurrect > 0) {
@@ -2891,7 +3018,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.17.0 · 本關風格', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.18.0 · boss 裝備', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -3463,7 +3590,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.17.0 已載入');
+console.log('[啟動] 末日救未來 v0.18.0 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */

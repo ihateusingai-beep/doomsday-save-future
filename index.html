@@ -809,24 +809,37 @@ function onStateEnter(s, from) {
    現時 17 件全部經過驗證：每個 mod() 寫入嘅欄位都有 game logic 讀取。
    註：spd_s / spd_l 之所以有效，係因為 P0-4 已將拖曳改為受 ship.speed 限制。 */
 const UPGRADES = [
-  { id:'spd_s',   nameZh:'速度+',    icon:'⚡',   desc:'移動速度 +15%',          mod:(s,n)=>{ s.speed *= Math.pow(1.15, n); } },
-  { id:'spd_l',   nameZh:'速度++',   icon:'⚡⚡',  desc:'移動速度 +30%',          mod:(s,n)=>{ s.speed *= Math.pow(1.30, n); } },
-  { id:'hp_s',    nameZh:'生命+',    icon:'❤',   desc:'生命上限 +1',            mod:(s,n)=>{ s.maxHp += 1 * n; } },
-  { id:'hp_l',    nameZh:'生命+2',   icon:'❤❤',  desc:'生命上限 +2',            mod:(s,n)=>{ s.maxHp += 2 * n; } },
-  { id:'shd_s',   nameZh:'盾+',      icon:'🛡',   desc:'初始護盾 +1',            mod:(s,n)=>{ s.shield += 1 * n; } },
-  { id:'shd_l',   nameZh:'盾+2',     icon:'🛡🛡',  desc:'初始護盾 +2',            mod:(s,n)=>{ s.shield += 2 * n; } },
-  { id:'fr_s',    nameZh:'射速+',    icon:'🔥',   desc:'射速 +25%',              mod:(s,n)=>{ s.fireRate *= Math.pow(1.25, n); } },
-  { id:'fr_l',    nameZh:'射速++',   icon:'🔥🔥',  desc:'射速 +50%',              mod:(s,n)=>{ s.fireRate *= Math.pow(1.50, n); } },
-  { id:'gun_2',   nameZh:'雙砲',     icon:'✦',    desc:'2 連發 → 3 連發',       mod:(s,n)=>{ s.bulletCount = 2 + n; } },
-  { id:'gun_3',   nameZh:'三砲',     icon:'✦✦',   desc:'3 連發 → 4 連發',       mod:(s,n)=>{ s.bulletCount = Math.min(4, 3 + n); } },
-  { id:'dmg_s',   nameZh:'火力+',    icon:'💥',   desc:'子彈傷害 +1',            mod:(s,n)=>{ s.bulletDmg = (s.bulletDmg||1) + n; } },
-  { id:'bomb_cd', nameZh:'炸彈冷卻-',icon:'💣',   desc:'炸彈冷卻 -25%',          mod:(s,n)=>{ s.bombCD *= Math.pow(0.75, n); } },
-  { id:'focus_d', nameZh:'聚焦+',    icon:'◉',    desc:'聚焦減速 0.3 → 0.2',    mod:(s,n)=>{ s.focusFactor = Math.max(0.1, s.focusFactor - 0.1*n); } },
-  { id:'pierce',  nameZh:'貫穿',     icon:'➶',    desc:'子彈多穿過一個敵人',   mod:(s,n)=>{ s.pierce += n; } },
-  { id:'graze_s', nameZh:'擦彈+',    icon:'»',    desc:'擦彈分數 ×2',          mod:(s,n)=>{ s.grazeMult *= Math.pow(2, n); } },
-  { id:'life_st', nameZh:'復活',     icon:'✝',    desc:'死亡時復活一次',         mod:(s,n)=>{ s.resurrect += n; } },
-  { id:'master',  nameZh:'大師',     icon:'★',    desc:'速度與射速 +20%',       mod:(s,n)=>{ s.masterStacks = (s.masterStacks||0) + n; } },
+  /* cat 分類標籤（PLAN v3.8 #40）：只做顯示，唔限制揀卡。
+     ⚠️ 原設計係「每類最多持有 1 件」，已廢除——4 類 × 每局 4 次強化會令
+     第 4 次抽卡只得一個選項（冇得揀），而且每局必然集齊 4 類，
+     build 每次一樣，同「每局唔同」嘅目標相反。見 PLAN #40。 */
+  { id:'spd_s',   cat:'靈活', nameZh:'速度+',    icon:'⚡',   desc:'移動速度 +15%',          mod:(s,n)=>{ s.speed *= Math.pow(1.15, n); } },
+  { id:'spd_l',   cat:'靈活', nameZh:'速度++',   icon:'⚡⚡',  desc:'移速 +30%｜炸彈冷卻 +20%',
+              mod:(s,n)=>{ s.speed *= Math.pow(1.30, n); },
+              cost:(s,n)=>{ s.bombCD *= Math.pow(1.20, n); } },
+  { id:'hp_s',    cat:'防禦', nameZh:'生命+',    icon:'❤',   desc:'生命上限 +1',            mod:(s,n)=>{ s.maxHp += 1 * n; } },
+  { id:'hp_l',    cat:'防禦', nameZh:'生命+2',   icon:'❤❤',  desc:'生命上限 +2',            mod:(s,n)=>{ s.maxHp += 2 * n; } },
+  { id:'shd_s',   cat:'防禦', nameZh:'盾+',      icon:'🛡',   desc:'初始護盾 +1',            mod:(s,n)=>{ s.shield += 1 * n; } },
+  { id:'shd_l',   cat:'防禦', nameZh:'盾+2',     icon:'🛡🛡',  desc:'初始護盾 +2',            mod:(s,n)=>{ s.shield += 2 * n; } },
+  { id:'fr_s',    cat:'火力', nameZh:'射速+',    icon:'🔥',   desc:'射速 +25%',              mod:(s,n)=>{ s.fireRate *= Math.pow(1.25, n); } },
+  { id:'fr_l',    cat:'火力', nameZh:'射速++',   icon:'🔥🔥',  desc:'射速 +50%｜初始護盾 −1',
+              mod:(s,n)=>{ s.fireRate *= Math.pow(1.50, n); },
+              cost:(s,n)=>{ s.shield = Math.max(0, s.shield - n); } },
+  { id:'gun_2',   cat:'火力', nameZh:'雙砲',     icon:'✦',    desc:'2 連發 → 3 連發',       mod:(s,n)=>{ s.bulletCount = 2 + n; } },
+  { id:'gun_3',   cat:'火力', nameZh:'三砲',     icon:'✦✦',    desc:'3 連發 → 4 連發｜生命 −1',
+              mod:(s,n)=>{ s.bulletCount = Math.min(4, 3 + n); },
+              cost:(s,n)=>{ s.maxHp = Math.max(1, s.maxHp - n); } },
+  { id:'dmg_s',   cat:'火力', nameZh:'火力+',    icon:'💥',   desc:'子彈傷害 +1',            mod:(s,n)=>{ s.bulletDmg = (s.bulletDmg||1) + n; } },
+  { id:'bomb_cd', cat:'輔助', nameZh:'炸彈冷卻-',icon:'💣',   desc:'炸彈冷卻 -25%',          mod:(s,n)=>{ s.bombCD *= Math.pow(0.75, n); } },
+  { id:'focus_d', cat:'輔助', nameZh:'聚焦+',    icon:'◉',    desc:'聚焦減速 0.3 → 0.2',    mod:(s,n)=>{ s.focusFactor = Math.max(0.1, s.focusFactor - 0.1*n); } },
+  { id:'pierce',  cat:'火力', nameZh:'貫穿',     icon:'➶',    desc:'子彈多穿過一個敵人',   mod:(s,n)=>{ s.pierce += n; } },
+  { id:'graze_s', cat:'輔助', nameZh:'擦彈+',    icon:'»',    desc:'擦彈分數 ×2',          mod:(s,n)=>{ s.grazeMult *= Math.pow(2, n); } },
+  { id:'life_st', cat:'防禦', nameZh:'復活',     icon:'✝',    desc:'死亡時復活一次',         mod:(s,n)=>{ s.resurrect += n; } },
+  { id:'master',  cat:'靈活', nameZh:'大師',     icon:'★',    desc:'速度與射速 +20%',       mod:(s,n)=>{ s.masterStacks = (s.masterStacks||0) + n; } },
 ];
+
+/* 分類配色（PLAN v3.8 #40）—— 純顯示用，唔參與任何遊戲邏輯 */
+const CAT_COLOR = { '防禦':'#7fe', '火力':'#fa7', '靈活':'#af7', '輔助':'#c9f' };
 
 /* 疊加次數，key = 強化 id（PLAN v2 #3：容許重複出現） */
 let playerStacks = Object.create(null);
@@ -895,6 +908,14 @@ function applyUpgrades() {
     const n = playerStacks[up.id] || 0;
     if (n > 0) up.mod(ship, n);
   }
+  /* PLAN v3.8 #39：代價必須喺所有增益之後套用。
+     例：射速++ 令 fireRate ×1.5，同時初始護盾 −1；次序反咗會唔同。
+     cost 同 mod 一樣係 n 嘅純函數——applyUpgrades() 每次都全量重算。 */
+  for (const up of UPGRADES) {
+    if (!up.cost) continue;
+    const n = playerStacks[up.id] || 0;
+    if (n > 0) up.cost(ship, n);
+  }
   /* 大師：每層對速度與射速乘 1.20 */
   if (ship.masterStacks > 0) {
     const m = Math.pow(1.20, ship.masterStacks);
@@ -913,9 +934,19 @@ let choiceOffer = [];        /* [up, up, up] */
 let choicePicked = -1;       /* choice card picked (0/1/2) or -1 */
 
 function generateChoiceOffer() {
-  /* 從 UPGRADES 池抽 3 張；容許重複（唔排除已擁有嘅）。 */
-  const pick = () => UPGRADES[Math.floor(Math.random() * UPGRADES.length)];
-  return [pick(), pick(), pick()];
+  /* PLAN v3.8 #40：同一次三選一之內唔會出現重複 id（解決「三張卡一模一樣」）。
+     ⚠️ 只限制「同一次」，唔限制跨次疊加——疊加係設計核心（#3）。
+     逐張抽、抽中就用,唔做全局洗牌，所以保留原有分佈。 */
+  const pool = UPGRADES.slice();
+  const out = [];
+  let guard = 0;
+  while (out.length < 3 && pool.length > 0 && guard++ < 200) {
+    const i = Math.floor(Math.random() * pool.length);
+    out.push(pool.splice(i, 1)[0]);
+  }
+  /* 池唔夠 3 張先會出現（目前池 = 17，正常唔會） */
+  while (out.length < 3) out.push(UPGRADES[Math.floor(Math.random() * UPGRADES.length)]);
+  return out;
 }
 
 function applyPickedUpgrade(idx) {
@@ -2611,7 +2642,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.14.0 · 霓虹音效', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.15.0 · 強化代價', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -2813,10 +2844,21 @@ function render() {
       ctx.fillStyle = '#fff';
       ctx.font = '24px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(up.icon, x + cardW/2, y + 32);
+      ctx.fillText(up.icon, x + cardW/2, y + 30);
+      /* 分類標籤（PLAN v3.8 #40）：卡片**左上**細章，令玩家睇得出 build 走向。
+         只係顯示，唔限制揀卡。顏色跟分類，方便一眼掃。
+         ⚠️ 放左上唔放右上——右上已經有疊加次數「x2」（y+14 右對齊），
+         兩者會撞位（實作時踩過）。 */
+      if (up.cat) {
+        ctx.font = '9px monospace';
+        ctx.fillStyle = CAT_COLOR[up.cat] || '#7a8';
+        ctx.textAlign = 'left';
+        ctx.fillText(up.cat, x + 7, y + 13);
+        ctx.textAlign = 'center';
+      }
       ctx.font = 'bold 12px monospace';
       ctx.fillStyle = '#0ff';
-      ctx.fillText(up.nameZh, x + cardW/2, y + 52);
+      ctx.fillText(up.nameZh, x + cardW/2, y + 50);
       ctx.font = '10px monospace';
       ctx.fillStyle = '#bcd';
       /* 中文逐字斷行；Array.from 先拆 code point，唔會切爛 emoji */
@@ -2826,7 +2868,7 @@ function render() {
         for (let li = 0; li < chars.length; li += 9) descLines.push(chars.slice(li, li + 9).join(''));
       }
       for (let li = 0; li < Math.min(descLines.length, 3); li++) {
-        ctx.fillText(descLines[li], x + cardW/2, y + 68 + li * 11);
+        ctx.fillText(descLines[li], x + cardW/2, y + 66 + li * 11);
       }
       const n = playerStacks[up.id] || 0;
       if (n > 0) {
@@ -3100,7 +3142,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.14.0 已載入');
+console.log('[啟動] 末日救未來 v0.15.0 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */

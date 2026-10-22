@@ -117,6 +117,7 @@ const STATE = Object.freeze({
   CHOICE:      'CHOICE',
   STYLE:       'STYLE',
   EVENT:       'EVENT',
+  REVERSE:     'REVERSE',
   GAMEOVER:    'GAMEOVER',
   VICTORY:     'VICTORY',
   PAUSED:      'PAUSED',
@@ -134,6 +135,7 @@ const STATE_LABEL = Object.freeze({
   CHOICE:      '選擇強化',
   STYLE:       '選擇風格',
   EVENT:       '中斷事件',
+  REVERSE:     '單次逆轉',
   GAMEOVER:    '任務失敗',
   VICTORY:     '逃出生天',
   PAUSED:      '已暫停',
@@ -844,6 +846,12 @@ function onStateEnter(s, from) {
     buildEventOffer();
     sfx('offer');
     hudEl.tip.textContent = '中斷事件 — 揀一個，即時生效';
+  } else if (s === STATE.REVERSE) {
+    /* #46 單次逆轉：S5 boss 出場前。一次過，唔會重複觸發。 */
+    reverseOffer = buildReverseOffer();
+    reversePicked = -1;
+    sfx('offer');
+    hudEl.tip.textContent = '單次逆轉 — 揀一件升級為傳說級';
   } else if (s === STATE.GAMEOVER) {
     hudEl.tip.textContent = '重試 / 返回標題';
   } else if (s === STATE.VICTORY) {
@@ -927,6 +935,43 @@ const CAT_COLOR = { '防禦':'#7fe', '火力':'#fa7', '靈活':'#af7', '輔助':
 /* 疊加次數，key = 強化 id（PLAN v2 #3：容許重複出現） */
 let playerStacks = Object.create(null);
 
+/* ---------- 單次逆轉（PLAN v3.8 #46）----------
+   **一局只有一次**，喺 S5 boss 出場前 3 選 1：將一件現有強化升級為傳說級
+   （= 該強化額外多行一次 mod）。製造記憶點。
+   ⚠️ PLAN 明文：唔使玩家自己判斷邊件最弱——由系統直接挑 3 個候選畀玩家揀。 */
+let legendary = Object.create(null);   /* id → true（傳說級） */
+let reverseOffer  = [];                 /* 3 個候選強化 def */
+let reversePicked = -1;
+let reverseUsed   = false;             /* 一局只有一次 */
+
+/* 由現有強化入面抽 3 個候選。優先抽玩家真係持有嘅（有意義），
+   唔夠就補未持有嘅（至少有得揀，唔會開天窗）。 */
+function buildReverseOffer() {
+  const owned = UPGRADES.filter(u => (playerStacks[u.id] || 0) > 0 && !legendary[u.id]);
+  const rest  = UPGRADES.filter(u => !(playerStacks[u.id] > 0) && !legendary[u.id]);
+  const out = [];
+  const take = (arr) => {
+    while (arr.length && out.length < 3) {
+      out.push(arr.splice(Math.floor(Math.random() * arr.length), 1)[0]);
+    }
+  };
+  take(owned);
+  take(rest);
+  /* 理論上唔會發生（UPGRADES 有 17 張），但保底唔會空畫面 */
+  while (out.length < 3) out.push(UPGRADES[out.length]);
+  return out;
+}
+function applyPickedReverse(idx) {
+  if (idx < 0 || idx >= reverseOffer.length) return;
+  const up = reverseOffer[idx];
+  legendary[up.id] = true;
+  reverseUsed = true;
+  reversePicked = idx;
+  sfx('pick');
+  applyUpgrades();
+  console.log('[單次逆轉]', up.nameZh, '→ 傳說級');
+}
+
 /* ---------- 7. 實體 ---------- */
 let ship = null;            /* { chassis, x, y, hp, maxHp, shield, speed, fireRate, fireCD,
                                  bulletCount, bulletDmg, bombCD, focusFactor,
@@ -990,6 +1035,12 @@ function applyUpgrades() {
   for (const up of UPGRADES) {
     const n = playerStacks[up.id] || 0;
     if (n > 0) up.mod(ship, n);
+  }
+  /* PLAN v3.8 #46 單次逆轉：被升級成傳說級嘅強化，額外多行一次 mod(s, 1)。
+     ⚠️ 擺喺普通 mod 之後、cost 之前——傳說級係「額外一份」，唔係取代原本嗰份，
+        所以原卡嘅代價照計（fr_l 傳說級 = 射速 ×1.5 ×1.5，護盾照樣 −1）。 */
+  for (const up of UPGRADES) {
+    if (legendary[up.id]) up.mod(ship, 1);
   }
   /* PLAN v3.8 #39：代價必須喺所有增益之後套用。
      例：射速++ 令 fireRate ×1.5，同時初始護盾 −1；次序反咗會唔同。
@@ -1500,6 +1551,44 @@ function resetLoots() {
   lootShownAt = 0;
   armorUsed = false;
 }
+/* #46 單次逆轉：boss 出場前暫停 + 恢復（同 resumePause / resumeEvent 同一套路）。
+   必須繞過 fsm.set()，否則 onStateEnter 會清場 + 重新入關。 */
+function enterReverse() {
+  if (fsm.cur !== STATE.REVERSE) fsm.prev = fsm.cur;
+  beginFreezeClocks();
+  fsm.set(STATE.REVERSE);
+  Bgm.setPlaying(false);
+  console.log('[單次逆轉] S' + lastStage + ' boss 出場前 @',
+              (performance.now() / 1000).toFixed(2) + '秒');
+}
+function resumeReverse() {
+  if (fsm.cur !== STATE.REVERSE) return false;
+  const resumeTo = (fsm.prev && isStage(fsm.prev))
+    ? fsm.prev
+    : (STAGES[Math.max(0, (lastStage || 1) - 1)] || STATE.STAGE_1);
+  fsm.cur = resumeTo;
+  fsm.prev = STATE.REVERSE;
+  endFreezeClocks();
+  Bgm.setPlaying(audioOn);
+  InputState.dragId = null;
+  InputState.keys.up = InputState.keys.down = InputState.keys.left = InputState.keys.right = false;
+  hudEl.state.textContent = `狀態：${stateLabel(resumeTo)}`;
+  hudEl.paused.textContent = '';
+  if (STAGE_TABLE[lastStage]) {
+    hudEl.tip.textContent = `第 ${lastStage} 關 · ${STAGE_TABLE[lastStage].name} · 滑鼠跟機／拖曳／WASD · 自動開火 · 空白聚焦 · Shift 炸彈 · P 暫停`;
+  }
+  return true;
+}
+/* #46 逆轉卡：同一個版面，睇 reverseOffer */
+function hitReverseCard(px, py) {
+  const L = choiceLayout();
+  if (py < L.cardY || py > L.cardY + L.cardH) return -1;
+  for (let i = 0; i < 3; i++) {
+    const r = L.rect(i);
+    if (px >= r.x && px <= r.x + r.w) return reverseOffer[i] ? i : -1;
+  }
+  return -1;
+}
 /* 出卡：選定維修引擎要燒嗰件強化（卡面同實際一致） */
 function buildEventOffer() {
   const ids = Object.keys(playerStacks).filter(id => playerStacks[id] > 0);
@@ -1568,6 +1657,8 @@ let eventNextHp   = 1;      /* 下一關敵人血乘數（搶救物資） */
 let eventNextAffix = null;  /* 下一關強制詞綴 id（賭一把） */
 /* 中斷事件只在 S3 出現一次（#47）。eventFired 防止重複觸發。 */
 const EVENT_STAGE = 3;
+/* #46 單次逆轉：只喺 S5 boss 出場前出現一次（#47 排程列咗 S5 出場） */
+const REVERSE_STAGE = 5;
 let eventFired = false;
 
 function applyPickedEvent(idx) {
@@ -1933,6 +2024,15 @@ canvas.addEventListener('pointerdown', (e) => {
     }
     return;
   }
+  /* #46 單次逆轉：揀完 resumeReverse() 返回同一關（boss 仍未出） */
+  if (fsm.cur === STATE.REVERSE) {
+    const idx = hitReverseCard(px, py);
+    if (idx >= 0) {
+      applyPickedReverse(idx);
+      resumeReverse();
+    }
+    return;
+  }
   /* STAGE_n：暫停掣 → 技能鍵 → 觸控先起拖（滑鼠唔使 drag） */
   if (isStage(fsm.cur)) {
     if (hitPauseBtn(px, py)) { enterPause('manual'); return; }
@@ -2091,6 +2191,14 @@ window.addEventListener('keydown', (e) => {
       resumeEvent();
     }
   }
+  /* #46 單次逆轉：揀完 resumeReverse() 返回同一關（boss 仍未出） */
+  if (fsm.cur === STATE.REVERSE) {
+    if (k === '1' || k === '2' || k === '3' || k === 'escape' || k === 'enter') {
+      const idx = (k === '2') ? 1 : (k === '3') ? 2 : 0;
+      applyPickedReverse(idx);
+      resumeReverse();
+    }
+  }
   /* PLAN：任務失敗／勝利 → [重試] / [標題] */
   if (fsm.cur === STATE.GAMEOVER || fsm.cur === STATE.VICTORY) {
     if (k === 'r' || k === 'enter') { goRetry(); e.preventDefault(); }
@@ -2241,6 +2349,11 @@ function resetRunFresh() {
   eventBurnId = null;
   eventOffer = [];
   eventPicked = -1;
+  /* v3.8 #46：單次逆轉每局重置（傳說級唔跨局） */
+  legendary = Object.create(null);
+  reverseOffer = [];
+  reversePicked = -1;
+  reverseUsed = false;
   runStartMs = null;
   stageStartMs = null;
   pausedAtMs = null;
@@ -2594,6 +2707,12 @@ function tick(dtMs) {
       if (waveQueueDoneAt === null) waveQueueDoneAt = performance.now();
       const noGrunts = !enemies.some(e => e.kind === 'grunt' && !e._dead);
       if (noGrunts || performance.now() - waveQueueDoneAt > 8000) {
+        /* #46 單次逆轉：S5 boss 出場前攔截一次，一局只有一次。
+           喺 spawnBossFor 之前 return，等玩家揀完先出 boss。 */
+        if (!reverseUsed && lastStage === REVERSE_STAGE) {
+          enterReverse();
+          return;
+        }
         spawnBossFor(lastStage);
         bossSpawned = true;
         waveQueueDoneAt = null;
@@ -3172,7 +3291,7 @@ function render() {
   /* 背景 —— 依關卡主題，或標題畫面 */
   const bgStage = isStage(fsm.cur) ? lastStage
     : (fsm.cur === STATE.CHOICE || fsm.cur === STATE.PAUSED || fsm.cur === STATE.STYLE
-       || fsm.cur === STATE.EVENT) ? lastStage
+       || fsm.cur === STATE.EVENT || fsm.cur === STATE.REVERSE) ? lastStage
     : 1;
   drawBackdrop(bgStage);
   drawParticles();
@@ -3212,7 +3331,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.19.0 · 中斷事件', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.20.0 · 單次逆轉', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -3450,6 +3569,54 @@ function render() {
       ctx.fillStyle = '#ff6';
       ctx.font = 'bold 10px monospace';
       ctx.textAlign = 'center';
+      ctx.fillText('[' + (i+1) + '] 點擊', x + cardW/2, y + cardH - 8);
+    }
+    renderTail();
+    return;
+  }
+
+  /* ---- #46 單次逆轉三選一：把一件現有強化升級為傳說級 ---- */
+  if (fsm.cur === STATE.REVERSE) {
+    const L = choiceLayout();
+    const cardW = L.cardW, cardH = L.cardH, cardY = L.cardY;
+    ctx.fillStyle = 'rgba(0,0,0,0.8)';
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    ctx.fillStyle = '#ffd24a';
+    ctx.font = 'bold 14px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('單次逆轉 — 揀一件升級', VIEW_W/2, cardY - 18);
+    for (let i = 0; i < 3; i++) {
+      const up = reverseOffer[i];
+      if (!up) continue;
+      const r = L.rect(i);
+      const x = r.x, y = r.y;
+      /* 傳說級配色：金 */
+      const grd = ctx.createLinearGradient(x, y, x, y + cardH);
+      grd.addColorStop(0, 'rgba(120,85,10,0.95)');
+      grd.addColorStop(1, 'rgba(45,30,4,0.95)');
+      ctx.fillStyle = grd;
+      ctx.fillRect(x, y, cardW, cardH);
+      ctx.strokeStyle = '#ffd24a';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, cardW, cardH);
+      ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+      ctx.strokeRect(x + 3, y + 3, cardW - 6, cardH - 6);
+      ctx.fillStyle = '#fff';
+      ctx.font = '24px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(up.icon, x + cardW/2, y + 30);
+      /* 傳說級標記（卡片中央橫幅） */
+      ctx.font = 'bold 9px monospace';
+      ctx.fillStyle = '#ffd24a';
+      ctx.fillText('傳說', x + cardW/2, y + 46);
+      ctx.font = 'bold 12px monospace';
+      ctx.fillStyle = '#ff8';
+      ctx.fillText(up.nameZh, x + cardW/2, y + 62);
+      ctx.font = '9px monospace';
+      ctx.fillStyle = '#cba';
+      ctx.fillText('→ 效果 ×2', x + cardW/2, y + 76);
+      ctx.fillStyle = '#ffd24a';
+      ctx.font = 'bold 10px monospace';
       ctx.fillText('[' + (i+1) + '] 點擊', x + cardW/2, y + cardH - 8);
     }
     renderTail();
@@ -3833,7 +4000,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.19.0 已載入');
+console.log('[啟動] 末日救未來 v0.20.0 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */

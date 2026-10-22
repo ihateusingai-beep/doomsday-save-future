@@ -116,6 +116,7 @@ const STATE = Object.freeze({
   STAGE_5:     'STAGE_5',
   CHOICE:      'CHOICE',
   STYLE:       'STYLE',
+  EVENT:       'EVENT',
   GAMEOVER:    'GAMEOVER',
   VICTORY:     'VICTORY',
   PAUSED:      'PAUSED',
@@ -132,6 +133,7 @@ const STATE_LABEL = Object.freeze({
   STAGE_5:     '第五關',
   CHOICE:      '選擇強化',
   STYLE:       '選擇風格',
+  EVENT:       '中斷事件',
   GAMEOVER:    '任務失敗',
   VICTORY:     '逃出生天',
   PAUSED:      '已暫停',
@@ -779,6 +781,35 @@ function onStateEnter(s, from) {
     waveCursor = 0;
     /* v3.8 #43：本關詞綴，入關 roll 一次，離開本關就冇（唔跨關） */
     rollStageAffix(lastStage);
+    /* v3.8 #42：事件只喺 S3 觸發一次，入新關就重置觸發旗標 */
+    if (lastStage !== EVENT_STAGE) eventFired = false;
+    /* v3.8 #42：中斷事件帶落嚟嘅效果（搶救物資 → 下關敵血；賭一把 → 強制詞綴）。
+       套用完即清，唔會順延落第三關。 */
+    if (eventPending) {
+      if (eventNextHp !== 1) {
+        affEnemyHp *= eventNextHp;
+        console.log('[事件] 下一關敵血 ×' + eventNextHp.toFixed(2) + ' 生效（S' + lastStage + '）');
+      }
+      if (eventNextAffix) {
+        const forced = AFFIX_DEFS.find(a => a.id === eventNextAffix);
+        if (forced) {
+          stageAffix = forced;
+          affScore      = forced.score   || 1;
+          affEnemyHp    = (forced.enemyHp || 1) * eventNextHp;
+          affEnemySpd   = forced.enemySpd || 1;
+          affCount      = forced.count   || 1;
+          affBulletSpd  = forced.bulletSpd || 1;
+          affGrazeBonus = forced.grazeBonus || 0;
+          affDark       = forced.dark    || 0;
+          affHpDelta    = forced.hpDelta || 0;
+          affixShownAt  = performance.now();
+          console.log('[事件] 下一關強制詞綴 →', forced.name);
+        }
+      }
+      eventPending = false;
+      eventNextHp = 1;
+      eventNextAffix = null;
+    }
     /* P1-5：boss 唔喺呢度出。改為波次清完之後由 tick() 召喚，
        令每關有「雜魚 → boss」嘅正確節奏。 */
     bossSpawned = false;
@@ -808,6 +839,11 @@ function onStateEnter(s, from) {
     stylePicked = -1;
     sfx('offer');
     hudEl.tip.textContent = `第 ${lastStage + 1} 關風格 · 點擊卡牌或按 1/2/3`;
+  } else if (s === STATE.EVENT) {
+    /* #42 中斷事件：關卡中途暫停。buildEventOffer() 已選定要燒邊件。 */
+    buildEventOffer();
+    sfx('offer');
+    hudEl.tip.textContent = '中斷事件 — 揀一個，即時生效';
   } else if (s === STATE.GAMEOVER) {
     hudEl.tip.textContent = '重試 / 返回標題';
   } else if (s === STATE.VICTORY) {
@@ -1335,6 +1371,16 @@ function stylePool(stageId, basePool) {
   }
   return out;
 }
+/* #42 事件卡：同一個版面（choiceLayout），睇 eventOffer */
+function hitEventCard(px, py) {
+  const L = choiceLayout();
+  if (py < L.cardY || py > L.cardY + L.cardH) return -1;
+  for (let i = 0; i < 3; i++) {
+    const r = L.rect(i);
+    if (px >= r.x && px <= r.x + r.w) return eventOffer[i] ? i : -1;
+  }
+  return -1;
+}
 /* 呢個風格喺指定關卡有冇「對口」嘅敵種家族？
    用嚟喺 STYLE 卡面提示降級（例如 S2 未解鎖精英怪，揀精英關都改變唔到敵種組成）。 */
 function styleHasMatch(stageId, style) {
@@ -1418,10 +1464,122 @@ function rollLoot(stageId) {
   console.log('[裝備] boss S' + stageId + ' 掉落 →', def.name, '·', def.desc);
   return def;
 }
+/* #42 中斷事件：中途暫停 + 恢復（同 resumePause 同一套路） */
+function enterEvent() {
+  if (fsm.cur !== STATE.EVENT) {
+    fsm.prev = fsm.cur;      /* 記住係邊關入嚟，恢復時返同一關 */
+  }
+  beginFreezeClocks();
+  fsm.set(STATE.EVENT);
+  Bgm.setPlaying(false);
+  console.log('[中斷事件] S' + lastStage + ' 波次過半觸發 @',
+              (performance.now() / 1000).toFixed(2) + '秒');
+}
+function resumeEvent() {
+  if (fsm.cur !== STATE.EVENT) return false;
+  const resumeTo = (fsm.prev && isStage(fsm.prev))
+    ? fsm.prev
+    : (STAGES[Math.max(0, (lastStage || 1) - 1)] || STATE.STAGE_1);
+  /* ⚠️ 繞過 fsm.set()：onStateEnter 會重置場上實體 + 重新入關，
+     事件只係「暫停」，唔應該清走玩家打咗半個鐘嘅彈幕。 */
+  fsm.cur = resumeTo;
+  fsm.prev = STATE.EVENT;
+  endFreezeClocks();
+  Bgm.setPlaying(audioOn);
+  InputState.dragId = null;
+  InputState.keys.up = InputState.keys.down = InputState.keys.left = InputState.keys.right = false;
+  hudEl.state.textContent = `狀態：${stateLabel(resumeTo)}`;
+  hudEl.paused.textContent = '';
+  if (STAGE_TABLE[lastStage]) {
+    hudEl.tip.textContent = `第 ${lastStage} 關 · ${STAGE_TABLE[lastStage].name} · 滑鼠跟機／拖曳／WASD · 自動開火 · 空白聚焦 · Shift 炸彈 · P 暫停`;
+  }
+  return true;
+}
 function resetLoots() {
   loots = Object.create(null);
   lootShownAt = 0;
   armorUsed = false;
+}
+/* 出卡：選定維修引擎要燒嗰件強化（卡面同實際一致） */
+function buildEventOffer() {
+  const ids = Object.keys(playerStacks).filter(id => playerStacks[id] > 0);
+  eventBurnId = ids.length
+    ? ids[Math.floor(Math.random() * ids.length)]
+    : null;
+  eventOffer = EVENT_DEFS.slice();
+  eventPicked = -1;
+}
+function eventDesc(def) {
+  if (def.id !== 'repair') return def.desc;
+  if (!eventBurnId) return '回滿盾 + 1 命';   /* 冇強化可燒：唔提代價 */
+  const d = UPGRADES.find(u => u.id === eventBurnId);
+  return '回滿盾｜燒' + (d ? d.nameZh : '強化');
+}
+function healShipFull() {
+  if (!ship) return;
+  ship.hp = ship.maxHp;
+  ship.shield = Math.max(ship.shield, SHIPS[ship.chassis].shield
+    + (D().shieldBonus || 0) + lootShieldBonus());
+}
+/* 燒走指定一件強化（維修引擎代價）。傳 null = 冇強化可燒。 */
+function burnUpgrade(pickId) {
+  if (!pickId || !playerStacks[pickId]) { console.log('[事件] 冇強化可燒 → 維修引擎只回血'); return null; }
+  playerStacks[pickId] -= 1;
+  if (playerStacks[pickId] <= 0) delete playerStacks[pickId];
+  applyUpgrades();
+  const d = UPGRADES.find(u => u.id === pickId);
+  console.log('[事件] 燒走強化 →', d ? d.nameZh : pickId);
+  return d;
+}
+/* 賭一把：60% 鐵壁 / 40% 蟲潮。結果即時用 console + 橫幅講明。 */
+function eventGamble() {
+  const win = Math.random() < 0.6;
+  eventNextAffix = win ? 'iron' : 'swarm';
+  console.log('[事件] 賭一把 →', win ? '贏：鐵壁' : '輸：蟲潮', '（下一關詞綴）');
+  return win;
+}
+
+/* ---------- 中斷事件（PLAN v3.8 #42）----------
+   關卡中途一次，3 選 1 即時生效。只喺 S3 出現（#47 排程）。
+   ⚠️ 關卡中途暫停 → 用同 resumePause() 一樣嘅「繞過 fsm.set()」機制恢復，
+      否則 onStateEnter 會重置場上實體（清子彈／敵機／重新入關），玩家會死無辜。 */
+const EVENT_DEFS = [
+  /* 搶救物資：即時 +800 分，但下一關雜魚血 +30%。即時獎勵 vs 長線代價。 */
+  /* #48：desc ≤12 字。數字前後唔加空格、縮寫受詞（「下關敵血」→「下關血」）。 */
+  { id:'salvage', name:'搶救物資', icon:'\u{1F4E6}', desc:'+800｜下關血+30%',
+    apply: () => { runScore += 800 * affScore * styScore; eventNextHp = 1.3; } },
+  /* 維修引擎：即時回滿盾 + 1 命，但燒走一件現有強化（卡面必須寫明邊件）。
+     burnId 由出卡時（buildEventOffer）預先選定，確保「卡面寫邊件就真係燒邊件」。
+     冇強化可燒 → 退化為純回血，卡面同步唔提燒裝備。 */
+  { id:'repair',  name:'維修引擎', icon:'\u{1F527}', desc:'',
+    apply: (burnId) => { healShipFull(); burnUpgrade(burnId); } },
+  /* 賭一把：60% 下一關詞綴變鐵壁（敵血 +40%，但分 ×1.3）／40% 變蟲潮（數量 +50%，血 −15%）。
+     ⚠️ 誠實賭博：結果即時用橫幅講明，唔會靜靜地發生。 */
+  { id:'gamble',  name:'賭一把',   icon:'\u{1F3B2}', desc:'60%鐵壁｜40%蟲潮',
+    apply: () => { eventGamble(); } },
+];
+let eventOffer  = [];
+let eventPicked = -1;
+/* 維修引擎要燒邊件：出卡時選定，卡面同實際燒嘅必須一致 */
+let eventBurnId = null;
+/* 事件效果帶落下一關嘅 pending 值（入關時套用，跟 stylePending 同一套路） */
+let eventPending  = false;
+let eventNextHp   = 1;      /* 下一關敵人血乘數（搶救物資） */
+let eventNextAffix = null;  /* 下一關強制詞綴 id（賭一把） */
+/* 中斷事件只在 S3 出現一次（#47）。eventFired 防止重複觸發。 */
+const EVENT_STAGE = 3;
+let eventFired = false;
+
+function applyPickedEvent(idx) {
+  if (idx < 0 || idx >= eventOffer.length) return;
+  const def = eventOffer[idx];
+  eventPicked = idx;
+  /* ⚠️ 卡面寫邊件就燒邊件：eventBurnId 喺出卡時已經定咗，
+     apply() 只燒嗰一件，唔可以再 random（會同卡面對唔上）。 */
+  def.apply(eventBurnId);
+  sfx('pick');
+  eventFired = true;
+  console.log('[中斷事件] 揀咗', def.name, '·', eventDesc(def));
 }
 
 /* ---------- 雜魚小詞綴（PLAN v3.8 #45）----------
@@ -1766,6 +1924,15 @@ canvas.addEventListener('pointerdown', (e) => {
     }
     return;
   }
+  /* #42 中斷事件三選一 */
+  if (fsm.cur === STATE.EVENT) {
+    const idx = hitEventCard(px, py);
+    if (idx >= 0) {
+      applyPickedEvent(idx);
+      resumeEvent();
+    }
+    return;
+  }
   /* STAGE_n：暫停掣 → 技能鍵 → 觸控先起拖（滑鼠唔使 drag） */
   if (isStage(fsm.cur)) {
     if (hitPauseBtn(px, py)) { enterPause('manual'); return; }
@@ -1916,6 +2083,14 @@ window.addEventListener('keydown', (e) => {
       advanceStage();
     }
   }
+  /* #42 中斷事件：揀完即刻 resumeEvent() 返回同一關（唔入下一關） */
+  if (fsm.cur === STATE.EVENT) {
+    if (k === '1' || k === '2' || k === '3' || k === 'escape' || k === 'enter') {
+      const idx = (k === '2') ? 1 : (k === '3') ? 2 : 0;
+      applyPickedEvent(idx);
+      resumeEvent();
+    }
+  }
   /* PLAN：任務失敗／勝利 → [重試] / [標題] */
   if (fsm.cur === STATE.GAMEOVER || fsm.cur === STATE.VICTORY) {
     if (k === 'r' || k === 'enter') { goRetry(); e.preventDefault(); }
@@ -2058,6 +2233,14 @@ function resetRunFresh() {
   resetAffix();          /* v3.8 #43：詞綴唔跨局 */
   resetStyle();          /* v3.8 #41：風格唔跨局 */
   resetLoots();          /* v3.8 #44：裝備唔跨局 */
+  /* v3.8 #42：中斷事件狀態清空（每局都會喺 S3 觸發一次） */
+  eventFired = false;
+  eventPending = false;
+  eventNextHp = 1;
+  eventNextAffix = null;
+  eventBurnId = null;
+  eventOffer = [];
+  eventPicked = -1;
   runStartMs = null;
   stageStartMs = null;
   pausedAtMs = null;
@@ -2396,6 +2579,16 @@ function tick(dtMs) {
      條件：波次佇列出齊 + 場上冇雜魚。
      保險：如果雜魚一直清唔走（例如玩家唔理佢，任由佢飛出畫面），
      8 秒後強制召喚，避免卡住成關。 */
+  /* ---- #42 中斷事件：S3 波次過半觸發一次（#47 排程）----
+     中途暫停 → 揀完之後用 resumeEvent() 繞過 fsm.set() 返回同一關，
+     否則 onStateEnter 會重置場上實體（清子彈／敵機），玩家會死無辜。 */
+  if (!eventFired && lastStage === EVENT_STAGE && stageStartMs
+      && waveCursor >= Math.ceil(waveQueue.length / 2)) {
+    eventFired = true;
+    enterEvent();
+    return;                    /* 即刻停低呢一帧，唔好繼續行碰撞 */
+  }
+
   if (!bossSpawned && stageStartMs) {
     if (waveCursor >= waveQueue.length) {
       if (waveQueueDoneAt === null) waveQueueDoneAt = performance.now();
@@ -2978,7 +3171,8 @@ function render() {
 
   /* 背景 —— 依關卡主題，或標題畫面 */
   const bgStage = isStage(fsm.cur) ? lastStage
-    : (fsm.cur === STATE.CHOICE || fsm.cur === STATE.PAUSED || fsm.cur === STATE.STYLE) ? lastStage
+    : (fsm.cur === STATE.CHOICE || fsm.cur === STATE.PAUSED || fsm.cur === STATE.STYLE
+       || fsm.cur === STATE.EVENT) ? lastStage
     : 1;
   drawBackdrop(bgStage);
   drawParticles();
@@ -3018,7 +3212,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.18.0 · boss 裝備', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.19.0 · 中斷事件', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -3256,6 +3450,55 @@ function render() {
       ctx.fillStyle = '#ff6';
       ctx.font = 'bold 10px monospace';
       ctx.textAlign = 'center';
+      ctx.fillText('[' + (i+1) + '] 點擊', x + cardW/2, y + cardH - 8);
+    }
+    renderTail();
+    return;
+  }
+
+  /* ---- #42 中斷事件三選一：同一個三卡版面 ---- */
+  if (fsm.cur === STATE.EVENT) {
+    const L = choiceLayout();
+    const cardW = L.cardW, cardH = L.cardH, cardY = L.cardY;
+    ctx.fillStyle = 'rgba(0,0,0,0.78)';
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    ctx.fillStyle = '#fc6';
+    ctx.font = 'bold 14px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('中斷事件 — 揀一個', VIEW_W/2, cardY - 18);
+    for (let i = 0; i < 3; i++) {
+      const ev = eventOffer[i];
+      if (!ev) continue;
+      const r = L.rect(i);
+      const x = r.x, y = r.y;
+      const grd = ctx.createLinearGradient(x, y, x, y + cardH);
+      grd.addColorStop(0, 'rgba(90,40,20,0.95)');
+      grd.addColorStop(1, 'rgba(35,14,6,0.95)');
+      ctx.fillStyle = grd;
+      ctx.fillRect(x, y, cardW, cardH);
+      ctx.strokeStyle = '#fc6';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, cardW, cardH);
+      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+      ctx.strokeRect(x + 3, y + 3, cardW - 6, cardH - 6);
+      ctx.fillStyle = '#fff';
+      ctx.font = '24px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(ev.icon, x + cardW/2, y + 32);
+      ctx.font = 'bold 12px monospace';
+      ctx.fillStyle = '#fd6';
+      ctx.fillText(ev.name, x + cardW/2, y + 54);
+      /* desc 動態（維修引擎要寫明燒邊件）→ 用 eventDesc() */
+      ctx.font = '10px monospace';
+      ctx.fillStyle = '#bcd';
+      const chars = Array.from(eventDesc(ev));
+      const lines = [];
+      for (let li = 0; li < chars.length; li += 6) lines.push(chars.slice(li, li + 6).join(''));
+      for (let li = 0; li < Math.min(lines.length, 3); li++) {
+        ctx.fillText(lines[li], x + cardW/2, y + 70 + li * 11);
+      }
+      ctx.fillStyle = '#ff6';
+      ctx.font = 'bold 10px monospace';
       ctx.fillText('[' + (i+1) + '] 點擊', x + cardW/2, y + cardH - 8);
     }
     renderTail();
@@ -3590,7 +3833,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.18.0 已載入');
+console.log('[啟動] 末日救未來 v0.19.0 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */

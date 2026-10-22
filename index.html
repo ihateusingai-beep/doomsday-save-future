@@ -739,6 +739,8 @@ function onStateEnter(s, from) {
        S1 亦經 assembleWaves，但用 STAGE_RAND[1].slots 鎖死教學類別順序（#49）。 */
     waveQueue = assembleWaves(lastStage, runSeed);
     waveCursor = 0;
+    /* v3.8 #43：本關詞綴，入關 roll 一次，離開本關就冇（唔跨關） */
+    rollStageAffix(lastStage);
     /* P1-5：boss 唔喺呢度出。改為波次清完之後由 tick() 召喚，
        令每關有「雜魚 → boss」嘅正確節奏。 */
     bossSpawned = false;
@@ -888,7 +890,7 @@ function applyUpgrades() {
   /* 先重設返基礎值（含難度開局 + 機體六軸） */
   const c = SHIPS[ship.chassis];
   const d = D();
-  ship.maxHp        = d.startHp;
+  ship.maxHp        = Math.max(1, d.startHp + affHpDelta);   /* #43 玻璃：生命 −1 */
   ship.shield       = c.shield + (d.shieldBonus || 0);
   ship.speed        = c.speed;
   ship.fireRate     = c.fireRate;
@@ -1166,6 +1168,67 @@ function assembleWaves(stageId, seed) {
   return out;
 }
 
+/* ---------- 本局詞綴（PLAN v3.8 #43）----------
+   入關 roll 1 個：影響本關、**零選擇**（只顯示）、**零持久**（唔入 localStorage）。
+   文案 ≤12 字 + 一個 icon（#48）。
+   ⚠️ 每個欄位都必須有 game logic 讀，否則就係死卡（項目驗收標準）。 */
+const AFFIX_DEFS = [
+  /* #48：desc ≤12 字，一個 icon + 一個數字，唔解釋機制。橫幅位闊度有限，唔加空格。 */
+  { id:'headwind', name:'逆風', icon:'\u{1F32C}', desc:'敵速+25%｜分×1.3',  score:1.3,  enemySpd:1.25 },
+  { id:'iron',     name:'鐵壁', icon:'\u{1F6E1}', desc:'敵血+40%｜分×1.3',  score:1.3,  enemyHp:1.4 },
+  { id:'swarm',    name:'蟲潮', icon:'\u{1F41B}', desc:'數量+50%｜血−15%', count:1.5,  enemyHp:0.85 },
+  { id:'blackout', name:'停電', icon:'\u{1F311}', desc:'畫面暗｜擦彈+8',    dark:1,     grazeBonus:8 },
+  { id:'glass',    name:'玻璃', icon:'\u26A0',   desc:'生命−1｜分×1.6',    score:1.6,  hpDelta:-1 },
+  { id:'static',   name:'靜電', icon:'\u26A1',   desc:'敵彈−18%｜分×1.2',  score:1.2,  bulletSpd:0.82 },
+];
+/* 本關生效嘅乘數。每次入關由 rollStageAffix() 重設（唔跨關、唔跨局）。 */
+let stageAffix    = null;
+let affixShownAt  = 0;          /* 詞綴橫幅時間戳 */
+let affScore   = 1, affEnemyHp   = 1, affEnemySpd = 1,
+    affCount   = 1, affBulletSpd = 1, affGrazeBonus = 0,
+    affDark    = 0, affHpDelta   = 0;
+
+function rollStageAffix(stageId) {
+  /* 用獨立 rng stream（9000 + stageId），唔會影響同一關嘅波次組波序列 */
+  const rng = stageRngFor(runSeed, 9000 + stageId);
+  const def = AFFIX_DEFS[Math.floor(rng() * AFFIX_DEFS.length)] || AFFIX_DEFS[0];
+  stageAffix = def;
+  affScore      = def.score      || 1;
+  affEnemyHp    = def.enemyHp    || 1;
+  affEnemySpd   = def.enemySpd   || 1;
+  affCount      = def.count      || 1;
+  affBulletSpd  = def.bulletSpd  || 1;
+  affGrazeBonus = def.grazeBonus || 0;
+  affDark       = def.dark       || 0;
+  affHpDelta    = def.hpDelta    || 0;
+  affixShownAt  = performance.now();
+  console.log('[詞綴] S' + stageId + ' ·', def.name, '·', def.desc);
+  return def;
+}
+function resetAffix() {
+  stageAffix = null; affixShownAt = 0;
+  affScore = affEnemyHp = affEnemySpd = affCount = affBulletSpd = 1;
+  affGrazeBonus = 0; affDark = 0; affHpDelta = 0;
+}
+/* 敵方彈速單一來源：難度乘數 × 詞綴乘數。之前散落 6 個 d.bulletSpdMul。 */
+function bulletSpeedMul() { return D().bulletSpdMul * affBulletSpd; }
+/* 擦彈半徑：基礎 20 + 詞綴加成 */
+function grazeRadius() { return GRAZE_RADIUS + affGrazeBonus; }
+
+/* ---------- 雜魚小詞綴（PLAN v3.8 #45）----------
+   普通雜魚都可能有微弱變體。**零選擇**，純外觀 + 微數值，令每關 texture 不同。 */
+const MINOR_AFFIX = [
+  { id:'slow', label:'慢吞', spd:0.7,  hp:1.1, tint:'#8ad' },
+  { id:'quick',label:'快速', spd:1.3,  hp:0.9, tint:'#fb8' },
+  { id:'tanky',label:'結實', spd:0.9,  hp:1.4, tint:'#9d8' },
+];
+function rollMinorAffix(rng, isMini) {
+  /* mini（分裂蟲）唔帶詞綴，免得畫面太花；精英／狙擊／護盾唔帶（已有自己詞綴） */
+  if (isMini) return null;
+  if (rng() > 0.34) return null;      /* 約 34% 機率命中 */
+  return MINOR_AFFIX[Math.floor(rng() * MINOR_AFFIX.length)];
+}
+
 /* 波次產生佇列（隨關卡時間推進而消耗） */
 let waveQueue = [];
 let waveCursor = 0;       /* index into waveQueue */
@@ -1212,7 +1275,7 @@ let grazeFlash = 0;          /* 集滿能量時嘅提示閃光 */
 function doGraze(ex, ey) {
   grazeCount++;
   sfx('graze');
-  const gained = GRAZE_SCORE * (ship.grazeMult || 1);
+  const gained = GRAZE_SCORE * (ship.grazeMult || 1) * affScore;
   runScore += gained;
   grazeScoreTotal += gained;
   grazeEnergy++;
@@ -1265,7 +1328,8 @@ function spawnBossFor(stageId) {
    強化根本無處生效（見 UPGRADES 註釋）。加入雜魚之後先有東西可以貫穿。
    v0.11：+sniper / shield / swarm（仍 kind=grunt，用 role 旗標） */
 function spawnGruntFormation(opt) {
-  const n = opt.count || 1;
+  /* 詞綴數量加成（#43）：Math.ceil 確保最少 +1，唔會有「加成咗但一件都冇多」嘅情況 */
+  const n = Math.max(1, Math.ceil((opt.count || 1) * affCount));
   const d = D();
   const type = opt.type || 'grunt';
   const elite = type === 'elite';
@@ -1282,7 +1346,10 @@ function spawnGruntFormation(opt) {
   else if (swarm) { baseHp = opt.hp || SWARM_HP; score = SWARM_SCORE; }
   else if (mini) { baseHp = opt.hp || 3; score = 40; }
   else { baseHp = opt.hp || GRUNT_HP; score = GRUNT_SCORE; }
-  const hp = Math.max(1, Math.round(baseHp * d.hpMul));
+  /* 雜魚小詞綴（#45）：用同一關嘅 rng stream，唔影響波次組波 */
+  const minor = rollMinorAffix(stageRngFor(runSeed, 7000 + lastStage), mini);
+  const hpRaw = baseHp * d.hpMul * affEnemyHp * (minor ? minor.hp : 1);
+  const hp = Math.max(1, Math.round(hpRaw));
   for (let i = 0; i < n; i++) {
     /* 一排平均分佈喺畫面寬度中央 80% 範圍內 */
     const t = n === 1 ? 0.5 : i / (n - 1);
@@ -1299,9 +1366,13 @@ function spawnGruntFormation(opt) {
       x,
       y: y0,
       vx: 0,
-      vy: baseVy * d.fallMul,
+      vy: baseVy * d.fallMul * affEnemySpd * (minor ? minor.spd : 1),
       hp,
       maxHp: hp,
+      /* #45 小詞綴：label 供繪圖用，tint 供顏色提示 */
+      minorId: minor ? minor.id : '',
+      minorLabel: minor ? minor.label : '',
+      minorTint: minor ? minor.tint : '',
       elite,
       diving,
       sniper,
@@ -1327,7 +1398,7 @@ function spawnGruntFormation(opt) {
 /** 死後裂彈：由 (x,y) 向下扇 3 細彈 */
 function spawnSplitBurst(x, y) {
   const d = D();
-  const spd = 0.09 * d.bulletSpdMul;
+  const spd = 0.09 * bulletSpeedMul();
   for (let i = 0; i < 3; i++) {
     const a = Math.PI / 2 + (i - 1) * 0.45;
     enemies.push({
@@ -1348,7 +1419,7 @@ function spawnSwarmChildren(ex, ey) {
 function emitWaveType(s, stageId) {
   /* 由畫面頂部產生指定類型嘅彈幕／雜魚 */
   const cx = VIEW_W / 2;
-  const bMul = D().bulletSpdMul;
+  const bMul = bulletSpeedMul();
   switch (s.type) {
     case 'grunt':
     case 'dive':
@@ -1746,6 +1817,7 @@ function drawEndBtns() {
   ctx.fillText('R / Enter = 重試 · T / Esc = 返回標題', VIEW_W / 2, VIEW_H - 22);
 }
 function resetRunFresh() {
+  resetAffix();          /* v3.8 #43：詞綴唔跨局 */
   runStartMs = null;
   stageStartMs = null;
   pausedAtMs = null;
@@ -2171,7 +2243,7 @@ function tick(dtMs) {
         nWay = 12; fireEvery = 700; bulletSpd = 0.07;
       }
       fireEvery *= d.fireIntervalMul;
-      bulletSpd *= d.bulletSpdMul;
+      bulletSpd *= affBulletSpd;
 
       e.spiralCD = (e.spiralCD || 0) + dtMs;
       if (e.spiralCD >= fireEvery) {
@@ -2192,7 +2264,7 @@ function tick(dtMs) {
             /* 發射：1 發瞄準戰機嘅高速彈 */
             const sx = ship ? ship.x : VIEW_W/2;
             const a = Math.atan2(ship ? ship.y - e.y : VIEW_H/2, sx - e.x);
-            const lspd = 0.20 * d.bulletSpdMul;
+            const lspd = 0.20 * bulletSpeedMul();
             enemies.push({ kind:'laser', x: e.x, y: e.y, vx: Math.cos(a)*lspd, vy: Math.sin(a)*lspd, lifeMs: 1500 });
             e.laserFiring = true;
             setTimeout(() => { e.laserFiring = false; }, 100);
@@ -2253,7 +2325,7 @@ function tick(dtMs) {
           if (e.warnMs <= 0) {
             e.warnMs = 0;
             const d = D();
-            const spd = 0.22 * d.bulletSpdMul;
+            const spd = 0.22 * bulletSpeedMul();
             const a = Math.atan2(e.warnTy - e.y, e.warnTx - e.x);
             enemies.push({
               kind: 'bullet', x: e.x, y: e.y,
@@ -2280,7 +2352,7 @@ function tick(dtMs) {
           const sy = ship ? ship.y : VIEW_H - 60;
           const base = Math.atan2(sy - e.y, sx - e.x);
           const n = e.elite ? 3 : 1;
-          const spd = (e.elite ? 0.075 : 0.06) * d.bulletSpdMul;
+          const spd = (e.elite ? 0.075 : 0.06) * bulletSpeedMul();
           for (let i = 0; i < n; i++) {
             const a = base + (i - (n - 1) / 2) * 0.24;
             enemies.push({ kind:'bullet', x: e.x, y: e.y, vx: Math.cos(a)*spd, vy: Math.sin(a)*spd });
@@ -2333,7 +2405,7 @@ function tick(dtMs) {
                 if (e.kind === 'spiral') {
                   console.log('[擊破] boss @', (performance.now()/1000).toFixed(2));
                   sfx('kill');
-                  runScore += BOSS_SCORE;
+                  runScore += BOSS_SCORE * affScore;
                   runKills++;
                   if (lastStage >= STAGES.length) {
                     fsm.set(STATE.VICTORY);
@@ -2342,7 +2414,7 @@ function tick(dtMs) {
                   }
                   return;
                 }
-                runScore += (e.score || GRUNT_SCORE);
+                runScore += (e.score || GRUNT_SCORE) * affScore;
                 runKills++;
                 runGrunts++;
                 e._dead = true;
@@ -2415,7 +2487,7 @@ function tick(dtMs) {
          `_grazed` 保證每粒子彈只計一次 —— 一粒子彈喺 20px 圈內
          大約停留 20–40 幀，冇呢個旗標會被重複計幾十次。 */
       const dx = e.x - ship.x, dy = e.y - ship.y;
-      if (Math.hypot(dx, dy) < GRAZE_RADIUS) {
+      if (Math.hypot(dx, dy) < grazeRadius()) {
         e._grazed = true;
         doGraze(ship.x + dx, ship.y + dy);
       }
@@ -2456,7 +2528,8 @@ function tick(dtMs) {
   /* 必須喺 tip 賦值之後，否則下一行會即刻覆蓋咗 */
   if (DEBUG) {
     hudEl.tip.textContent =
-      `種子 ${runSeed}　擊殺 ${runKills}（雜魚 ${runGrunts} · boss ${runKills - runGrunts}）　擦彈 ${grazeCount}（能量 ${grazeEnergy}/${GRAZE_ENERGY_NEED}）　` +
+      `種子 ${runSeed}　詞綴 ${stageAffix ? stageAffix.name + '(×' + affScore.toFixed(2) + ')' : '無'}　` +
+      `擊殺 ${runKills}（雜魚 ${runGrunts} · boss ${runKills - runGrunts}）　擦彈 ${grazeCount}（能量 ${grazeEnergy}/${GRAZE_ENERGY_NEED}）　` +
       hudEl.tip.textContent;
   }
 }
@@ -2584,6 +2657,35 @@ function drawAudioUi() {
   ctx.fillText('撳面板以外 = 關閉', p.x + p.w / 2, p.y + p.h - 13);
 }
 
+/* v3.8 #43：詞綴橫幅（入關 2.6 秒）＋「停電」暗幕 */
+function drawStageAffixFx() {
+  if (!isStage(fsm.cur)) return;
+  /* 停電：全畫面壓暗，唔遮掣（HUD 喺 renderTail 之後畫） */
+  if (affDark) {
+    ctx.fillStyle = 'rgba(0,0,20,' + (0.42 * affDark).toFixed(3) + ')';
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+  }
+  if (!stageAffix || affixShownAt <= 0) return;
+  const age = performance.now() - affixShownAt;
+  if (age > 2600) return;
+  const fade = age > 2000 ? Math.max(0, 1 - (age - 2000) / 600) : 1;
+  const y = 96;
+  ctx.globalAlpha = fade;
+  ctx.fillStyle = 'rgba(0,20,40,0.85)';
+  ctx.fillRect(VIEW_W / 2 - 92, y - 22, 184, 44);
+  ctx.strokeStyle = '#ff5e8a'; ctx.lineWidth = 2;
+  ctx.strokeRect(VIEW_W / 2 - 92, y - 22, 184, 44);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 15px ui-monospace, monospace';
+  ctx.fillText(stageAffix.icon + ' ' + stageAffix.name, VIEW_W / 2, y - 6);
+  ctx.fillStyle = '#ffd56a';
+  ctx.font = '11px ui-monospace, monospace';
+  ctx.fillText(stageAffix.desc, VIEW_W / 2, y + 12);
+  ctx.globalAlpha = 1;
+  ctx.textBaseline = 'alphabetic';
+}
+
 /* ---------- 11. 繪製 ---------- */
 /* render() 收尾：所有畫面共用。
    ⚠️ 音效 UI 一定要畫喺每個狀態 —— 原本放喺戰鬥分支尾部，結果標題／難度／
@@ -2642,7 +2744,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.15.0 · 強化代價', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.16.0 · 本局詞綴', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -2906,6 +3008,17 @@ function render() {
       else if (e.sniper) { spr = 'sniper'; scale = 1.75; R = 9; }
       else if (e.shield) { spr = 'shield_e'; scale = 1.9; R = 11; }
       else if (e.swarm) { spr = 'swarm'; scale = 1.6; R = 8; }
+      /* v3.8 #45 雜魚小詞綴：sprite 外圍加一圈色環（唔改 sprite 本身，
+         免得同一個 sprite 變到認唔出）。 */
+      if (e.minorTint) {
+        ctx.strokeStyle = e.minorTint;
+        ctx.globalAlpha = 0.75;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, R + 3, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
       const drawn = drawSprite(spr, e.x, e.y, scale);
       if (!drawn) {
         ctx.fillStyle = e.elite ? (frac > 0.4 ? '#ffd54a' : '#ff9a3c')
@@ -3065,7 +3178,7 @@ function drawGrazeFx() {
     ctx.strokeStyle = 'rgba(130,255,220,' + (t * 0.75).toFixed(3) + ')';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.arc(grazeRingX, grazeRingY, GRAZE_RADIUS * (1 - t) + 3, 0, Math.PI * 2);
+    ctx.arc(grazeRingX, grazeRingY, grazeRadius() * (1 - t) + 3, 0, Math.PI * 2);
     ctx.stroke();
   }
   /* 判定圈：淡淡的虛線提示，令玩家知道「呢個圈入面有分」 */
@@ -3073,7 +3186,7 @@ function drawGrazeFx() {
     ctx.strokeStyle = 'rgba(130,255,220,0.16)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.arc(ship.x, ship.y, GRAZE_RADIUS, 0, Math.PI * 2);
+    ctx.arc(ship.x, ship.y, grazeRadius(), 0, Math.PI * 2);
     ctx.stroke();
   }
 }
@@ -3115,6 +3228,7 @@ function drawGrazeMeter() {
     ctx.textAlign = 'center';
     ctx.fillText('S' + lastStage + ' · ' + th.name, VIEW_W/2, 17);
   }
+  drawStageAffixFx();       /* v3.8 #43：詞綴橫幅 + 停電暗幕 */
   renderTail();
 }
 
@@ -3142,7 +3256,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.15.0 已載入');
+console.log('[啟動] 末日救未來 v0.16.0 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */

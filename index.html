@@ -115,6 +115,7 @@ const STATE = Object.freeze({
   STAGE_4:     'STAGE_4',
   STAGE_5:     'STAGE_5',
   CHOICE:      'CHOICE',
+  STYLE:       'STYLE',
   GAMEOVER:    'GAMEOVER',
   VICTORY:     'VICTORY',
   PAUSED:      'PAUSED',
@@ -130,6 +131,7 @@ const STATE_LABEL = Object.freeze({
   STAGE_4:     '第四關',
   STAGE_5:     '第五關',
   CHOICE:      '選擇強化',
+  STYLE:       '選擇風格',
   GAMEOVER:    '任務失敗',
   VICTORY:     '逃出生天',
   PAUSED:      '已暫停',
@@ -145,6 +147,9 @@ const SHIPS = Object.freeze({
 
 const isStage = (s) => s && s.indexOf('STAGE_') === 0;
 const STAGES = [STATE.STAGE_1, STATE.STAGE_2, STATE.STAGE_3, STATE.STAGE_4, STATE.STAGE_5];
+/* #41 + #47 排程：本關風格只喺呢兩關出現（第 3 次選擇）。
+   S1 保持乾淨純教學，S3/S5 唔加選擇（總選擇 = 1 揀機 + 4 強化 + 2 風格 = 7）。 */
+const STYLE_STAGES = new Set([2, 4]);
 
 /* ---------- 難度（現況數值 = 3 逃逸；只乘數，唔改 WAVE 腳本） ---------- */
 const DIFFICULTY = Object.freeze({
@@ -725,6 +730,10 @@ const fsm = {
 function onStateEnter(s, from) {
   if (isStage(s)) {
     lastStage = parseInt(s.split('_')[1], 10);
+    /* #41：風格只影響揀嗰一關。STYLE 揀完即刻入關，所以呢度唔可以清；
+       但萬一由非 STYLE 路徑入關（例如 debug / 跳關），就要清走舊風格。 */
+    if (!stylePending) applyStageStyle(null);
+    stylePending = false;
     /* 重置實體、套用強化 */
     bullets.length = 0;
     enemies.length = 0;
@@ -763,6 +772,13 @@ function onStateEnter(s, from) {
     choicePicked = -1;
     sfx('offer');
     hudEl.tip.textContent = '選擇強化 · 點擊卡牌或按 1/2/3';
+  } else if (s === STATE.STYLE) {
+    /* #41 本關風格：boss 後、下一關前。只喺 S2 同 S4 出現（#47 排程）。 */
+    beginFreezeClocks();
+    styleOffer = STAGE_STYLES.slice();
+    stylePicked = -1;
+    sfx('offer');
+    hudEl.tip.textContent = `第 ${lastStage + 1} 關風格 · 點擊卡牌或按 1/2/3`;
   } else if (s === STATE.GAMEOVER) {
     hudEl.tip.textContent = '重試 / 返回標題';
   } else if (s === STATE.VICTORY) {
@@ -934,6 +950,13 @@ function applyUpgrades() {
 let lastStage = 1;          /* remember pre-CHOICE for advanceStage */
 let choiceOffer = [];        /* [up, up, up] */
 let choicePicked = -1;       /* choice card picked (0/1/2) or -1 */
+/* #41 本關風格三選一。STAGE_STYLES 只有 3 款，所以每次都係全部 3 款
+   （唔使洗牌——玩家應該見到全部選項，先有得「決定本關偏向」）。 */
+let styleOffer  = [];
+let stylePicked = -1;
+/* 由 STYLE 揀完風格 → 入關，中間有 flag 保住風格（onStateEnter 唔好清）。
+   冇經 STYLE 直接入關就係 false → 清走舊風格。 */
+let stylePending = false;
 
 function generateChoiceOffer() {
   /* PLAN v3.8 #40：同一次三選一之內唔會出現重複 id（解決「三張卡一模一樣」）。
@@ -958,6 +981,16 @@ function applyPickedUpgrade(idx) {
   sfx('pick');
   console.log('[選擇強化] 揀咗', up.id, '· 疊加 =', playerStacks[up.id]);
   applyUpgrades();
+}
+
+/* #41 本關風格：揀完就入下一關。風格只影響「下一關」，唔跨關。 */
+function applyPickedStyle(idx) {
+  if (idx < 0 || idx >= styleOffer.length) return;
+  const def = styleOffer[idx];
+  applyStageStyle(def);
+  stylePending = true;          /* 入關時唔好清走 */
+  sfx('pick');
+  console.log('[本關風格] 揀咗', def.name, '·', def.desc, '· 生效於 S' + (lastStage + 1));
 }
 
 /* ---------- 8. 關卡表 + 波次模板 + BOSS 招式 ---------- */
@@ -1151,7 +1184,9 @@ function assembleWaves(stageId, seed) {
   const out = [];
   let lastId = null;
   for (let i = 0; i < ats.length; i++) {
-    const pool = cfg.slots ? (cfg.slots[i] || cfg.slots[0]) : cfg.pool;
+    const rawPool = cfg.slots ? (cfg.slots[i] || cfg.slots[0]) : cfg.pool;
+    /* #41 本關風格：改 pool 組成（重複 id = 加權），S1 教學關不動 */
+    const pool = stylePool(stageId, rawPool);
     const id = pickChunkId(pool, rng, lastId);
     lastId = id;
     const ch = WAVE_CHUNKS[id];
@@ -1215,6 +1250,71 @@ function bulletSpeedMul() { return D().bulletSpdMul * affBulletSpd; }
 /* 擦彈半徑：基礎 20 + 詞綴加成 */
 function grazeRadius() { return GRAZE_RADIUS + affGrazeBonus; }
 
+/* ---------- 本關風格（PLAN v3.8 #41）----------
+   boss 後、下一關前 3 選 1，決定本關偏向。**只喺 S2 同 S4 出現**（#47 排程）。
+   實作上唔係新系統：只係改 assembleWaves() 嘅 pool 組成 + 幾個乘數。
+   每個風格都係「有代價、有回報」，冇單方面加難（驗收標準，同 #43 一致）。 */
+const STAGE_STYLES = [
+  /* 彈幕關：偏彈幕家族（spray/aim/ranger），雜魚少但擦彈賺。
+     代價 = 擊殺分少（打得慢）。 */
+  { id:'bullet',  name:'彈幕關', icon:'\u{1F30A}', desc:'彈多｜擦×1.5',
+    prefer:{ sp:3, ai:3, rg:2 }, count:0.75, grazeScore:1.5 },
+  /* 雜兵關：偏雜魚家族（grunt/mortar），數量多但血薄、擊殺分 ×1.3。
+     代價 = 場面亂、容易撞。 */
+  { id:'swarm',  name:'雜兵關', icon:'\u{1F41D}', desc:'兵多｜分×1.3',
+    prefer:{ g:3, mt:2, mix:2 }, count:1.4, enemyHp:0.75, score:1.3 },
+  /* 精英關：偏精英家族（elite/mortar/dive/snake），血厚但 boss 射速慢。
+     代價 = 場面慢、打得耐。
+     ⚠️ S2 未解鎖任何精英家族（pool 只有 g/sp/ai/rg），所以精英關喺 S2
+        會退化成「純血厚 + boss 慢」，敵種組成冇變。呢個係設計現實：
+        風格唔可以越關 intro 新敵人，所以寧願降級都唔偷新怪。 */
+  { id:'elite',   name:'精英關', icon:'\u{1F6E1}', desc:'敵血+35%｜boss慢',
+    prefer:{ el:3, mt:2, dv:2, sn:2, sh:2 }, count:0.9, enemyHp:1.35, bossFire:0.75, score:1.15 },
+];
+/* 本關生效嘅風格。由 pickStageStyle() 喺 STYLE 狀態寫入，resetStyle() 清。 */
+let stageStyle  = null;
+let styScore    = 1, styEnemyHp = 1, styCount = 1,
+    styGrazeScore = 1, styBossFire = 1;
+
+function applyStageStyle(def) {
+  stageStyle      = def || null;
+  styScore        = def ? (def.score       || 1) : 1;
+  styEnemyHp      = def ? (def.enemyHp     || 1) : 1;
+  styCount        = def ? (def.count       || 1) : 1;
+  styGrazeScore   = def ? (def.grazeScore  || 1) : 1;
+  styBossFire     = def ? (def.bossFire    || 1) : 1;
+}
+function resetStyle() {
+  applyStageStyle(null);
+  stylePending = false;
+}
+/* 風格改變本關組波 pool（#41 核心：唔係新系統，係改 roll 參數）。
+   ⚠️ 設計上只喺關卡**自己嘅 pool** 入面加權，唔會 intro 任何越關 chunk，
+      而且保證每個 id 至少出現一次 → 永遠唔會有「死格」。
+      （首版寫死 chunk 清單再取交集，實測 S2×精英關 / S5×彈幕關 / S5×雜兵關
+        三個組合交集不足 4 個會 fallback 返原 pool，即係揀咗都冇效果。踩過。） */
+function stylePool(stageId, basePool) {
+  if (!stageStyle || !stageStyle.prefer) return basePool;
+  if (stageId === 1) return basePool;      /* S1 教學關：風格唔准介入 */
+  if (!basePool || !basePool.length) return basePool;
+  /* 加權 = 重複出現。g:3 → 同一個 g chunk 喺 pool 出現 3 次，機率 ×3 */
+  const out = [];
+  for (const id of basePool) {
+    const fam = id.split('_')[0];
+    const w = stageStyle.prefer[fam] || 1;
+    for (let k = 0; k < w; k++) out.push(id);
+  }
+  return out;
+}
+/* 呢個風格喺指定關卡有冇「對口」嘅敵種家族？
+   用嚟喺 STYLE 卡面提示降級（例如 S2 未解鎖精英怪，揀精英關都改變唔到敵種組成）。 */
+function styleHasMatch(stageId, style) {
+  if (!style || !style.prefer) return false;
+  const base = (STAGE_RAND[stageId] || {}).pool;
+  if (!base) return false;
+  return base.some(id => style.prefer[id.split('_')[0]] > 1);
+}
+
 /* ---------- 雜魚小詞綴（PLAN v3.8 #45）----------
    普通雜魚都可能有微弱變體。**零選擇**，純外觀 + 微數值，令每關 texture 不同。 */
 const MINOR_AFFIX = [
@@ -1275,7 +1375,8 @@ let grazeFlash = 0;          /* 集滿能量時嘅提示閃光 */
 function doGraze(ex, ey) {
   grazeCount++;
   sfx('graze');
-  const gained = GRAZE_SCORE * (ship.grazeMult || 1) * affScore;
+  /* #41 彈幕關：擦彈分額外 ×1.5（回報嗰半；代價係雜魚少 = 擊殺分少） */
+  const gained = GRAZE_SCORE * (ship.grazeMult || 1) * affScore * styGrazeScore;
   runScore += gained;
   grazeScoreTotal += gained;
   grazeEnergy++;
@@ -1328,8 +1429,9 @@ function spawnBossFor(stageId) {
    強化根本無處生效（見 UPGRADES 註釋）。加入雜魚之後先有東西可以貫穿。
    v0.11：+sniper / shield / swarm（仍 kind=grunt，用 role 旗標） */
 function spawnGruntFormation(opt) {
-  /* 詞綴數量加成（#43）：Math.ceil 確保最少 +1，唔會有「加成咗但一件都冇多」嘅情況 */
-  const n = Math.max(1, Math.ceil((opt.count || 1) * affCount));
+  /* 詞綴數量加成（#43）+ 風格數量加成（#41）：Math.ceil 確保最少 +1，
+     唔會有「加成咗但一件都冇多」嘅情況 */
+  const n = Math.max(1, Math.ceil((opt.count || 1) * affCount * styCount));
   const d = D();
   const type = opt.type || 'grunt';
   const elite = type === 'elite';
@@ -1348,7 +1450,7 @@ function spawnGruntFormation(opt) {
   else { baseHp = opt.hp || GRUNT_HP; score = GRUNT_SCORE; }
   /* 雜魚小詞綴（#45）：用同一關嘅 rng stream，唔影響波次組波 */
   const minor = rollMinorAffix(stageRngFor(runSeed, 7000 + lastStage), mini);
-  const hpRaw = baseHp * d.hpMul * affEnemyHp * (minor ? minor.hp : 1);
+  const hpRaw = baseHp * d.hpMul * affEnemyHp * styEnemyHp * (minor ? minor.hp : 1);
   const hp = Math.max(1, Math.round(hpRaw));
   for (let i = 0; i < n; i++) {
     /* 一排平均分佈喺畫面寬度中央 80% 範圍內 */
@@ -1546,6 +1648,15 @@ canvas.addEventListener('pointerdown', (e) => {
     }
     return;
   }
+  /* #41 本關風格三選一：同一個三卡版面（choiceLayout），淨係內容唔同 */
+  if (fsm.cur === STATE.STYLE) {
+    const idx = hitStyleCard(px, py);
+    if (idx >= 0) {
+      applyPickedStyle(idx);
+      advanceStage();
+    }
+    return;
+  }
   /* STAGE_n：暫停掣 → 技能鍵 → 觸控先起拖（滑鼠唔使 drag） */
   if (isStage(fsm.cur)) {
     if (hitPauseBtn(px, py)) { enterPause('manual'); return; }
@@ -1688,6 +1799,14 @@ window.addEventListener('keydown', (e) => {
       advanceStage();
     }
   }
+  /* #41 風格選擇：1/2/3。Esc = 揀第一個（同 CHOICE 一致，唔會卡死） */
+  if (fsm.cur === STATE.STYLE) {
+    if (k === '1' || k === '2' || k === '3' || k === 'escape' || k === 'enter') {
+      const idx = (k === '2') ? 1 : (k === '3') ? 2 : 0;
+      applyPickedStyle(idx);
+      advanceStage();
+    }
+  }
   /* PLAN：任務失敗／勝利 → [重試] / [標題] */
   if (fsm.cur === STATE.GAMEOVER || fsm.cur === STATE.VICTORY) {
     if (k === 'r' || k === 'enter') { goRetry(); e.preventDefault(); }
@@ -1758,6 +1877,16 @@ function hitChoiceCard(px, py) {
   }
   return -1;   /* 12px 卡片間隙：唔當成點中右邊張卡 */
 }
+/* #41 風格卡：同一個版面（choiceLayout），淨係睇 styleOffer */
+function hitStyleCard(px, py) {
+  const L = choiceLayout();
+  if (py < L.cardY || py > L.cardY + L.cardH) return -1;
+  for (let i = 0; i < 3; i++) {
+    const r = L.rect(i);
+    if (px >= r.x && px <= r.x + r.w) return styleOffer[i] ? i : -1;
+  }
+  return -1;
+}
 
 function shipCardsLayout() {
   const w = 72, h = 84;
@@ -1818,6 +1947,7 @@ function drawEndBtns() {
 }
 function resetRunFresh() {
   resetAffix();          /* v3.8 #43：詞綴唔跨局 */
+  resetStyle();          /* v3.8 #41：風格唔跨局 */
   runStartMs = null;
   stageStartMs = null;
   pausedAtMs = null;
@@ -1957,6 +2087,21 @@ function advanceStage() {
   if (fsm.cur === STATE.CHOICE) {
     const next = lastStage + 1;
     if (next > STAGES.length) {
+      fsm.set(STATE.VICTORY);
+    } else if (STYLE_STAGES.has(next)) {
+      /* #41 + #47：S2 / S4 先經風格選擇，其餘直接入關 */
+      fsm.set(STATE.STYLE);
+    } else {
+      resetStyle();          /* 非風格關：清走上一關嘅風格，唔准跨關 */
+      fsm.set(STAGES[next - 1]);
+    }
+    return;
+  }
+  /* 由 STYLE 觸發：揀完風格入下一關 */
+  if (fsm.cur === STATE.STYLE) {
+    const next = lastStage + 1;
+    if (next > STAGES.length) {
+      resetStyle();
       fsm.set(STATE.VICTORY);
     } else {
       fsm.set(STAGES[next - 1]);
@@ -2242,7 +2387,8 @@ function tick(dtMs) {
       } else if (P === 'E') {                /* stage 5: 12-way faster */
         nWay = 12; fireEvery = 700; bulletSpd = 0.07;
       }
-      fireEvery *= d.fireIntervalMul;
+      /* #41 精英關：boss 射速 ×0.75（回報嗰半；代價係敵人血 ×1.35） */
+      fireEvery *= d.fireIntervalMul * styBossFire;
       bulletSpd *= affBulletSpd;
 
       e.spiralCD = (e.spiralCD || 0) + dtMs;
@@ -2405,7 +2551,7 @@ function tick(dtMs) {
                 if (e.kind === 'spiral') {
                   console.log('[擊破] boss @', (performance.now()/1000).toFixed(2));
                   sfx('kill');
-                  runScore += BOSS_SCORE * affScore;
+                  runScore += BOSS_SCORE * affScore * styScore;
                   runKills++;
                   if (lastStage >= STAGES.length) {
                     fsm.set(STATE.VICTORY);
@@ -2414,7 +2560,7 @@ function tick(dtMs) {
                   }
                   return;
                 }
-                runScore += (e.score || GRUNT_SCORE) * affScore;
+                runScore += (e.score || GRUNT_SCORE) * affScore * styScore;
                 runKills++;
                 runGrunts++;
                 e._dead = true;
@@ -2529,6 +2675,7 @@ function tick(dtMs) {
   if (DEBUG) {
     hudEl.tip.textContent =
       `種子 ${runSeed}　詞綴 ${stageAffix ? stageAffix.name + '(×' + affScore.toFixed(2) + ')' : '無'}　` +
+      `風格 ${stageStyle ? stageStyle.name : '無'}　` +
       `擊殺 ${runKills}（雜魚 ${runGrunts} · boss ${runKills - runGrunts}）　擦彈 ${grazeCount}（能量 ${grazeEnergy}/${GRAZE_ENERGY_NEED}）　` +
       hudEl.tip.textContent;
   }
@@ -2704,7 +2851,7 @@ function render() {
 
   /* 背景 —— 依關卡主題，或標題畫面 */
   const bgStage = isStage(fsm.cur) ? lastStage
-    : (fsm.cur === STATE.CHOICE || fsm.cur === STATE.PAUSED) ? lastStage
+    : (fsm.cur === STATE.CHOICE || fsm.cur === STATE.PAUSED || fsm.cur === STATE.STYLE) ? lastStage
     : 1;
   drawBackdrop(bgStage);
   drawParticles();
@@ -2744,7 +2891,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.16.0 · 本局詞綴', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.17.0 · 本關風格', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -2982,6 +3129,66 @@ function render() {
       ctx.fillStyle = '#ff6';
       ctx.font = 'bold 10px monospace';
       ctx.textAlign = 'center';
+      ctx.fillText('[' + (i+1) + '] 點擊', x + cardW/2, y + cardH - 8);
+    }
+    renderTail();
+    return;
+  }
+
+  /* ---- #41 本關風格三選一：同一個三卡版面，卡面用風格配色 ---- */
+  if (fsm.cur === STATE.STYLE) {
+    const L = choiceLayout();
+    const cardW = L.cardW, cardH = L.cardH, cardY = L.cardY;
+    ctx.fillStyle = 'rgba(0,0,0,0.72)';
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    ctx.fillStyle = '#ff6';
+    ctx.font = 'bold 14px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`第 ${lastStage + 1} 關 — 揀風格`, VIEW_W/2, cardY - 18);
+    for (let i = 0; i < 3; i++) {
+      const st = styleOffer[i];
+      if (!st) continue;
+      const r = L.rect(i);
+      const x = r.x, y = r.y;
+      /* 每個風格一個色：紫(彈幕) / 綠(雜兵) / 橙(精英) */
+      const tint = st.id === 'bullet' ? ['rgba(70,30,110,0.95)', 'rgba(20,10,45,0.95)']
+                  : st.id === 'swarm' ? ['rgba(20,90,50,0.95)', 'rgba(8,35,20,0.95)']
+                  :                    ['rgba(110,60,15,0.95)', 'rgba(45,22,6,0.95)'];
+      const grd = ctx.createLinearGradient(x, y, x, y + cardH);
+      grd.addColorStop(0, tint[0]);
+      grd.addColorStop(1, tint[1]);
+      ctx.fillStyle = grd;
+      ctx.fillRect(x, y, cardW, cardH);
+      ctx.strokeStyle = '#0ff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, cardW, cardH);
+      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+      ctx.strokeRect(x + 3, y + 3, cardW - 6, cardH - 6);
+      ctx.fillStyle = '#fff';
+      ctx.font = '24px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(st.icon, x + cardW/2, y + 34);
+      ctx.font = 'bold 12px monospace';
+      ctx.fillStyle = '#0ff';
+      ctx.fillText(st.name, x + cardW/2, y + 56);
+      /* #48 文案 ≤12 字；逐字斷行，Array.from 先拆 code point */
+      ctx.font = '10px monospace';
+      ctx.fillStyle = '#bcd';
+      const chars = Array.from(st.desc);
+      const lines = [];
+      for (let li = 0; li < chars.length; li += 6) lines.push(chars.slice(li, li + 6).join(''));
+      for (let li = 0; li < Math.min(lines.length, 2); li++) {
+        ctx.fillText(lines[li], x + cardW/2, y + 72 + li * 11);
+      }
+      /* 降級提示：呢關未解鎖對口敵種 → 敵種組成唔會變（例如 S2 冇精英怪）。
+         唔講就係期望落差——玩家揀咗見唔到分別會以為壞咗。 */
+      if (!styleHasMatch(lastStage + 1, st)) {
+        ctx.font = '9px monospace';
+        ctx.fillStyle = '#fa4';
+        ctx.fillText('本關無對口敵種', x + cardW/2, y + 90);
+      }
+      ctx.fillStyle = '#ff6';
+      ctx.font = 'bold 10px monospace';
       ctx.fillText('[' + (i+1) + '] 點擊', x + cardW/2, y + cardH - 8);
     }
     renderTail();
@@ -3256,7 +3463,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.16.0 已載入');
+console.log('[啟動] 末日救未來 v0.17.0 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */

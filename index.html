@@ -897,7 +897,7 @@ function onStateEnter(s, from) {
      - aurora   極光  → 切走（係大功能，唔應該掛住個 icon 呃玩家）
      - pierce   貫穿  → P0 切走，P1-5 加入雜魚後已加返
      - graze_s 擦彈+ → P0 切走，P1-6 擦彈機制實作後已加返
-   現時 17 件全部經過驗證：每個 mod() 寫入嘅欄位都有 game logic 讀取。
+   現時 26 件（17 數值 + 5 形態 + 4 tag；PLAN v3.10）：每個 mod() 寫入嘅欄位都有 game logic 讀取。
    註：spd_s / spd_l 之所以有效，係因為 P0-4 已將拖曳改為受 ship.speed 限制。 */
 const UPGRADES = [
   /* cat 分類標籤（PLAN v3.8 #40）：只做顯示，唔限制揀卡。
@@ -927,6 +927,26 @@ const UPGRADES = [
   { id:'graze_s', cat:'輔助', nameZh:'擦彈+',    icon:'»',    desc:'擦彈分數 ×2',          mod:(s,n)=>{ s.grazeMult *= Math.pow(2, n); } },
   { id:'life_st', cat:'防禦', nameZh:'復活',     icon:'✝',    desc:'死亡時復活一次',         mod:(s,n)=>{ s.resurrect += n; } },
   { id:'master',  cat:'靈活', nameZh:'大師',     icon:'★',    desc:'速度與射速 +20%',       mod:(s,n)=>{ s.masterStacks = (s.masterStacks||0) + n; } },
+  /* ---- v3.10 主彈形態（互斥：mod 寫死 shotForm）---- */
+  { id:'form_laser', cat:'火力', nameZh:'激光',   icon:'｜',  desc:'線傷快',
+              mod:(s,n)=>{ s.shotForm = 'laser'; } },
+  { id:'form_rail',  cat:'火力', nameZh:'軌道炮', icon:'┃',  desc:'一條線',
+              mod:(s,n)=>{ s.shotForm = 'rail'; } },
+  { id:'form_boom',  cat:'火力', nameZh:'迴力鏢', icon:'↺',  desc:'去返都打',
+              mod:(s,n)=>{ s.shotForm = 'boomerang'; } },
+  { id:'form_miss',  cat:'火力', nameZh:'導彈',   icon:'🚀', desc:'慢但追',
+              mod:(s,n)=>{ s.shotForm = 'missile'; } },
+  { id:'form_wave',  cat:'火力', nameZh:'波動彈', icon:'〰',  desc:'左右擺',
+              mod:(s,n)=>{ s.shotForm = 'wave'; } },
+  /* ---- v3.10 彈效 tag（可疊）---- */
+  { id:'tag_home', cat:'火力', nameZh:'追蹤',   icon:'◎',  desc:'輕鎖敵',
+              mod:(s,n)=>{ s.shotTags.homing = (s.shotTags.homing||0) + n; } },
+  { id:'tag_split',cat:'火力', nameZh:'分裂',   icon:'✴',  desc:'中裂2',
+              mod:(s,n)=>{ s.shotTags.split = (s.shotTags.split||0) + n; } },
+  { id:'tag_slow', cat:'輔助', nameZh:'緩速彈', icon:'❄',  desc:'敵慢一截',
+              mod:(s,n)=>{ s.shotTags.slow = (s.shotTags.slow||0) + n; } },
+  { id:'tag_rico', cat:'輔助', nameZh:'彈牆',   icon:'↔',  desc:'左右反1',
+              mod:(s,n)=>{ s.shotTags.ricochet = (s.shotTags.ricochet||0) + n; } },
 ];
 
 /* 分類配色（PLAN v3.8 #40）—— 純顯示用，唔參與任何遊戲邏輯 */
@@ -957,7 +977,7 @@ function buildReverseOffer() {
   };
   take(owned);
   take(rest);
-  /* 理論上唔會發生（UPGRADES 有 17 張），但保底唔會空畫面 */
+  /* 理論上唔會發生（UPGRADES 有 26 張），但保底唔會空畫面 */
   while (out.length < 3) out.push(UPGRADES[out.length]);
   return out;
 }
@@ -1006,6 +1026,9 @@ function pickShip(id) {
     resurrect: 0,
     masterStacks: 0,
     iFrameUntil: 0,
+    /* v3.10 武器 */
+    shotForm: 'bolt',
+    shotTags: { homing:0, split:0, slow:0, ricochet:0 },
   };
   /* 套用已累積嘅疊加值（繼續同一局時） */
   applyUpgrades();
@@ -1031,6 +1054,8 @@ function applyUpgrades() {
   ship.pierce       = 0;
   ship.resurrect    = 0;
   ship.masterStacks = 0;
+  ship.shotForm     = 'bolt';
+  ship.shotTags     = { homing:0, split:0, slow:0, ricochet:0 };
   /* 再套用疊加值 */
   for (const up of UPGRADES) {
     const n = playerStacks[up.id] || 0;
@@ -1056,6 +1081,11 @@ function applyUpgrades() {
     ship.speed    *= m;
     ship.fireRate *= m;
   }
+  /* v3.10 形態內建代價（#58）—— 喺全部卡之後套，保證可重算 */
+  applyShotFormCosts(ship);
+  /* pierce 同步入 tag 方便 spawn 讀 */
+  if (!ship.shotTags) ship.shotTags = { homing:0, split:0, slow:0, ricochet:0 };
+  ship.shotTags.pierce = ship.pierce || 0;
   /* 生命上限增加時一併補返血量 */
   if (ship.hp < ship.maxHp) ship.hp = ship.maxHp;
   /* 護盾唔可以負數 */
@@ -1093,6 +1123,12 @@ function generateChoiceOffer() {
 function applyPickedUpgrade(idx) {
   if (idx < 0 || idx >= choiceOffer.length) return;
   const up = choiceOffer[idx];
+  /* v3.10：主彈形態互斥 — 揀新形態就清走其他 form_* 疊加 */
+  if (up.id && up.id.indexOf('form_') === 0) {
+    for (const id of Object.keys(playerStacks)) {
+      if (id.indexOf('form_') === 0 && id !== up.id) delete playerStacks[id];
+    }
+  }
   playerStacks[up.id] = (playerStacks[up.id] || 0) + 1;
   sfx('pick');
   console.log('[選擇強化] 揀咗', up.id, '· 疊加 =', playerStacks[up.id]);
@@ -2750,39 +2786,264 @@ function tick(dtMs) {
     ship.y = clamp(ship.y, 8, PLAY_BOTTOM);
   }
 
-  /* ---- 自動開火（PC／觸控都唔使撳射；只需移動） ---- */
-  ship.fireCD -= dtMs;
-  if (ship.fireCD <= 0) {
-    const n = Math.max(1, ship.bulletCount | 0);
-    const mid = (n - 1) / 2;
-    const spread = n <= 1 ? 0 : (n <= 2 ? 0.08 : 0.12); /* 1 彈直射；2 緊；3+ 散 */
-    const spd = ship.bulletSpd || 0.30;
-    /* #44 穿甲彈：子彈傷害 +N（被動，同所有強化疊加） */
-    const dmg = (ship.bulletDmg || 1) + lootBulletDmg();
-    for (let i = 0; i < n; i++) {
-      const a = -Math.PI / 2 + (i - mid) * spread;  /* upward */
-      bullets.push({
-        x: ship.x + (i - mid) * 4,
-        y: ship.y - 8,
-        vx: Math.cos(a) * spd,
-        vy: Math.sin(a) * spd,
-        owner: 'player',
-        dmg,
-        /* P1-5：貫穿餘額（P1-5 之前呢個欄位從來冇寫入過） */
-        pierceLeft: ship.pierce || 0,
-        _lastHit: null,
-      });
-    }
-    ship.fireCD = 1000 / ship.fireRate;
-    sfx('shoot');
-  }
 
-  /* ---- 玩家子彈移動（原本漏咗，令子彈卡喺槍口） ---- */
+/* ========== v3.10 玩家武器（form + tags）========== */
+const PLAYER_BULLET_CAP = 48;
+const MISSILE_CAP = 8;
+
+function applyShotFormCosts(s) {
+  if (!s) return;
+  const f = s.shotForm || 'bolt';
+  if (f === 'boomerang') s.fireRate *= 0.7;
+  else if (f === 'missile') s.fireRate *= 0.55;
+  else if (f === 'rail') s.fireRate *= 0.35;
+  else if (f === 'wave') s.bulletSpd *= 0.9;
+}
+
+function countPlayerBullets(form) {
+  let n = 0;
   for (const b of bullets) {
     if (b.owner !== 'player') continue;
+    if (form && b.form !== form) continue;
+    n++;
+  }
+  return n;
+}
+
+function cullPlayerBullets() {
+  let n = countPlayerBullets();
+  while (n > PLAYER_BULLET_CAP) {
+    const i = bullets.findIndex(b => b.owner === 'player');
+    if (i < 0) break;
+    bullets.splice(i, 1);
+    n--;
+  }
+}
+
+function nearestEnemy(x, y) {
+  let best = null, bestD = 1e12;
+  for (const e of enemies) {
+    if (e._dead) continue;
+    if (e.kind !== 'spiral' && e.kind !== 'grunt') continue;
+    const dx = e.x - x, dy = e.y - y;
+    const d = dx*dx + dy*dy;
+    if (d < bestD) { bestD = d; best = e; }
+  }
+  return best;
+}
+
+function pushPlayerBullet(b) {
+  bullets.push(b);
+  cullPlayerBullets();
+}
+
+function spawnPlayerShot() {
+  if (!ship) return;
+  const form = ship.shotForm || 'bolt';
+  const tags = ship.shotTags || {};
+  const baseDmg = (ship.bulletDmg || 1) + lootBulletDmg();
+  const n = Math.max(1, ship.bulletCount | 0);
+  const mid = (n - 1) / 2;
+  const spread = n <= 1 ? 0 : (n <= 2 ? 0.08 : 0.12);
+  let spd = ship.bulletSpd || 0.30;
+  const pierce = ship.pierce || 0;
+
+  /* rail：瞬間線，唔跟 bulletCount 扇（一條中線） */
+  if (form === 'rail') {
+    const x0 = ship.x, y0 = ship.y - 8;
+    pushPlayerBullet({
+      owner: 'player', form: 'rail', x: x0, y: y0,
+      vx: 0, vy: 0, dmg: baseDmg, pierceLeft: 99,
+      life: 90, maxLife: 90, isRay: true,
+      _hitSet: null, tags: Object.assign({}, tags),
+    });
+    /* 命中交碰撞：rail 寬判定 + _railHit set 防重複 */
+    sfx('shoot');
+    return;
+  }
+
+  if (form === 'missile' && countPlayerBullets('missile') >= MISSILE_CAP) {
+    return; /* 場上導彈滿 → 呢下唔射 */
+  }
+
+  for (let i = 0; i < n; i++) {
+    const a = -Math.PI / 2 + (i - mid) * spread;
+    let dmg = baseDmg;
+    let vx = Math.cos(a) * spd;
+    let vy = Math.sin(a) * spd;
+    let life = 0, maxLife = 0, phase = 0;
+    let formSpd = spd;
+
+    if (form === 'laser') {
+      dmg = baseDmg * 0.35;
+      formSpd = spd * 1.35;
+      vx = Math.cos(a) * formSpd;
+      vy = Math.sin(a) * formSpd;
+      life = maxLife = 220;
+    } else if (form === 'boomerang') {
+      formSpd = spd * 0.95;
+      vx = Math.cos(a) * formSpd + (i - mid) * 0.04;
+      vy = Math.sin(a) * formSpd;
+      life = maxLife = 1000;
+      phase = 0; /* 0 out, 1 return */
+    } else if (form === 'missile') {
+      dmg = baseDmg * 2.2;
+      formSpd = spd * 0.55;
+      vx = Math.cos(a) * formSpd;
+      vy = Math.sin(a) * formSpd;
+      life = maxLife = 2200;
+    } else if (form === 'wave') {
+      formSpd = spd;
+      vx = Math.cos(a) * formSpd;
+      vy = Math.sin(a) * formSpd;
+      phase = (i - mid) * 0.9; /* wave phase offset */
+      life = maxLife = 1800;
+    } else {
+      /* bolt */
+      life = maxLife = 0; /* 0 = 用出界 cull */
+    }
+
+    pushPlayerBullet({
+      owner: 'player',
+      form,
+      x: ship.x + (i - mid) * 4,
+      y: ship.y - 8,
+      vx, vy,
+      dmg,
+      pierceLeft: pierce,
+      _lastHit: null,
+      life, maxLife,
+      phase,
+      baseX: ship.x + (i - mid) * 4,
+      t: 0,
+      tags: Object.assign({}, tags),
+      ricochetLeft: (tags.ricochet || 0) > 0 ? Math.min(2, tags.ricochet | 0) : 0,
+      _splitDone: false,
+      spin: 0,
+    });
+  }
+  sfx('shoot');
+}
+
+function tickPlayerBullets(dtMs) {
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+    if (b.owner !== 'player') continue;
+
+    if (b.form === 'rail') {
+      b.life -= dtMs;
+      if (b.life <= 0) { bullets.splice(i, 1); continue; }
+      continue;
+    }
+
+    b.t = (b.t || 0) + dtMs;
+
+    /* homing tag 或 missile 微追 */
+    const homeLv = (b.tags && b.tags.homing) || 0;
+    const wantHome = homeLv > 0 || b.form === 'missile';
+    if (wantHome) {
+      const tgt = nearestEnemy(b.x, b.y);
+      if (tgt) {
+        const tx = tgt.x - b.x, ty = tgt.y - b.y;
+        const len = Math.hypot(tx, ty) || 1;
+        const turn = b.form === 'missile' ? 0.0035 : 0.0022 * Math.min(3, homeLv || 1);
+        const desiredVx = (tx / len) * Math.hypot(b.vx, b.vy);
+        const desiredVy = (ty / len) * Math.hypot(b.vx, b.vy);
+        b.vx += (desiredVx - b.vx) * Math.min(1, turn * dtMs);
+        b.vy += (desiredVy - b.vy) * Math.min(1, turn * dtMs);
+      }
+    }
+
+    /* wave 正弦橫擺 */
+    if (b.form === 'wave') {
+      const amp = 0.12;
+      const w = 0.012;
+      b.vx = Math.sin((b.t * w) + (b.phase || 0)) * amp;
+      /* vy 保持向上主速 */
+      if (b.vy > -0.05) b.vy = -(ship && ship.bulletSpd ? ship.bulletSpd : 0.28);
+    }
+
+    /* boomerang：前半出、後半返 */
+    if (b.form === 'boomerang') {
+      if (b.phase === 0 && (b.life < b.maxLife * 0.45 || b.y < 36)) {
+        b.phase = 1;
+        b._lastHit = null; /* 返航可再打 */
+      }
+      if (b.phase === 1 && ship) {
+        const tx = ship.x - b.x, ty = ship.y - b.y;
+        const len = Math.hypot(tx, ty) || 1;
+        const sp = Math.hypot(b.vx, b.vy) || 0.28;
+        b.vx = (tx / len) * sp * 1.15;
+        b.vy = (ty / len) * sp * 1.15;
+        if (len < 10) { bullets.splice(i, 1); continue; }
+      }
+      b.spin = (b.spin || 0) + dtMs * 0.02;
+    }
+
     b.x += b.vx * dtMs;
     b.y += b.vy * dtMs;
+
+    /* ricochet 左右牆 */
+    if (b.ricochetLeft > 0) {
+      if (b.x < 4) { b.x = 4; b.vx = Math.abs(b.vx); b.ricochetLeft--; }
+      else if (b.x > VIEW_W - 4) { b.x = VIEW_W - 4; b.vx = -Math.abs(b.vx); b.ricochetLeft--; }
+    }
+
+    if (b.maxLife > 0) {
+      b.life -= dtMs;
+      if (b.life <= 0) { bullets.splice(i, 1); continue; }
+    }
   }
+}
+
+function spawnSplitBolts(src) {
+  if (!src || src._splitDone) return;
+  if (!(src.tags && src.tags.split > 0)) return;
+  src._splitDone = true;
+  const dmg = Math.max(1, (src.dmg || 1) * 0.55);
+  for (const side of [-1, 1]) {
+    pushPlayerBullet({
+      owner: 'player', form: 'bolt',
+      x: src.x, y: src.y,
+      vx: side * 0.12, vy: -0.28,
+      dmg, pierceLeft: 0, _lastHit: null,
+      life: 700, maxLife: 700, phase: 0, t: 0,
+      tags: {}, ricochetLeft: 0, _splitDone: true, /* 唔再裂 */
+    });
+  }
+}
+
+/* 命中後 tag 效果；回傳是否應刪彈（true=刪） */
+function onPlayerBulletHit(b, e) {
+  if (b.tags && b.tags.slow > 0) {
+    const ms = 600 + Math.max(0, (b.tags.slow - 1) * 300);
+    e.slowT = Math.max(e.slowT || 0, ms);
+    e.slowMul = 0.6;
+  }
+  spawnSplitBolts(b);
+  b._lastHit = e;
+  if (b.form === 'rail') {
+    if (!b._railHit) b._railHit = [];
+    b._railHit.push(e);
+    return false; /* ray 視覺自己消失，可打多隻 */
+  }
+  if (b.pierceLeft > 0) {
+    b.pierceLeft--;
+    return false;
+  }
+  return true; /* 刪彈 */
+}
+
+
+  /* ---- 自動開火（PC／觸控都唔使撳射；只需移動） · v3.10 form+tag ---- */
+  ship.fireCD -= dtMs;
+  if (ship.fireCD <= 0) {
+    spawnPlayerShot();
+    ship.fireCD = 1000 / Math.max(0.5, ship.fireRate || 1);
+  }
+
+  /* ---- 玩家子彈移動／形態路徑 ---- */
+  tickPlayerBullets(dtMs);
 
   /* ---- 聚焦同炸彈由按鍵觸發並檢查冷卻；
        清彈喺觸發當下處理，無敵時段喺碰撞時判斷。 ---- */
@@ -2790,6 +3051,14 @@ function tick(dtMs) {
   /* ---- 敵機更新（boss 招式各自不同） ---- */
   for (const e of enemies) {
     if (e._dead) continue;        /* 屍體唔再郁，正式移除交由 cull */
+    /* v3.10 tag_slow：敵短暫減速 */
+    if (e.slowT && e.slowT > 0) {
+      e.slowT -= dtMs;
+      e._slowMul = e.slowMul || 0.6;
+      if (e.slowT <= 0) { e.slowT = 0; e._slowMul = 1; }
+    } else {
+      e._slowMul = 1;
+    }
     if (e.kind === 'spiral') {
       e.t += dtMs;
       /* 8 字形路徑（預設） */
@@ -2847,8 +3116,8 @@ function tick(dtMs) {
     } else if (e.kind === 'laser') {
       /* 聚焦令敵方彈幕減速（PLAN v2 #6；係數由戰機決定） */
       const slow = focusSlowFactor();
-      e.x += e.vx * dtMs * slow;
-      e.y += e.vy * dtMs * slow;
+      e.x += e.vx * dtMs * (e._slowMul == null ? 1 : e._slowMul) * slow;
+      e.y += e.vy * dtMs * (e._slowMul == null ? 1 : e._slowMul) * slow;
       e.lifeMs -= dtMs;
       if (e.lifeMs <= 0) {
         e._dead = true;
@@ -2868,8 +3137,8 @@ function tick(dtMs) {
       } else {
         if (e.warnMs > 0) e.warnMs -= dtMs;
         const slow = focusSlowFactor();
-        e.x += e.vx * dtMs * slow;
-        e.y += e.vy * dtMs * slow;
+        e.x += e.vx * dtMs * (e._slowMul == null ? 1 : e._slowMul) * slow;
+        e.y += e.vy * dtMs * (e._slowMul == null ? 1 : e._slowMul) * slow;
       }
     } else if (e.kind === 'grunt') {
       /* ---- 雜魚 AI：grunt/dive/elite/sniper/shield/swarm ---- */
@@ -2887,7 +3156,7 @@ function tick(dtMs) {
         e.vy += 0.000012 * dtMs;
       }
       e.x = clamp(e.x, 12, VIEW_W - 12);
-      e.y += e.vy * dtMs;
+      e.y += e.vy * dtMs * (e._slowMul == null ? 1 : e._slowMul);
 
       if (e.sniper) {
         /* 狙擊：預警線 → 一發高速 */
@@ -2942,16 +3211,21 @@ function tick(dtMs) {
     for (let i = bullets.length - 1; i >= 0; i--) {
       const b = bullets[i];
       if (b.owner !== 'player') continue;
-      if (Math.abs(b.x - e.x) < halfW && Math.abs(b.y - e.y) < halfW) {
+      /* rail 用線寬；其餘點撞 */
+      const hw = (b.form === 'rail') ? 11 : (b.form === 'laser' ? halfW + 2 : halfW);
+      const hh = (b.form === 'rail') ? halfW + 2 : (b.form === 'laser' ? halfW + 4 : halfW);
+      if (Math.abs(b.x - e.x) < hw && Math.abs(b.y - e.y) < hh) {
+              /* 同一彈唔好每幀重複打同一隻 */
+              if (b.form === 'rail' && b._railHit && b._railHit.indexOf(e) >= 0) continue;
+              if (e === b._lastHit) continue;
               /* 護盾機：正面（朝下弧）擋玩家彈；側擊／盾滅先入肉 */
               if (e.shield && e.shieldOn) {
                 const ang = Math.atan2(b.y - e.y, b.x - e.x);
                 if (Math.abs(ang - Math.PI / 2) < 1.05) {
                   if (b.pierceLeft > 0) {
-                    if (e === b._lastHit) continue;
                     b.pierceLeft--;
                     b._lastHit = e;
-                  } else {
+                  } else if (b.form !== 'rail') {
                     bullets.splice(i, 1);
                   }
                   spawnSparks(b.x, b.y, 4, 0.1);
@@ -2959,18 +3233,11 @@ function tick(dtMs) {
                   continue;
                 }
               }
-              /* 貫穿：仲有餘數就唔清走粒彈，繼續打下一個目標。
-                 b._lastHit 防止同一粒彈喺連續幾幀重複扣同一隻怪嘅血。 */
-              if (b.pierceLeft > 0) {
-                if (e === b._lastHit) continue;
-                b.pierceLeft--;
-                b._lastHit = e;
-              } else {
-                bullets.splice(i, 1);
-              }
               e.hp -= (b.dmg || 1);
               spawnSparks(b.x, b.y, 3, 0.08);
               sfx('hit');
+              const remove = onPlayerBulletHit(b, e);
+              if (remove) bullets.splice(i, 1);
               if (e.hp <= 0) {
                 spawnBoom(e.x, e.y);
                 if (e.kind === 'spiral') {
@@ -3331,7 +3598,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.20.0 · 單次逆轉', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.21.0 · 武器形態', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -3735,6 +4002,53 @@ function render() {
   /* ---- 遊戲畫面 ---- */
   for (const b of bullets) {
     if (b.owner === 'player') {
+      const f = b.form || 'bolt';
+      if (f === 'rail') {
+        ctx.strokeStyle = 'rgba(180,255,255,0.85)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(b.x, b.y);
+        ctx.lineTo(b.x, 8);
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(b.x, 8); ctx.stroke();
+        continue;
+      }
+      if (f === 'laser') {
+        if (!drawSprite('laser', b.x, b.y, 1.2)) {
+          ctx.fillStyle = '#6ff';
+          ctx.fillRect(b.x - 1.5, b.y - 6, 3, 12);
+        }
+        continue;
+      }
+      if (f === 'boomerang') {
+        ctx.save();
+        ctx.translate(b.x, b.y);
+        ctx.rotate(b.spin || 0);
+        ctx.fillStyle = '#fc6';
+        ctx.fillRect(-4, -4, 8, 8);
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.strokeRect(-4,-4,8,8);
+        ctx.restore();
+        continue;
+      }
+      if (f === 'missile') {
+        ctx.fillStyle = '#f84';
+        ctx.beginPath();
+        ctx.moveTo(b.x, b.y - 5);
+        ctx.lineTo(b.x + 3, b.y + 4);
+        ctx.lineTo(b.x - 3, b.y + 4);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = 'rgba(255,160,40,0.5)';
+        ctx.fillRect(b.x - 1, b.y + 4, 2, 5);
+        continue;
+      }
+      if (f === 'wave') {
+        ctx.fillStyle = '#8f8';
+        ctx.beginPath(); ctx.arc(b.x, b.y, 3.2, 0, Math.PI*2); ctx.fill();
+        continue;
+      }
+      /* bolt 預設 */
       if (!drawSprite('bullet_p', b.x, b.y, 1.4)) {
         ctx.fillStyle = '#0ff';
         ctx.fillRect(b.x - 1, b.y - 4, 2, 8);
@@ -4000,7 +4314,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.20.0 已載入');
+console.log('[啟動] 末日救未來 v0.21.0 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */

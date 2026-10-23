@@ -87,7 +87,7 @@ console.log('\n=== 8. 行為驗證：傳說級真係令數值變雙 ===');
 /* 用真 UPGRADES mod 驗：持有 n 次 vs 傳說級效果 */
 const UP_SRC = grab(/const UPGRADES = \[[\s\S]*?\n\];/).replace('const UPGRADES =', '');
 const UPS = new Function('return ' + UP_SRC)();
-check('UPGRADES 抽到 ' + UPS.length + ' 張', UPS.length === 17);
+check('UPGRADES 抽到 ' + UPS.length + ' 張', UPS.length === 26);
 let doubled = 0, total = 0;
 for (const up of UPS) {
   if (!up.mod) continue;

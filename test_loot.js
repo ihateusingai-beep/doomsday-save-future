@@ -51,7 +51,7 @@ const uncalled = GETTERS.filter(g => {
 check('5 個 getter 全部有定義且被呼叫', uncalled.length === 0, uncalled.join(','));
 
 console.log('\n=== 4. 掛鉤點（每個 getter 都有實際 game logic 掛鈎）===');
-check('子彈傷害 + lootBulletDmg()', /const dmg = \(ship\.bulletDmg \|\| 1\) \+ lootBulletDmg\(\);/.test(h));
+check('子彈傷害 + lootBulletDmg()', /baseDmg = \(ship\.bulletDmg \|\| 1\) \+ lootBulletDmg\(\)/.test(h) || /const dmg = \(ship\.bulletDmg \|\| 1\) \+ lootBulletDmg\(\)/.test(h));
 check('聚焦冷卻 + lootFocusCd()（有下限）', /Math\.max\(3000,[\s\S]{0,80}lootFocusCd\(\)\)/.test(h));
 check('炸彈冷卻 + lootBombCd()（有下限）', /Math\.max\(5000,[\s\S]{0,80}lootBombCd\(\)\)/.test(h));
 check('護盾 + lootShieldBonus()', /ship\.shield\s*=\s*c\.shield[\s\S]{0,90}lootShieldBonus\(\)/.test(h));

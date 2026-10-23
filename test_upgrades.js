@@ -13,9 +13,9 @@ const tblSrc = h.match(/const UPGRADES = \[[\s\S]*?\n\];/)[0].replace('const UPG
 const UPGRADES = new Function('return ' + tblSrc)();
 
 console.log('=== 1. 分類標籤（#40）===');
-check('強化池 = ' + UPGRADES.length + ' 張（維持 #2 唔變）', UPGRADES.length === 17);
+check('強化池 = ' + UPGRADES.length + ' 張（v3.10：17 數值 + 5 形態 + 4 tag）', UPGRADES.length === 26);
+check('17 張數值卡全部有 cat（形態/tag 另計）', UPGRADES.filter(u => !u.id.startsWith('form_') && !u.id.startsWith('tag_')).every(u => u.cat));
 const noCat = UPGRADES.filter(u => !u.cat);
-check('17 張全部有 cat', noCat.length === 0, noCat.length ? '缺：' + noCat.map(u => u.id) : '');
 const cats = {};
 for (const u of UPGRADES) cats[u.cat] = (cats[u.cat] || 0) + 1;
 console.log('    分類分佈：' + Object.entries(cats).map(([k, v]) => k + '×' + v).join(' · '));

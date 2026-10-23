@@ -1,6 +1,6 @@
-# 末日救未來 — 計劃書 v3.10-plan
+# 末日救未來 — 計劃書 v3.10
 > v3 freeze 2026-10-21；v3.1 雜魚；v3.2 擦彈；v3.3 手動暫停；v3.4 難度；v3.5 新敵；v3.6 三機六軸；v3.7 隨機波次；v3.8 roguelike；v3.9 音訊。
-> **v3.10-plan（2026-10-23）**：玩家武器 variant —— 主彈形態 + 彈效 tag，凍結 #57–#66。**碼未動**（runtime `v0.20.0`／v3.8 十步已落地）。
+> **v3.10（2026-10-23）**：玩家武器 variant —— 主彈形態 + 彈效 tag，凍結 #57–#66。**已落地** runtime `v0.21.0`。
 > 語言：全中文。所有用戶可見文字、註解、主控台日誌一律中文。
 > 受眾鎖定：智慧白板學生，低耐性、拒絕長文、3 秒要讀得明。**純局內、零存檔負擔**。
 > v3 主要係 P0 整頓：清走死卡、修護盾 bug、debug HUD 收埋、手感改動。
@@ -38,7 +38,7 @@
 | # | 主題 | 凍結值 |
 |---|---|---|
 | 1 | 戰機設計 | **1 架 × 3 機體**：`A 速`／`B 盾`／`C 火`。六軸：移速 3.6/2.2/1.8 · 盾 1/3/0 · 射速 14/8/5 · 子彈數 1/2/3 · 傷害 1/1/2 · 彈速 0.38/0.28/0.24 |
-| 2 | 強化池 | **17 件固定**（v2 為 18 件 → v3 收緊至 15 → v3.1 加回貫穿 → v3.2 加回擦彈）。全部經過驗證，每件都有 game logic 讀取其欄位 |
+| 2 | 強化池 | **26 件**（17 數值 + 5 形態 + 4 tag；v3.10）。全部經過驗證，每件都有 game logic 讀取其欄位 |
 | 3 | 三選一可疊加 | **可重複出現**：同一 id 第 2 次出現 = 可揀 = 層數 +1 |
 | 4 | 時間獎金目標 | **五關總和** |
 | 5 | 時間獎金倍率 | `10`（每快於目標 1 秒） |
@@ -587,17 +587,19 @@ ship.shotTags = { pierce, homing, split, slow, ricochet }  // 層數
 
 | 步 | 內容 | 完成定義 | 狀態 |
 |---|---|---|---|
-| **P0** | `shotForm`/`shotTags` 欄位；`spawnPlayerShot` 抽離；bolt 路徑行為等價 | 舊局手感不變；node + 既有 test 全綠 | 未做 |
-| **P1** | `laser` + `rail` + 卡 2 張 | 線傷／貫穿線可打 boss+grunt；cap 生效 | 未做 |
-| **P2** | `boomerang` + `missile` + `wave` + 卡 3 張 | 三種路徑可辨；missile≤8 | 未做 |
-| **P3** | tag：`homing`/`split`/`slow`/`ricochet` + 卡 4 張；pierce 標成 tag | 疊加 smoke；split 唔連鎖 | 未做 |
-| **P4** | 繪色／少量 pxl + SFX 分支；可選 loot tag | 形態 3 秒可辨 | 未做 |
+| **P0** | `shotForm`/`shotTags` 欄位；`spawnPlayerShot` 抽離；bolt 路徑行為等價 | 舊局手感不變；node + 既有 test 全綠 | **完成 v0.21.0** |
+| **P1** | `laser` + `rail` + 卡 2 張 | 線傷／貫穿線可打 boss+grunt；cap 生效 | **完成 v0.21.0** |
+| **P2** | `boomerang` + `missile` + `wave` + 卡 3 張 | 三種路徑可辨；missile≤8 | **完成 v0.21.0** |
+| **P3** | tag：`homing`/`split`/`slow`/`ricochet` + 卡 4 張；pierce 標成 tag | 疊加 smoke；split 唔連鎖 | **完成 v0.21.0** |
+| **P4** | 繪色／少量 pxl + SFX 分支；可選 loot tag | 形態 3 秒可辨 | **完成 v0.21.0**（procedural；loot tag 可選未做） |
 
 ### 背景美化（並行 backlog，唔入 v3.10 武器）
 
 先前已構思 parallax／天際線（P0–P2）。**暫緩**，等武器切片或另下 `順序` 背景。
 
 ## 改動紀錄
+
+- **v3.10（2026-10-23）**：玩家武器 variant 落地；版號 v0.21.0。`shotForm` 互斥 6 形態 + `shotTags`；池 26；test_weapons 全綠。loot-tag／背景 parallax 仍 backlog。
 
 - **v3.10-plan（2026-10-23）**：玩家武器 variant。凍結 #57–#66：主形態互斥 6 種（bolt/laser/boomerang/missile/wave/rail）+ tag 可疊（pierce/homing/split/slow/ricochet）+ autofire 不變 + 只經強化池 +9 卡 + cap。ref：R-Type 激光、STG 導彈、Isaac tag、否決蓄力／輪盤／多武器並行。切片 P0–P4。**碼未動**；runtime 仍 v0.20.0
 

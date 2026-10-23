@@ -71,7 +71,7 @@ for (const id of ['form_laser','form_rail','form_boom','form_miss','form_wave'])
 }
 
 console.log('=== version ===');
-check('v0.21.0', /v0\.21\.0/.test(h));
+check('v0.21.x', /v0\.21\.\d/.test(h));
 check('互斥清 form_', /form_/.test(h) && /delete playerStacks\[id\]/.test(h));
 
 console.log('\n' + (fails ? 'FAIL ' + fails : 'ALL PASS'));

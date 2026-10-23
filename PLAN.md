@@ -599,6 +599,8 @@ ship.shotTags = { pierce, homing, split, slow, ricochet }  // 層數
 
 ## 改動紀錄
 
+- **v0.21.1（2026-10-23）**：修選機卡住——`applyShotFormCosts`/`spawnPlayerShot` 誤插 `tick()` 內，`pickShip→applyUpgrades` ReferenceError；搬回頂層。
+
 - **v3.10（2026-10-23）**：玩家武器 variant 落地；版號 v0.21.0。`shotForm` 互斥 6 形態 + `shotTags`；池 26；test_weapons 全綠。loot-tag／背景 parallax 仍 backlog。
 
 - **v3.10-plan（2026-10-23）**：玩家武器 variant。凍結 #57–#66：主形態互斥 6 種（bolt/laser/boomerang/missile/wave/rail）+ tag 可疊（pierce/homing/split/slow/ricochet）+ autofire 不變 + 只經強化池 +9 卡 + cap。ref：R-Type 激光、STG 導彈、Isaac tag、否決蓄力／輪盤／多武器並行。切片 P0–P4。**碼未動**；runtime 仍 v0.20.0

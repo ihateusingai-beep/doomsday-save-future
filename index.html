@@ -2710,83 +2710,6 @@ function drawAbilityBtns() {
   ctx.textBaseline = 'alphabetic';
 }
 
-function tick(dtMs) {
-  /* 非遊戲狀態下凍結 */
-  if (!isStage(fsm.cur)) return;
-
-  /* ---- 波次排程：到達關卡時間目標就產生波次 ---- */
-  if (stageStartMs) {
-    const stageMs = performance.now() - stageStartMs;
-    while (waveCursor < waveQueue.length && waveQueue[waveCursor].at <= stageMs) {
-      const w = waveQueue[waveCursor];
-      for (const s of w.spawn) emitWaveType(s, lastStage);
-      waveCursor++;
-    }
-  }
-
-  /* ---- P1-5：波次清完之後先召喚 boss ----
-     條件：波次佇列出齊 + 場上冇雜魚。
-     保險：如果雜魚一直清唔走（例如玩家唔理佢，任由佢飛出畫面），
-     8 秒後強制召喚，避免卡住成關。 */
-  /* ---- #42 中斷事件：S3 波次過半觸發一次（#47 排程）----
-     中途暫停 → 揀完之後用 resumeEvent() 繞過 fsm.set() 返回同一關，
-     否則 onStateEnter 會重置場上實體（清子彈／敵機），玩家會死無辜。 */
-  if (!eventFired && lastStage === EVENT_STAGE && stageStartMs
-      && waveCursor >= Math.ceil(waveQueue.length / 2)) {
-    eventFired = true;
-    enterEvent();
-    return;                    /* 即刻停低呢一帧，唔好繼續行碰撞 */
-  }
-
-  if (!bossSpawned && stageStartMs) {
-    if (waveCursor >= waveQueue.length) {
-      if (waveQueueDoneAt === null) waveQueueDoneAt = performance.now();
-      const noGrunts = !enemies.some(e => e.kind === 'grunt' && !e._dead);
-      if (noGrunts || performance.now() - waveQueueDoneAt > 8000) {
-        /* #46 單次逆轉：S5 boss 出場前攔截一次，一局只有一次。
-           喺 spawnBossFor 之前 return，等玩家揀完先出 boss。 */
-        if (!reverseUsed && lastStage === REVERSE_STAGE) {
-          enterReverse();
-          return;
-        }
-        spawnBossFor(lastStage);
-        bossSpawned = true;
-        waveQueueDoneAt = null;
-      }
-    }
-  }
-
-  /* ---- 戰機移動（鍵盤優先，否則收斂到拖曳目標） ---- */
-  let vx = 0, vy = 0;
-  if (InputState.keys.left)  vx -= 1;
-  if (InputState.keys.right) vx += 1;
-  if (InputState.keys.up)    vy -= 1;
-  if (InputState.keys.down)  vy += 1;
-  if (vx || vy) {
-    InputState.device = 'key';
-    const len = Math.hypot(vx, vy);
-    const step = ship.speed * (dtMs / 16.67);  /* ship.speed is per-frame @60fps */
-    ship.x = clamp(ship.x + (vx/len) * step, 8, VIEW_W - 8);
-    ship.y = clamp(ship.y + (vy/len) * step, 8, PLAY_BOTTOM);
-    InputState.targetX = ship.x;
-    InputState.targetY = ship.y;
-  } else {
-    /* P0-4：拖曳朝 target 行，但每幀最多行 ship.speed * DRAG_SPEED_MULT。
-       唔再瞬移，所以 spd_s / spd_l 喺觸控平台真係有用。 */
-    const step = ship.speed * DRAG_SPEED_MULT * (dtMs / 16.67);
-    const dx = InputState.targetX - ship.x;
-    const dy = InputState.targetY - ship.y;
-    const d = Math.hypot(dx, dy);
-    if (d > 0.01) {
-      const k = Math.min(1, step / d);
-      ship.x += dx * k;
-      ship.y += dy * k;
-    }
-    ship.x = clamp(ship.x, 8, VIEW_W - 8);
-    ship.y = clamp(ship.y, 8, PLAY_BOTTOM);
-  }
-
-
 /* ========== v3.10 玩家武器（form + tags）========== */
 const PLAYER_BULLET_CAP = 48;
 const MISSILE_CAP = 8;
@@ -3033,6 +2956,82 @@ function onPlayerBulletHit(b, e) {
   }
   return true; /* 刪彈 */
 }
+
+function tick(dtMs) {
+  /* 非遊戲狀態下凍結 */
+  if (!isStage(fsm.cur)) return;
+
+  /* ---- 波次排程：到達關卡時間目標就產生波次 ---- */
+  if (stageStartMs) {
+    const stageMs = performance.now() - stageStartMs;
+    while (waveCursor < waveQueue.length && waveQueue[waveCursor].at <= stageMs) {
+      const w = waveQueue[waveCursor];
+      for (const s of w.spawn) emitWaveType(s, lastStage);
+      waveCursor++;
+    }
+  }
+
+  /* ---- P1-5：波次清完之後先召喚 boss ----
+     條件：波次佇列出齊 + 場上冇雜魚。
+     保險：如果雜魚一直清唔走（例如玩家唔理佢，任由佢飛出畫面），
+     8 秒後強制召喚，避免卡住成關。 */
+  /* ---- #42 中斷事件：S3 波次過半觸發一次（#47 排程）----
+     中途暫停 → 揀完之後用 resumeEvent() 繞過 fsm.set() 返回同一關，
+     否則 onStateEnter 會重置場上實體（清子彈／敵機），玩家會死無辜。 */
+  if (!eventFired && lastStage === EVENT_STAGE && stageStartMs
+      && waveCursor >= Math.ceil(waveQueue.length / 2)) {
+    eventFired = true;
+    enterEvent();
+    return;                    /* 即刻停低呢一帧，唔好繼續行碰撞 */
+  }
+
+  if (!bossSpawned && stageStartMs) {
+    if (waveCursor >= waveQueue.length) {
+      if (waveQueueDoneAt === null) waveQueueDoneAt = performance.now();
+      const noGrunts = !enemies.some(e => e.kind === 'grunt' && !e._dead);
+      if (noGrunts || performance.now() - waveQueueDoneAt > 8000) {
+        /* #46 單次逆轉：S5 boss 出場前攔截一次，一局只有一次。
+           喺 spawnBossFor 之前 return，等玩家揀完先出 boss。 */
+        if (!reverseUsed && lastStage === REVERSE_STAGE) {
+          enterReverse();
+          return;
+        }
+        spawnBossFor(lastStage);
+        bossSpawned = true;
+        waveQueueDoneAt = null;
+      }
+    }
+  }
+
+  /* ---- 戰機移動（鍵盤優先，否則收斂到拖曳目標） ---- */
+  let vx = 0, vy = 0;
+  if (InputState.keys.left)  vx -= 1;
+  if (InputState.keys.right) vx += 1;
+  if (InputState.keys.up)    vy -= 1;
+  if (InputState.keys.down)  vy += 1;
+  if (vx || vy) {
+    InputState.device = 'key';
+    const len = Math.hypot(vx, vy);
+    const step = ship.speed * (dtMs / 16.67);  /* ship.speed is per-frame @60fps */
+    ship.x = clamp(ship.x + (vx/len) * step, 8, VIEW_W - 8);
+    ship.y = clamp(ship.y + (vy/len) * step, 8, PLAY_BOTTOM);
+    InputState.targetX = ship.x;
+    InputState.targetY = ship.y;
+  } else {
+    /* P0-4：拖曳朝 target 行，但每幀最多行 ship.speed * DRAG_SPEED_MULT。
+       唔再瞬移，所以 spd_s / spd_l 喺觸控平台真係有用。 */
+    const step = ship.speed * DRAG_SPEED_MULT * (dtMs / 16.67);
+    const dx = InputState.targetX - ship.x;
+    const dy = InputState.targetY - ship.y;
+    const d = Math.hypot(dx, dy);
+    if (d > 0.01) {
+      const k = Math.min(1, step / d);
+      ship.x += dx * k;
+      ship.y += dy * k;
+    }
+    ship.x = clamp(ship.x, 8, VIEW_W - 8);
+    ship.y = clamp(ship.y, 8, PLAY_BOTTOM);
+  }
 
 
   /* ---- 自動開火（PC／觸控都唔使撳射；只需移動） · v3.10 form+tag ---- */
@@ -3598,7 +3597,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.21.0 · 武器形態', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.21.1 · 選機修復', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -4314,7 +4313,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.21.0 已載入');
+console.log('[啟動] 末日救未來 v0.21.1 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */

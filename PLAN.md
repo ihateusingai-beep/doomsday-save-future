@@ -142,7 +142,7 @@
 | 步 | 內容 | 完成定義 | 狀態 |
 |---|---|---|---|
 | **P0** | `mulberry32(runSeed)`；由現 WAVE 拆 `WAVE_CHUNKS` + 每關 `at[]` 槽；`assembleWaves(stage)` 寫入 `waveQueue`；S1 仍固定 | 同 seed → 同波序列；`?seed=` 可複現；waveCount 鎖死對齊 | **完成 v0.13.0** |
-| **P1** | 敵 roll：count jitter + elite% + special role%（sniper/shield/swarm） | 一 seed 下敵配可複現；clamp 無空波；難度只乘數值 | 未做 |
+| **P1** | 敵 roll：count jitter + elite% + special role%（sniper/shield/swarm） | 一 seed 下敵配可複現；clamp 無空波；難度只乘數值 | **完成 v0.22.0** |
 | **P2** | boss modifier 三選一 roll（dense/fast/wide） | 只改射擊參數；pattern 字面不變 | 未做 |
 | **P3** | debug 顯示 seed；可選入關 toast 標籤；console 中文 log 本關 chunk ids | 手測可讀 | **部分完成 v0.13.0**（debug HUD 顯示種子 + `assembleWaves` log chunk ids；入關 toast 標籤未做） |
 
@@ -598,6 +598,8 @@ ship.shotTags = { pierce, homing, split, slow, ricochet }  // 層數
 先前已構思 parallax／天際線（P0–P2）。**暫緩**，等武器切片或另下 `順序` 背景。
 
 ## 改動紀錄
+
+- **v3.7 P1（2026-10-23）**：敵人隨機配比（#36）；版號 v0.22.0。chunk 抽出之後再 roll 敵配（**殼固定**，關名／timeline／waveCount 全部唔變）。`ENEMY_ROLL` 按關遞增：S1 = 0/0/jitter 0（教學關零 roll）· S2 = 8%/15%/±2 · S3 = 12%/22%/±2 · S4 = 18%/30%/±3 · S5 = 25%/35%/±3。`rollEnemyRoles()` 用**獨立 stream `11000+stageId`**，改敵配唔會打亂 `assembleWaves` 嘅波次序列。**喺 chunk 層級 roll 一次**（唔係逐個 spawn 項各自 roll）——一個 chunk 可能有多個 spawn 項（例如 `mix_gr_sn` = grunt×3 + sniper×1），逐項 roll 會令同一波入面互相矛盾。`elite%` 同 `special%` 互斥（避免 elite + special 疊成雜牌），special 三種均分。`Object.assign({}, s)` 注入，唔污染 `waveQueue` 原始定義。**實作期捉到 5 處 `Math.random()` 違規**：`emitWaveType` 內嘅彈幕橫向擺位、初始角度、散射速度全部未 seed 化，令「同 seed 同波次」只保證咗波次組成、**唔保證彈幕擺位**——直接違反程式碼自己喺 RNG 規則 4 寫明嘅「tick() 內唔准用 Math.random()」。改用局部 `jr()` helper（`stageRngFor(runSeed, 12000 + lastStage)`），7 處全部 seed 化。測試：新增 `test_enemyroll.js`（8 組，含 2000 seed 分佈實測對設計值、clamp 下限=1、jitter 範圍、stream 編號不撞、S1 隔離、剝註釋後掃 Math.random）。**全套 10 個測試檔 + 語法檢查全過**
 
 - **v0.21.2（2026-10-23）**：選機 hit 加大（96×128）+ 中下三等分 fallback + touchstart 共用 handleMenuTap + 鍵盤 1/2/3/Enter；`__dsf.ship` 改 getter。防智慧白板撳唔中卡。
 

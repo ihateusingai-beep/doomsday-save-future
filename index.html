@@ -781,6 +781,9 @@ function onStateEnter(s, from) {
        S1 亦經 assembleWaves，但用 STAGE_RAND[1].slots 鎖死教學類別順序（#49）。 */
     waveQueue = assembleWaves(lastStage, runSeed);
     waveCursor = 0;
+    /* v3.7 P1（#36）：組波之後 roll 本關敵配。獨立 stream（11000+stageId），
+       改敵配唔會打亂 assembleWaves 嘅波次序列。S1 教學關零 roll。 */
+    rollEnemyRoles(lastStage, waveQueue);
     /* v3.8 #43：本關詞綴，入關 roll 一次，離開本關就冇（唔跨關） */
     rollStageAffix(lastStage);
     /* v3.8 #42：事件只喺 S3 觸發一次，入新關就重置觸發旗標 */
@@ -1236,6 +1239,58 @@ function stageRngFor(seed, stageId) {
   let h = (seed ^ 0x9E3779B9) >>> 0;
   h = Math.imul(h ^ Math.imul(stageId | 0, 0x85EBCA6B), 0xC2B2AE35) >>> 0;
   return mulberry32(h);
+}
+
+/* ---------- 敵人 roll（PLAN v3.7 #36 / P1）----------
+   chunk 抽出之後再 roll 敵配。**殼固定**（#33）：關名 / timeline / waveCount
+   全部唔變，只係每個 chunk 嘅數量同角色配比有變化。
+   ⚠️ 同 assembleWaves 分開獨立 stream（11000 + stageId），改敵配唔會打亂波次序列。
+   ⚠️ **喺 chunk 層級 roll 一次**（唔係逐個 spawn 項各自 roll）——一個 chunk 可能
+      有多個 spawn 項（例如 mix_gr_sn = grunt×3 + sniper×1），逐項 roll 會令
+      同一波入面互相矛盾（例如兩項都變精英）。攤分落每項之後再 emit。
+   ⚠️ 呢個 stream 每關只 roll 一次（入關時），唔係每隻敵都 roll —— 否則同一個
+      chunk 嘅敵配會逐隻唔同，反而雜亂。 */
+const ENEMY_ROLL = {
+  /* escape 基準，按關遞增（#36）：elitePct = 機率變精英，specialPct = 機率變特殊角色 */
+  1: { elitePct: 0.00, specialPct: 0.00, jitter: 0 },   /* S1 教學關：零 roll */
+  2: { elitePct: 0.08, specialPct: 0.15, jitter: 2 },
+  3: { elitePct: 0.12, specialPct: 0.22, jitter: 2 },
+  4: { elitePct: 0.18, specialPct: 0.30, jitter: 3 },
+  5: { elitePct: 0.25, specialPct: 0.35, jitter: 3 },
+};
+/* special 三種角色均分（#36）。sniper = 遠程鎖定，shield = 高血，swarm = 快群 */
+const SPECIAL_TYPES = ['sniper', 'shield', 'swarm'];
+/* 本關 enemy roll 出嘅結果：chunkId → { add（數量增減）, type（統一角色，null = 原樣） } */
+let enemyRoll = Object.create(null);
+
+/* 喺入關時 roll 一次。回傳可以喺 tick() 之後查。 */
+function rollEnemyRoles(stageId, waves) {
+  const cfg = ENEMY_ROLL[stageId] || ENEMY_ROLL[2];
+  const rng = stageRngFor(runSeed, 11000 + stageId);
+  enemyRoll = Object.create(null);
+  if (!cfg.jitter) return enemyRoll;     /* S1 教學關唔 roll */
+  for (const w of waves) {
+    /* count jitter：−jitter..+jitter（整數），實際 count 由 emitWaveType clamp */
+    const add = Math.floor(rng() * (cfg.jitter * 2 + 1)) - cfg.jitter;
+    /* 角色 roll：先判精英，再判 special（互斥，避免 elite + special 疊加成雜牌） */
+    let type = null;
+    const r = rng();
+    if (r < cfg.elitePct) {
+      type = 'elite';
+    } else if (r < cfg.elitePct + cfg.specialPct) {
+      type = SPECIAL_TYPES[Math.floor(rng() * SPECIAL_TYPES.length)];
+    }
+    enemyRoll[w.chunk] = { add, type };
+  }
+  console.log('[敵配] S' + stageId + ' · ' +
+    Object.entries(enemyRoll)
+      .map(([k, v]) => k + (v.type ? ':' + v.type : '') + (v.add >= 0 ? '+' : '') + v.add)
+      .join(' '));
+  return enemyRoll;
+}
+/* 查某個 chunk 嘅 roll 結果（冇 roll 過 → null = 用原本 spawn 定義） */
+function enemyRollFor(chunkId) {
+  return enemyRoll[chunkId] || null;
 }
 
 /* 本局種子（#34）：?seed=N 就鎖 N；否則時間 ^ 隨機。重開一局換新 seed。 */
@@ -1912,8 +1967,17 @@ function spawnSwarmChildren(ex, ey) {
   spawnGruntFormation({ type: 'grunt', count: 2, hp: 3, mini: true, x: ex, y: ey });
 }
 
-function emitWaveType(s, stageId) {
-  /* 由畫面頂部產生指定類型嘅彈幕／雜魚 */
+function emitWaveType(s, stageId, chunkId) {
+  /* 由畫面頂部產生指定類型嘅彈幕／雜魚
+     ⚠️ chunkId 係 #36 敵配 roll 用：入面會套用本關 roll 出嚟嘅數量／角色。
+        冇傳（null）就完全用原本 spawn 定義 —— S1 教學關走呢條路。 */
+  const roll = chunkId ? enemyRollFor(chunkId) : null;
+  /* RNG 規則 4：tick() 路徑唔准用 Math.random()。
+     呢個 helper 令 emitWaveType 入面所有隨機（彈幕橫向擺位、初始角度、
+     散射速度）全部由 runSeed 決定 —— 同 seed → 同畫面，可完整複現。
+     ⚠️ 實作時發現原本呢個函式有 5 處 Math.random()，全部未 seed 化，
+        令「同 seed 同波次」只保證咗波次組成，唔保證彈幕擺位。已修正。 */
+  const jr = stageRngFor(runSeed, 12000 + lastStage);
   const cx = VIEW_W / 2;
   const bMul = bulletSpeedMul();
   switch (s.type) {
@@ -1923,18 +1987,27 @@ function emitWaveType(s, stageId) {
     case 'sniper':
     case 'shield':
     case 'swarm': {
-      spawnGruntFormation(s);
+      /* #36：角色 roll 有結果就用佢，冇就保留 chunk 原定類型。
+         count jitter 一併注入（注入 opt.count，唔改 opt 本身——waveQueue 係
+         每次入關重新 assemble 嘅，但仍然唔好污染原始定義）。 */
+      const base = roll && roll.type ? Object.assign({}, s, { type: roll.type }) : Object.assign({}, s);
+      if (roll && roll.add) base.count = Math.max(1, (s.count || 1) + roll.add);
+      spawnGruntFormation(base);
       break;
     }
     case 'spray': {
       const baseA = Math.PI / 2;
       const spd = s.speed * bMul;
       const warn = !!s.warn;
-      for (let i = 0; i < s.count; i++) {
-        const a = baseA + (i - (s.count - 1) / 2) * s.spread;
+      /* #36 count jitter（彈幕類型一樣受影響），clamp 下限 1 避免空彈幕 */
+      const cnt = Math.max(1, (s.count || 1) + (roll ? roll.add : 0));
+      for (let i = 0; i < cnt; i++) {
+        const a = baseA + (i - (cnt - 1) / 2) * s.spread;
+        /* RNG 規則 4：tick() 路徑唔准用 Math.random()。改用同關 stream。 */
+        const jx = jr();
         enemies.push({
           kind: 'bullet',
-          x: cx + (Math.random() - 0.5) * VIEW_W * 0.6,
+          x: cx + (jx - 0.5) * VIEW_W * 0.6,
           y: 20,
           vx: Math.cos(a) * spd,
           vy: Math.sin(a) * spd,
@@ -1955,7 +2028,7 @@ function emitWaveType(s, stageId) {
       if (s.warn) {
         for (let i = 0; i < s.count; i++) {
           const a = Math.atan2(sy - 20, sx - cx) + (i - (s.count - 1) / 2) * 0.08;
-          const bx = cx + (Math.random()-0.5)*VIEW_W*0.3;
+          const bx = cx + (jr()-0.5)*VIEW_W*0.3;
           enemies.push({
             kind: 'bullet',
             x: bx, y: 20,
@@ -1972,13 +2045,13 @@ function emitWaveType(s, stageId) {
       } else {
         for (let i = 0; i < s.count; i++) {
           const a = Math.atan2(sy - 20, sx - cx) + (i - (s.count - 1) / 2) * 0.08;
-          enemies.push({ kind:'bullet', x: cx + (Math.random()-0.5)*VIEW_W*0.5, y: 20, vx: Math.cos(a)*spd, vy: Math.sin(a)*spd });
+          enemies.push({ kind:'bullet', x: cx + (jr()-0.5)*VIEW_W*0.5, y: 20, vx: Math.cos(a)*spd, vy: Math.sin(a)*spd });
         }
       }
       break;
     }
     case 'ring': {
-      const ang0 = Math.random() * Math.PI * 2;
+      const ang0 = jr() * Math.PI * 2;
       const spd = s.speed * bMul;
       for (let i = 0; i < s.count; i++) {
         const a = ang0 + i * (Math.PI * 2 / s.count);
@@ -1989,8 +2062,8 @@ function emitWaveType(s, stageId) {
     case 'meteor': {
       const spd = s.speed * bMul;
       for (let i = 0; i < s.count; i++) {
-        const x = 30 + Math.random() * (VIEW_W - 60);
-        enemies.push({ kind:'bullet', x, y: 10, vx: (Math.random()-0.5)*0.02, vy: spd * (0.8 + Math.random()*0.4) });
+        const x = 30 + jr() * (VIEW_W - 60);
+        enemies.push({ kind:'bullet', x, y: 10, vx: (jr()-0.5)*0.02, vy: spd * (0.8 + jr()*0.4) });
       }
       break;
     }
@@ -3028,7 +3101,7 @@ function tick(dtMs) {
     const stageMs = performance.now() - stageStartMs;
     while (waveCursor < waveQueue.length && waveQueue[waveCursor].at <= stageMs) {
       const w = waveQueue[waveCursor];
-      for (const s of w.spawn) emitWaveType(s, lastStage);
+      for (const s of w.spawn) emitWaveType(s, lastStage, w.chunk);
       waveCursor++;
     }
   }
@@ -3659,7 +3732,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.21.2 · 選機 hit 加大', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.22.0 · 敵人隨機配比', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -4375,7 +4448,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.21.2 已載入');
+console.log('[啟動] 末日救未來 v0.22.0 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */

@@ -599,6 +599,8 @@ ship.shotTags = { pierce, homing, split, slow, ricochet }  // 層數
 
 ## 改動紀錄
 
+- **v0.21.2（2026-10-23）**：選機 hit 加大（96×128）+ 中下三等分 fallback + touchstart 共用 handleMenuTap + 鍵盤 1/2/3/Enter；`__dsf.ship` 改 getter。防智慧白板撳唔中卡。
+
 - **v0.21.1（2026-10-23）**：修選機卡住——`applyShotFormCosts`/`spawnPlayerShot` 誤插 `tick()` 內，`pickShip→applyUpgrades` ReferenceError；搬回頂層。
 
 - **v3.10（2026-10-23）**：玩家武器 variant 落地；版號 v0.21.0。`shotForm` 互斥 6 形態 + `shotTags`；池 26；test_weapons 全綠。loot-tag／背景 parallax 仍 backlog。

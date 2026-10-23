@@ -1998,25 +1998,39 @@ function emitWaveType(s, stageId) {
 }
 
 /* ---------- 7. 輸入 —— Pointer Events + 鍵盤 ---------- */
-canvas.addEventListener('pointerdown', (e) => {
-  /* 依狀態分派點擊 */
+/* 選單／非戰鬥點擊：pointer + touch 共用（舊 iPad 可能只有 touch） */
+function handleMenuTap(clientX, clientY) {
   const rect = canvas.getBoundingClientRect();
-  const cx = e.clientX, cy = e.clientY;
-  const px = (cx - rect.left) * VIEW_W / rect.width;
-  const py = (cy - rect.top)  * VIEW_H / rect.height;
-  /* v3.9：音效面板／音效掣優先於底下所有點擊（面板開住時唔會漏去遊戲） */
-  if (handleAudioPanelTap(px, py)) return;
-  if (fsm.cur === STATE.TITLE) { fsm.set(STATE.DIFF_SELECT); return; }
+  if (rect.width < 1 || rect.height < 1) return false;
+  const px = (clientX - rect.left) * VIEW_W / rect.width;
+  const py = (clientY - rect.top)  * VIEW_H / rect.height;
+  if (handleAudioPanelTap(px, py)) return true;
+  if (fsm.cur === STATE.TITLE) { fsm.set(STATE.DIFF_SELECT); return true; }
   if (fsm.cur === STATE.DIFF_SELECT) {
     const id = hitDiffCard(px, py);
     if (id) selectDiffAndContinue(id);
-    return;
+    return true; /* 吞掉，避免穿透 */
   }
   if (fsm.cur === STATE.SHIP_SELECT) {
     const id = hitShipCard(px, py);
-    if (id) pickShipAndStart(id);
-    return;
+    if (id) {
+      console.log('[選機] 揀', id, '@', px.toFixed(1), py.toFixed(1));
+      pickShipAndStart(id);
+    } else {
+      console.log('[選機] 未命中卡', px.toFixed(1), py.toFixed(1));
+    }
+    return true;
   }
+  return false;
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  /* 依狀態分派點擊 */
+  const cx = e.clientX, cy = e.clientY;
+  if (handleMenuTap(cx, cy)) return;
+  const rect = canvas.getBoundingClientRect();
+  const px = (cx - rect.left) * VIEW_W / rect.width;
+  const py = (cy - rect.top)  * VIEW_H / rect.height;
   if (fsm.cur === STATE.PAUSED) {
     /* 手動暫停：點擊繼續；分頁暫停等 visibility 恢復 */
     if (pauseReason === 'manual') resumePause();
@@ -2158,6 +2172,19 @@ canvas.addEventListener('pointerup',    endDrag);
 canvas.addEventListener('pointercancel', endDrag);
 
 /* 阻止 iPad 捲動／縮放 */
+canvas.addEventListener('touchstart', (e) => {
+  if (!e.touches || !e.touches[0]) return;
+  const t = e.touches[0];
+  /* 只處理選單；戰鬥拖曳仍走 pointer */
+  if (fsm.cur === STATE.TITLE || fsm.cur === STATE.DIFF_SELECT || fsm.cur === STATE.SHIP_SELECT
+      || fsm.cur === STATE.CHOICE || fsm.cur === STATE.STYLE || fsm.cur === STATE.EVENT
+      || fsm.cur === STATE.REVERSE || fsm.cur === STATE.GAMEOVER || fsm.cur === STATE.VICTORY
+      || fsm.cur === STATE.PAUSED) {
+    if (handleMenuTap(t.clientX, t.clientY)) {
+      e.preventDefault();
+    }
+  }
+}, { passive:false });
 canvas.addEventListener('touchmove', (e) => e.preventDefault(), { passive:false });
 
 /* 鍵盤代理 */
@@ -2197,8 +2224,11 @@ window.addEventListener('keydown', (e) => {
   /* 用鍵盤揀機體 */
   if (fsm.cur === STATE.SHIP_SELECT) {
     if (k === 'a') pickShipAndStart('A');
-    if (k === 'b') pickShipAndStart('B');
-    if (k === 'c') pickShipAndStart('C');
+    else if (k === 'b') pickShipAndStart('B');
+    else if (k === 'c') pickShipAndStart('C');
+    else if (k === 'enter' || k === ' ' || k === 'escape' || k === '1') pickShipAndStart('A');
+    else if (k === '2') pickShipAndStart('B');
+    else if (k === '3') pickShipAndStart('C');
   }
   if (fsm.cur === STATE.CHOICE) {
     /* 按 1/2/3 揀卡（PLAN v2 #3 可重複） */
@@ -2254,9 +2284,26 @@ window.addEventListener('keyup', (e) => {
    今次開局唔經過佢，會令 runSeed 永遠係 0（實測踩過）。
    放喺呢度就保證「一局一次」，兩條路徑（首次開局 / 重試）都覆蓋到。 */
 function pickShipAndStart(id) {
-  initRunSeed();
-  pickShip(id);
-  fsm.set(STATE.STAGE_1);
+  try {
+    if (!id || !SHIPS[id]) {
+      console.warn('[選機] 無效 id', id, '→ fallback A');
+      id = 'A';
+    }
+    initRunSeed();
+    pickShip(id);
+    if (!ship) throw new Error('pickShip 後 ship 仍係 null');
+    console.log('[選機] OK', id, 'seed', runSeed, 'form', ship.shotForm);
+    fsm.set(STATE.STAGE_1);
+  } catch (err) {
+    console.error('[選機] 失敗', err);
+    /* 最後手段：仍嘗試入關，避免卡死選機畫面 */
+    try {
+      if (!ship) pickShip('A');
+      fsm.set(STATE.STAGE_1);
+    } catch (err2) {
+      console.error('[選機] 二次失敗', err2);
+    }
+  }
 }
 
 function selectDiffAndContinue(id) {
@@ -2277,7 +2324,11 @@ function hitDiffCard(px, py) {
   const L = diffCardsLayout();
   for (let i = 0; i < 3; i++) {
     const r = L.rect(i);
-    if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return i + 1;
+    if (px >= r.x - 8 && px <= r.x + r.w + 8 && py >= r.y - 8 && py <= r.y + r.h + 8) return i + 1;
+  }
+  /* fallback 三等分 */
+  if (py >= 100 && py <= VIEW_H - 40) {
+    return Math.max(0, Math.min(2, Math.floor(px / (VIEW_W / 3)))) + 1;
   }
   return null;
 }
@@ -2317,18 +2368,29 @@ function hitStyleCard(px, py) {
 }
 
 function shipCardsLayout() {
-  const w = 72, h = 84;
-  const y = VIEW_H / 2;
+  /* v0.21.2：卡加大 + 垂直帶加闊，智慧白板手指易撳 */
+  const w = 96, h = 128, gap = 12;
+  const total = w * 3 + gap * 2;
+  const startX = (VIEW_W - total) / 2;
+  const y = VIEW_H / 2 - 20;
   return {
-    w, h, y,
-    rect: (i) => ({ x: 60 + i * 100 - w / 2, y: y - 40, w, h }),
+    w, h, gap, startX, y,
+    rect: (i) => ({ x: startX + i * (w + gap), y: y - 20, w, h }),
   };
 }
 function hitShipCard(px, py) {
   const L = shipCardsLayout();
   for (let i = 0; i < 3; i++) {
     const r = L.rect(i);
-    if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return 'ABC'[i];
+    /* 加大 12px 外緣容差 */
+    if (px >= r.x - 8 && px <= r.x + r.w + 8 && py >= r.y - 8 && py <= r.y + r.h + 8) {
+      return 'ABC'[i];
+    }
+  }
+  /* fallback：畫面中下三等分（唔使準中細卡） */
+  if (py >= 120 && py <= VIEW_H - 40) {
+    const i = Math.max(0, Math.min(2, Math.floor(px / (VIEW_W / 3))));
+    return 'ABC'[i];
   }
   return null;
 }
@@ -3597,7 +3659,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.21.1 · 選機修復', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.21.2 · 選機 hit 加大', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -3706,7 +3768,7 @@ function render() {
     });
     ctx.fillStyle = '#ff6';
     ctx.font = '12px monospace';
-    ctx.fillText('按 A / B / C 或點擊卡牌', VIEW_W/2, VIEW_H - 48);
+    ctx.fillText('點左/中/右 或 A B C', VIEW_W/2, VIEW_H - 48);
     renderTail();
     return;
   }
@@ -4313,7 +4375,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.21.1 已載入');
+console.log('[啟動] 末日救未來 v0.21.2 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */
@@ -4322,7 +4384,13 @@ hudEl.tip.textContent = '點擊畫面開始';
 requestAnimationFrame(loop);
 
 /* 開放俾瀏覽器冒煙測試（主控台：window.__dsf.fsm.cur） */
-window.__dsf = { fsm, ship, bullets, enemies, shipS: SHIPS, stageS: STATE, InputState, SPRITE, sheetReady: () => sheetReady, drawSprite, enterPause, resumePause, pauseReason: () => pauseReason, D, diffId: () => diffId, setDifficulty };
+window.__dsf = {
+  fsm, bullets, enemies, shipS: SHIPS, stageS: STATE, InputState, SPRITE,
+  get ship(){ return ship; },
+  sheetReady: () => sheetReady, drawSprite, enterPause, resumePause,
+  pauseReason: () => pauseReason, D, diffId: () => diffId, setDifficulty,
+  pickShipAndStart, hitShipCard, handleMenuTap,
+};
 </script>
 </body>
 </html>

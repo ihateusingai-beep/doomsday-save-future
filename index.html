@@ -1340,6 +1340,12 @@ const WAVE_CHUNKS = {
   el_1:   { tags:['精英'], spawn:[{type:'elite', count:1, hp:24, affix:'重裝'}] },
   el_2:   { tags:['精英'], spawn:[{type:'elite', count:2, hp:26, affix:'重裝'}] },
   sw_2:   { tags:['群'], spawn:[{type:'swarm', count:2}] },
+  /* ---- v3.11 #71 新敵人 chunk（只喺 S3+ 出現，#72）---- */
+  sp_2:   { tags:['裂解'], spawn:[{type:'splitter', count:2}] },
+  ram_1:  { tags:['衝撞'], spawn:[{type:'rammer', count:1}] },
+  ram_2:  { tags:['衝撞'], spawn:[{type:'rammer', count:2}] },
+  ln_1:   { tags:['雷射'], spawn:[{type:'lancer', count:1}] },
+  mix_sp_ram: { tags:['裂解','衝撞'], spawn:[{type:'splitter', count:1}, {type:'rammer', count:1}] },
   sw_3:   { tags:['群'], spawn:[{type:'swarm', count:3}] },
   /* 混編 */
   mix_gr_sn: { tags:['狙擊','雜兵'], spawn:[{type:'grunt', count:3, hp:10}, {type:'sniper', count:1}] },
@@ -1361,9 +1367,9 @@ const STAGE_RAND = {
         ['g_m','g_l'],              // 7 波 23000
      ] },
   2: { pool: ['g_m','g_l','g_xl','sp_s','sp_m','sp_l','sp_w','ai_s','ai_w','rg_s'] },
-  3: { pool: ['mt_s','mt_m','mt_l','g_l','dv_s','dv_m','dv_l','rg_m','sn_1','sn_2','mix_gr_sn'] },
-  4: { pool: ['rg_m','rg_l','g_l','g_xl','dv_m','sh_1','el_1','el_2','sn_1','sn_2','mix_sh_gr'] },
-  5: { pool: ['mt_m','mt_l','g_xl','dv_l','el_1','el_2','sw_2','sw_3','sp_w','rg_l','mix_sw_sn','mix_sh_gr'] },
+  3: { pool: ['mt_s','mt_m','mt_l','g_l','dv_s','dv_m','dv_l','rg_m','sn_1','sn_2','mix_gr_sn','sp_2','ram_1','ln_1'] },
+  4: { pool: ['rg_m','rg_l','g_l','g_xl','dv_m','sh_1','el_1','el_2','sn_1','sn_2','mix_sh_gr','sp_2','ram_2','ln_1','mix_sp_ram'] },
+  5: { pool: ['mt_m','mt_l','g_xl','dv_l','el_1','el_2','sw_2','sw_3','sp_w','rg_l','mix_sw_sn','mix_sh_gr','sp_2','ram_2','ln_1','mix_sp_ram'] },
 };
 
 /* at[] 由 WAVE_TEMPLATES 動態抽出（單一真相，唔重複維護） */
@@ -1794,6 +1800,18 @@ const ELITE_HP = 24, ELITE_SCORE = 200;
 const SNIPER_HP = 10, SNIPER_SCORE = 150;
 const SHIELD_HP = 18, SHIELD_SCORE = 180;
 const SWARM_HP = 6, SWARM_SCORE = 120;
+/* ---- v3.11 #71 新敵人 3 種（S3 之後先出現，#72）----
+   三者都仍然用 kind:'grunt' + role flag（同 #38 唔新寫 kind 管線）。 */
+const SPLITTER_HP = 12, SPLITTER_SCORE = 160;   /* 分裂者：血薄但死後炸開 */
+const RAMMER_HP   = 14, RAMMER_SCORE   = 170;   /* 衝撞者：直線加速撞機 */
+const LANCER_HP   = 16, LANCER_SCORE   = 190;   /* 雷射兵：長預警 → 垂直光束 */
+const RAMMER_ACCEL = 0.055;        /* 每 ms 加速（明顯比雜魚快） */
+const RAMMER_MAXV  = 0.42;
+const RAMMER_WARN_MS = 700;        /* 鎖定玩家嘅預警時間（走位就避得開） */
+const LANCER_WARN_MS = 900;        /* 光束預警線（智慧白板學生要見到） */
+const LANCER_BEAM_DW = 14;         /* 光束半寬 */
+const LANCER_BEAM_DUR = 420;       /* 光束持續 */
+const SPLITTER_CHILD_N = 3;
 const BOSS_SCORE = 800;    /* P1-5：加入雜魚後 boss 分數由 200 調高，見 PLAN #27 */
 const ELITE_AFFIX = ['重裝', '狙擊', '急速', '護盾'];
 const SNIPER_WARN_MS = 600;
@@ -1888,6 +1906,10 @@ function spawnGruntFormation(opt) {
   const sniper = type === 'sniper';
   const shield = type === 'shield';
   const swarm = type === 'swarm';
+  /* v3.11 #71 新敵人 */
+  const splitter = type === 'splitter';
+  const rammer = type === 'rammer';
+  const lancer = type === 'lancer';
   const mini = !!opt.mini;
   let baseHp = GRUNT_HP;
   let score = GRUNT_SCORE;
@@ -1895,6 +1917,9 @@ function spawnGruntFormation(opt) {
   else if (sniper) { baseHp = opt.hp || SNIPER_HP; score = SNIPER_SCORE; }
   else if (shield) { baseHp = opt.hp || SHIELD_HP; score = SHIELD_SCORE; }
   else if (swarm) { baseHp = opt.hp || SWARM_HP; score = SWARM_SCORE; }
+  else if (splitter) { baseHp = opt.hp || SPLITTER_HP; score = SPLITTER_SCORE; }
+  else if (rammer) { baseHp = opt.hp || RAMMER_HP; score = RAMMER_SCORE; }
+  else if (lancer) { baseHp = opt.hp || LANCER_HP; score = LANCER_SCORE; }
   else if (mini) { baseHp = opt.hp || 3; score = 40; }
   else { baseHp = opt.hp || GRUNT_HP; score = GRUNT_SCORE; }
   /* 雜魚小詞綴（#45）：用同一關嘅 rng stream，唔影響波次組波 */
@@ -1911,7 +1936,12 @@ function spawnGruntFormation(opt) {
     if (shield) baseVy = 0.038;
     if (swarm) baseVy = 0.05;
     if (mini) baseVy = 0.07;
-    const y0 = opt.y != null ? opt.y : (-14 - (elite || sniper || shield ? 0 : i * 6));
+    /* v3.11 #71：新敵人落速 / 預警。rammer 起步慢但會加速（tick 內處理），
+       lancer 唔郁，企喺原位開火。 */
+    if (splitter) baseVy = 0.048;
+    if (rammer) baseVy = 0.02;     /* 起步慢 = 預警，走位就避得開 */
+    if (lancer) baseVy = 0.012;
+    const y0 = opt.y != null ? opt.y : (-14 - (elite || sniper || shield || lancer ? 0 : i * 6));
     enemies.push({
       kind: 'grunt',
       x,
@@ -1929,19 +1959,31 @@ function spawnGruntFormation(opt) {
       sniper,
       shield,
       swarm,
+      splitter,
+      rammer,
+      lancer,
       mini,
       score,
       affix: elite ? (opt.affix || ELITE_AFFIX[i % ELITE_AFFIX.length]) : '',
       t: i * 120,
-      sway: diving || sniper ? 0 : 0.022 + (i % 3) * 0.008,
-      fireCD: (sniper ? 2200 : shield ? 2000 : 1600 + i * 420) * d.fireIntervalMul,
+      sway: (diving || sniper || rammer || lancer) ? 0 : 0.022 + (i % 3) * 0.008,
+      fireCD: (sniper ? 2200 : shield ? 2000
+               : lancer ? 2600
+               : rammer ? 999999        /* rammer 唔射擊，只撞 */
+               : 1600 + i * 420) * d.fireIntervalMul,
       warnMs: 0,
       warnTx: 0,
       warnTy: 0,
       shieldOn: shield,
       shieldT: shield ? SHIELD_ON_MS : 0,
-      splitOnDeath: swarm || !!opt.splitOnDeath,
-      label: sniper ? '狙擊' : (shield ? '護盾' : (swarm ? '分裂' : '')),
+      splitOnDeath: swarm || splitter || !!opt.splitOnDeath,
+      /* #71 rammer / lancer 專用欄位 */
+      ramAccel: rammer ? RAMMER_ACCEL : 0,
+      ramWarnMs: 0,
+      beamWarnMs: lancer ? LANCER_WARN_MS : 0,
+      beamFireMs: 0,
+      label: sniper ? '狙擊' : (shield ? '護盾' : (swarm ? '分裂'
+             : (splitter ? '裂解' : (rammer ? '衝撞' : (lancer ? '雷射' : ''))))),
     });
   }
 }
@@ -2848,6 +2890,12 @@ function drawAbilityBtns() {
 /* ========== v3.10 玩家武器（form + tags）========== */
 const PLAYER_BULLET_CAP = 48;
 const MISSILE_CAP = 8;
+/* v3.11 #70：導彈鎖定期長度（發射後頭 400ms 慢速微追，之後巡航） */
+const MISSILE_LOCK_MS = 400;
+/* v3.11 #70：導彈命中爆散——令導彈對**群體**有實質價值 */
+const MISSILE_BURST_N = 3;
+const MISSILE_BURST_DMG = 0.4;   /* 相對母彈 dmg */
+const MISSILE_BURST_CAP = 6;     /* 爆散小彈同時存在上限，避免爆版 */
 
 function applyShotFormCosts(s) {
   if (!s) return;
@@ -2895,8 +2943,84 @@ function pushPlayerBullet(b) {
   cullPlayerBullets();
 }
 
+/* v3.11 #68：laser 持續光束 —— 機身跟隨嘅光柱，每次射擊判定一次線上傷害。
+   跟其它形態「放出去就唔理」相反：玩家要主動用走位掃射。
+   ⚠️ 唔做蓄力（智慧白板學生唔應該要讀蓄力條）；寬度固定。
+   唯一實體，一條（唔跟 bulletCount 扇）—— 扇形對光束冇意義。 */
+const LASER_W = 8;                 /* 光束半寬 */
+const LASER_LEN = 460;             /* 光束長度（畫面高 480，由機身向上） */
+let laserUntil = 0;                /* 光束持續到邊個時間戳 */
+let laserHitSet = [];              /* 本次光束已打中過嘅敵（避免每幀重複計分） */
+
+/* 開火：即刻做一次線上判定 + 延長光束 */
+function fireLaser(ship) {
+  const now = performance.now();
+  const dmg = ((ship.bulletDmg || 1) + lootBulletDmg()) * 0.35;
+  const x = ship.x, y = ship.y - 8;
+  laserUntil = now + 120;          /* 光束持續 120ms（射速高時會連成一條） */
+  laserHitSet = [];                /* 每次開火重新計 */
+  for (const e of enemies) {
+    if (e.kind !== 'spiral' && e.kind !== 'grunt') continue;
+    if (e._dead) continue;
+    const halfW = (e.kind === 'spiral') ? 12 : 8;
+    /* 線段 = x 固定喺機身，y 由機身向上到畫面頂。敵圓形落喺光束矩形內即中。 */
+    if (Math.abs(e.x - x) < halfW + LASER_W && e.y < y && e.y > y - LASER_LEN) {
+      if (laserHitSet.indexOf(e) >= 0) continue;
+      laserHitSet.push(e);
+      e.hp -= dmg;
+      spawnSparks(e.x, e.y, 3, 0.08);
+      sfx('hit');
+      if (e.kind === 'spiral') {
+        runScore += BOSS_SCORE * 0.05 * affScore * styScore;   /* 光束打 boss：低分只為防止無限刷 */
+        if (e.hp <= 0) onBossDown(e);
+      } else {
+        runScore += (e.score || GRUNT_SCORE) * 0.5 * affScore * styScore;
+        if (e.hp <= 0) { runKills++; runGrunts++; e._dead = true; sfx('kill'); }
+      }
+    }
+  }
+}
+/* 光束仲喺畫面上？（供 render 查） */
+function laserActive() {
+  return ship && ship.shotForm === 'laser' && performance.now() < laserUntil;
+}
+
+/* v3.11 #71 splitter 死後裂 3 枚散射小彈（唔同 swarm 嘅 mini ——
+   係向下散開嘅小彈，玩家可以走位避開） */
+function spawnSplitterChildren(ex, ey) {
+  for (let i = 0; i < SPLITTER_CHILD_N; i++) {
+    const a = Math.PI / 2 + (i - (SPLITTER_CHILD_N - 1) / 2) * 0.5;
+    const spd = 0.14;
+    enemies.push({
+      kind: 'bullet', x: ex, y: ey,
+      vx: Math.cos(a) * spd, vy: Math.sin(a) * spd,
+      splitterChild: true,
+    });
+  }
+}
+
+/* boss 擊破：抽成獨立函數，令激光光束（v3.11 #68，冇子彈實體）都可以安全觸發。
+   ⚠️ 原本呢段內嵌喺碰撞迴圈，只有行子彈嘅路徑行到；光束冇子彈所以行唔到。 */
+function onBossDown(e) {
+  console.log('[擊破] boss @', (performance.now()/1000).toFixed(2));
+  sfx('kill');
+  runScore += BOSS_SCORE * affScore * styScore;
+  runKills++;
+  rollLoot(lastStage);            /* #44 boss 死必掉 1 件裝備（零選擇） */
+  if (lastStage >= STAGES.length) {
+    fsm.set(STATE.VICTORY);
+  } else {
+    fsm.set(STATE.CHOICE);
+  }
+}
+
+/* v3.11 #74：wave 連射計數（持續壓住 → 波越闊） */
+let waveShotCount = 0;
 function spawnPlayerShot() {
   if (!ship) return;
+  /* v3.11 #74：連射計數，>520ms 冇開火就歸零（代表「持續壓住」） */
+  if (ship._lastShotAt && performance.now() - ship._lastShotAt > 520) waveShotCount = 0;
+  ship._lastShotAt = performance.now();
   const form = ship.shotForm || 'bolt';
   const tags = ship.shotTags || {};
   const baseDmg = (ship.bulletDmg || 1) + lootBulletDmg();
@@ -2905,6 +3029,15 @@ function spawnPlayerShot() {
   const spread = n <= 1 ? 0 : (n <= 2 ? 0.08 : 0.12);
   let spd = ship.bulletSpd || 0.30;
   const pierce = ship.pierce || 0;
+
+  /* v3.11 #68：laser 係機身光束，**唔產生子彈實體**——
+     光束畫面喺 render 畫，傷害喺 fireLaser() 即時判定。
+     射速决定光束重連速度，所以高射速會連成一條實心光柱。 */
+  if (form === 'laser') {
+    fireLaser(ship);
+    sfx('shoot');
+    return;
+  }
 
   /* rail：瞬間線，唔跟 bulletCount 扇（一條中線） */
   if (form === 'rail') {
@@ -2955,6 +3088,8 @@ function spawnPlayerShot() {
       vx = Math.cos(a) * formSpd;
       vy = Math.sin(a) * formSpd;
       phase = (i - mid) * 0.9; /* wave phase offset */
+      /* v3.11 #74：記低幾多發連射（shotCount），振幅／頻率跟住變 */
+      waveShotCount = (waveShotCount || 0) + 1;
       life = maxLife = 1800;
     } else {
       /* bolt */
@@ -2977,6 +3112,7 @@ function spawnPlayerShot() {
       tags: Object.assign({}, tags),
       ricochetLeft: (tags.ricochet || 0) > 0 ? Math.min(2, tags.ricochet | 0) : 0,
       _splitDone: false,
+      waveLv: waveShotCount,     /* v3.11 #74 */
       spin: 0,
     });
   }
@@ -3004,18 +3140,41 @@ function tickPlayerBullets(dtMs) {
       if (tgt) {
         const tx = tgt.x - b.x, ty = tgt.y - b.y;
         const len = Math.hypot(tx, ty) || 1;
-        const turn = b.form === 'missile' ? 0.0035 : 0.0022 * Math.min(3, homeLv || 1);
-        const desiredVx = (tx / len) * Math.hypot(b.vx, b.vy);
-        const desiredVy = (ty / len) * Math.hypot(b.vx, b.vy);
-        b.vx += (desiredVx - b.vx) * Math.min(1, turn * dtMs);
-        b.vy += (desiredVy - b.vy) * Math.min(1, turn * dtMs);
+        /* v3.11 #70：導彈兩階段。
+           ① 鎖定期（發射後 MISSILE_LOCK_MS）慢速微追——逼玩家觀察彈道
+           ② 巡航期加速 + 轉角 ×2——真正嘅追擊武器 */
+        const lockAge = b.t || 0;
+        let turn, boost = 1;
+        if (b.form === 'missile') {
+          const locked = lockAge < MISSILE_LOCK_MS;
+          turn = locked ? 0.0018 : 0.0070;
+          boost = locked ? 0.45 : 1.0;
+        } else {
+          turn = 0.0022 * Math.min(3, homeLv || 1);
+        }
+        const sp = Math.hypot(b.vx, b.vy);
+        const desiredVx = (tx / len) * sp;
+        const desiredVy = (ty / len) * sp;
+        const k = Math.min(1, turn * dtMs);
+        b.vx += (desiredVx - b.vx) * k;
+        b.vy += (desiredVy - b.vy) * k;
+        if (boost !== 1) {
+          /* 鎖定期減速（只減不放，唔會令彈突然加速） */
+          const cur = Math.hypot(b.vx, b.vy) || 1;
+          const tgtSp = cur * boost;
+          b.vx = (b.vx / cur) * tgtSp;
+          b.vy = (b.vy / cur) * tgtSp;
+        }
       }
     }
 
     /* wave 正弦橫擺 */
     if (b.form === 'wave') {
-      const amp = 0.12;
-      const w = 0.012;
+      /* v3.11 #74：振幅同頻率**隨射速變**——射得越快，波越寬越闊，
+         令 wave 形態對 build 有反應（唔係無腦選）。 */
+      const lvl = Math.max(1, b.waveLv || 1);
+      const amp = 0.09 * Math.min(2.2, lvl);
+      const w = 0.010 + 0.002 * Math.min(3, lvl);
       b.vx = Math.sin((b.t * w) + (b.phase || 0)) * amp;
       /* vy 保持向上主速 */
       if (b.vy > -0.05) b.vy = -(ship && ship.bulletSpd ? ship.bulletSpd : 0.28);
@@ -3025,7 +3184,10 @@ function tickPlayerBullets(dtMs) {
     if (b.form === 'boomerang') {
       if (b.phase === 0 && (b.life < b.maxLife * 0.45 || b.y < 36)) {
         b.phase = 1;
-        b._lastHit = null; /* 返航可再打 */
+        /* v3.11 #69：返程**唔再重置 _lastHit**。原本 `b._lastHit = null` 令返程
+           可以再打同一隻 → 同一發子彈對同一目標計兩次傷害，數值偏離直覺。
+           改成用 _hitSet：返程仍然打得中**其他**敵人，但同一隻只打一次。 */
+        b._hitSet = b._hitSet || [];
       }
       if (b.phase === 1 && ship) {
         const tx = ship.x - b.x, ty = ship.y - b.y;
@@ -3071,6 +3233,27 @@ function spawnSplitBolts(src) {
   }
 }
 
+/* v3.11 #70：導彈命中爆散。扇形平均分佈，同 tag_split 嘅左右兩枚唔同 ——
+   導彈係高傷單體，爆散應該擴散覆蓋多個目標。 */
+function spawnMissileBurst(src) {
+  if (!src) return;
+  const existing = bullets.filter(b => b.form === 'missBurst').length;
+  if (existing >= MISSILE_BURST_CAP) return;   /* cap：唔好爆版 */
+  const dmg = Math.max(1, (src.dmg || 1) * MISSILE_BURST_DMG);
+  const spd = 0.26;
+  for (let i = 0; i < MISSILE_BURST_N; i++) {
+    const a = -Math.PI / 2 + (i - (MISSILE_BURST_N - 1) / 2) * 0.42;
+    pushPlayerBullet({
+      owner: 'player', form: 'missBurst',
+      x: src.x, y: src.y,
+      vx: Math.cos(a) * spd, vy: Math.sin(a) * spd,
+      dmg, pierceLeft: 0, _lastHit: null,
+      life: 620, maxLife: 620, phase: 0, t: 0,
+      tags: {}, ricochetLeft: 0, _splitDone: true, /* 唔再裂 */
+    });
+  }
+}
+
 /* 命中後 tag 效果；回傳是否應刪彈（true=刪） */
 function onPlayerBulletHit(b, e) {
   if (b.tags && b.tags.slow > 0) {
@@ -3079,6 +3262,11 @@ function onPlayerBulletHit(b, e) {
     e.slowMul = 0.6;
   }
   spawnSplitBolts(b);
+  /* v3.11 #70：導彈命中爆散成小彈，令導彈對群體有實質價值。 */
+  if (b.form === 'missile' && b._burstDone !== true) {
+    b._burstDone = true;
+    spawnMissileBurst(b);
+  }
   b._lastHit = e;
   if (b.form === 'rail') {
     if (!b._railHit) b._railHit = [];
@@ -3090,6 +3278,50 @@ function onPlayerBulletHit(b, e) {
     return false;
   }
   return true; /* 刪彈 */
+}
+
+/* 對機體造成傷害：護盾 → 生命 → 保險 → 復活 → 死亡。
+   v3.11 #71 抽出成獨立函數，令新敵人（rammer 撞擊 / lancer 光束）
+   同原本嘅子彈／雜魚碰撞共用同一條死亡邏輯 —— 唔會兩邊走唔同分支。
+   回傳 true = 已死亡（呼叫者要即刻停低）。 */
+function damageShip(n) {
+  if (!ship) return false;
+  hitShake = 1;
+  screenFlash = Math.max(screenFlash, 0.35);
+  sfx('hurt');
+  if (ship.shield > 0) {
+    ship.shield -= 1;
+    return false;
+  }
+  ship.hp -= (n || 1);
+  if (ship.hp > 0) return false;
+  /* #44「保險」：致命傷免疫 1 次。優先過 life_st 復活——
+     兩者都係「唔好死」，但保險係裝備、復活係強化，唔應該互相吞噬。 */
+  if (hasArmor() && !armorUsed) {
+    armorUsed = true;
+    ship.hp = 1;
+    iFrameUntil = performance.now() + 2500;
+    spawnBoom(ship.x, ship.y);
+    screenFlash = Math.max(screenFlash, 0.6);
+    sfx('focus');
+    console.log('[保險] 抵銷一次致命傷 · 之後失效');
+    return false;
+  }
+  /* life_st 復活：消耗一次機會、補滿血、送 2.5 秒無敵 */
+  if (ship.resurrect > 0) {
+    ship.resurrect -= 1;
+    ship.hp = ship.maxHp;
+    iFrameUntil = performance.now() + 2500;
+    spawnBoom(ship.x, ship.y);
+    screenFlash = Math.max(screenFlash, 0.6);
+    console.log('[復活] 消耗 1 次 · 剩餘', ship.resurrect);
+    return false;
+  }
+  console.log('[戰機] 被擊毀');
+  spawnBoom(ship.x, ship.y);
+  sfx('die');
+  fsm.set(STATE.GAMEOVER);
+  return true;
 }
 
 function tick(dtMs) {
@@ -3292,6 +3524,57 @@ function tick(dtMs) {
       e.x = clamp(e.x, 12, VIEW_W - 12);
       e.y += e.vy * dtMs * (e._slowMul == null ? 1 : e._slowMul);
 
+      /* v3.11 #71 rammer 衝撞者：起步慢 → 預警鎖定 → 加速直線撞。
+       預警期唔郁，玩家見到先走位 —— 公平可躲。 */
+      if (e.rammer && e.ramWarnMs === 0 && e.ramFired !== true && e.t > 300) {
+        e.ramFired = true;
+        e.ramWarnMs = RAMMER_WARN_MS;
+      }
+      if (e.rammer && e.ramWarnMs > 0) {
+        e.ramWarnMs -= dtMs;
+        if (e.ramWarnMs <= 0) {
+          e.ramWarnMs = 0;
+          if (ship) {
+            const a = Math.atan2(ship.y - e.y, ship.x - e.x);
+            const sp = Math.max(0.06, e.vy);
+            e.vx = Math.cos(a) * sp;
+            e.vy = Math.sin(a) * sp + 0.03;
+          }
+        }
+      } else if (e.rammer) {
+        const sp = Math.hypot(e.vx, e.vy);
+        if (sp > 0.001 && sp < RAMMER_MAXV) {
+          const ns = Math.min(RAMMER_MAXV, sp + RAMMER_ACCEL * dtMs);
+          e.vx = (e.vx / sp) * ns;
+          e.vy = (e.vy / sp) * ns;
+        }
+      }
+
+      /* v3.11 #71 lancer 雷射兵：企喺原位，長預警 → 垂直光束掃射。
+         撞到先扣血（同一般敵彈一致，走開就避得）。 */
+      if (e.lancer) {
+        if (e.beamWarnMs > 0) {
+          e.beamWarnMs -= dtMs;
+          if (e.beamWarnMs <= 0) {
+            e.beamWarnMs = 0;
+            e.beamFireMs = LANCER_BEAM_DUR;
+            sfx('shoot');
+          }
+        } else if (e.beamFireMs > 0) {
+          e.beamFireMs -= dtMs;
+          if (ship && !isIFramed() && !GOD
+              && Math.abs(ship.x - e.x) < LANCER_BEAM_DW && ship.y > e.y) {
+            if (damageShip(1)) return;
+          }
+        } else {
+          e.fireCD -= dtMs;
+          if (e.fireCD <= 0) {
+            e.fireCD = 2600 * D().fireIntervalMul;
+            e.beamWarnMs = LANCER_WARN_MS;
+          }
+        }
+      }
+
       if (e.sniper) {
         /* 狙擊：預警線 → 一發高速 */
         if (e.warnMs > 0) {
@@ -3350,8 +3633,12 @@ function tick(dtMs) {
       const hh = (b.form === 'rail') ? halfW + 2 : (b.form === 'laser' ? halfW + 4 : halfW);
       if (Math.abs(b.x - e.x) < hw && Math.abs(b.y - e.y) < hh) {
               /* 同一彈唔好每幀重複打同一隻 */
+              /* v3.11 #69：同一子彈對同一敵人只打一次（_hitSet）。
+           對 rail（瞬發線）同 boomerang（去返都打）特別重要——否則
+           瞬發線每幀重複計分、迴力鏢返程對同一目標計兩次。 */
+              if (b._hitSet && b._hitSet.indexOf(e) >= 0) continue;
               if (b.form === 'rail' && b._railHit && b._railHit.indexOf(e) >= 0) continue;
-              if (e === b._lastHit) continue;
+              if (e === b._lastHit && b.form !== 'boomerang') continue;
               /* 護盾機：正面（朝下弧）擋玩家彈；側擊／盾滅先入肉 */
               if (e.shield && e.shieldOn) {
                 const ang = Math.atan2(b.y - e.y, b.x - e.x);
@@ -3371,20 +3658,12 @@ function tick(dtMs) {
               spawnSparks(b.x, b.y, 3, 0.08);
               sfx('hit');
               const remove = onPlayerBulletHit(b, e);
+              if (b._hitSet) b._hitSet.push(e);   /* #69：記低打過，返程唔重複 */
               if (remove) bullets.splice(i, 1);
               if (e.hp <= 0) {
                 spawnBoom(e.x, e.y);
                 if (e.kind === 'spiral') {
-                  console.log('[擊破] boss @', (performance.now()/1000).toFixed(2));
-                  sfx('kill');
-                  runScore += BOSS_SCORE * affScore * styScore;
-                  runKills++;
-                  rollLoot(lastStage);          /* #44 boss 死必掉 1 件裝備（零選擇） */
-                  if (lastStage >= STAGES.length) {
-                    fsm.set(STATE.VICTORY);
-                  } else {
-                    fsm.set(STATE.CHOICE);
-                  }
+                  onBossDown(e);
                   return;
                 }
                 runScore += (e.score || GRUNT_SCORE) * affScore * styScore;
@@ -3392,8 +3671,9 @@ function tick(dtMs) {
                 runGrunts++;
                 e._dead = true;
                 sfx(e.elite ? 'kill' : 'hit');
-                /* 分裂蟲 → mini；護盾機死 → 裂彈 */
+                /* 分裂蟲 → mini；護盾機死 → 裂彈；v3.11 裂解者 → 散射小彈 */
                 if (e.swarm || e.splitOnDeath) spawnSwarmChildren(e.x, e.y);
+                if (e.splitter) spawnSplitterChildren(e.x, e.y);
                 if (e.shield) spawnSplitBurst(e.x, e.y);
                 if (e.elite) console.log('[擊破] 精英「' + e.affix + '」· +' + (e.score || ELITE_SCORE));
                 else if (e.sniper) console.log('[擊破] 狙擊 · +' + (e.score || SNIPER_SCORE));
@@ -3427,45 +3707,7 @@ function tick(dtMs) {
       }
       enemies.splice(i, 1);
       if (isBody) spawnBoom(e.x, e.y); else spawnSparks(ship.x, ship.y, 6, 0.14);
-      hitShake = 1;
-      screenFlash = Math.max(screenFlash, 0.35);
-      sfx('hurt');
-      if (ship.shield > 0) {
-        ship.shield -= 1;
-      } else {
-        ship.hp -= 1;
-        if (ship.hp <= 0) {
-          /* #44「保險」：致命傷免疫 1 次。優先過 life_st 復活——
-             兩者都係「唔好死」，但保險係裝備、復活係強化，唔應該互相吞噬。
-             保險嗰次用完之後（armorUsed = true）之後唔會再擋。 */
-          if (hasArmor() && !armorUsed) {
-            armorUsed = true;
-            ship.hp = 1;
-            iFrameUntil = performance.now() + 2500;
-            spawnBoom(ship.x, ship.y);
-            screenFlash = Math.max(screenFlash, 0.6);
-            sfx('focus');
-            console.log('[保險] 抵銷一次致命傷 · 之後失效');
-            continue;
-          }
-          /* life_st 復活：消耗一次機會、補滿血、送 2.5 秒無敵，
-             否則先判定 GAME OVER。之前呢個欄位只係寫入從來冇讀過。 */
-          if (ship.resurrect > 0) {
-            ship.resurrect -= 1;
-            ship.hp = ship.maxHp;
-            iFrameUntil = performance.now() + 2500;
-            spawnBoom(ship.x, ship.y);
-            screenFlash = Math.max(screenFlash, 0.6);
-            console.log('[復活] 消耗 1 次 · 剩餘', ship.resurrect);
-            continue;
-          }
-          console.log('[戰機] 被擊毀');
-          spawnBoom(ship.x, ship.y);
-          sfx('die');
-          fsm.set(STATE.GAMEOVER);
-          return;
-        }
-      }
+      if (damageShip(1)) return;   /* true = 已死，要即刻停低 tick */
     } else if (!isBody && !e._grazed) {
       /* ---- P1-6 擦彈判定 ----
          用圓形距離（唔係上面嗰個方形），令斜向擦過都算數。
@@ -3732,7 +3974,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.22.0 · 敵人隨機配比', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.23.0 · 形態深化 + 新敵人', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -4133,6 +4375,21 @@ function render() {
     return;
   }
 
+  /* v3.11 #68：laser 持續光束（機身跟隨）。畫喺玩家子彈之前，
+     因為光束唔係實體 —— 佢係「機身向上延伸嘅一條光柱」。
+     繪製位置喺 render 開頭，獨立於 bullets 陣列。 */
+  if (laserActive() && ship) {
+    const lx = ship.x, ly = ship.y - 8;
+    const top = Math.max(0, ly - LASER_LEN);
+    ctx.globalAlpha = 0.28;
+    ctx.fillStyle = '#0ff';
+    ctx.fillRect(lx - LASER_W, top, LASER_W * 2, ly - top);
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = '#cff';
+    ctx.fillRect(lx - LASER_W * 0.4, top, LASER_W * 0.8, ly - top);
+    ctx.globalAlpha = 1;
+  }
+
   /* ---- 遊戲畫面 ---- */
   for (const b of bullets) {
     if (b.owner === 'player') {
@@ -4200,6 +4457,12 @@ function render() {
       else if (e.sniper) { spr = 'sniper'; scale = 1.75; R = 9; }
       else if (e.shield) { spr = 'shield_e'; scale = 1.9; R = 11; }
       else if (e.swarm) { spr = 'swarm'; scale = 1.6; R = 8; }
+      /* v3.11 #71 新敵人：用既有 sprite 重色 + 額外程序特徵（零新資產檔）。
+         3 秒可辨識係驗收重點，所以每種都有明顯輪廓特徵：
+         splitter 菱形裂紋 · rammer 尖頭 + 加速拖尾 · lancer 直立柱 + 光束口 */
+      else if (e.splitter) { spr = 'swarm'; scale = 1.7; R = 9; }
+      else if (e.rammer) { spr = 'grunt'; scale = 1.5; R = 8; }
+      else if (e.lancer) { spr = 'shield_e'; scale = 1.9; R = 10; }
       /* v3.8 #45 雜魚小詞綴：sprite 外圍加一圈色環（唔改 sprite 本身，
          免得同一個 sprite 變到認唔出）。 */
       if (e.minorTint) {
@@ -4227,6 +4490,70 @@ function render() {
         ctx.lineWidth = 1;
         ctx.stroke();
       }
+      /* ---- v3.11 #71 新敵人程序特徵（零新資產檔，全部用 canvas 畫） ---- */
+      /* splitter：菱形裂紋 —— 見到就知「死咗會爆」 */
+      if (e.splitter) {
+        ctx.strokeStyle = '#ffa53c';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(e.x, e.y - R);
+        ctx.lineTo(e.x + R * 0.8, e.y);
+        ctx.lineTo(e.x, e.y + R);
+        ctx.lineTo(e.x - R * 0.8, e.y);
+        ctx.closePath();
+        ctx.moveTo(e.x - R * 0.35, e.y - R * 0.4);
+        ctx.lineTo(e.x + R * 0.35, e.y + R * 0.4);
+        ctx.stroke();
+      }
+      /* rammer：速度線（越接近撞擊越長）—— 見到就知「要閃」 */
+      if (e.rammer) {
+        const sp = Math.hypot(e.vx, e.vy) || 0.02;
+        const len = Math.min(26, sp * 70);
+        const ux = e.vx / sp, uy = e.vy / sp;
+        ctx.strokeStyle = '#ff5a4a';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(e.x - ux * len, e.y - uy * len);
+        ctx.lineTo(e.x, e.y);
+        ctx.stroke();
+        /* 鎖定預警：未開火時畫虛線指向機身 */
+        if (e.ramWarnMs > 0 && ship) {
+          ctx.strokeStyle = 'rgba(255,120,90,0.55)';
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([3, 5]);
+          ctx.beginPath();
+          ctx.moveTo(e.x, e.y);
+          ctx.lineTo(ship.x, ship.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      }
+      /* lancer：預警 / 光束 —— 垂直柱 + 底部發光口 */
+      if (e.lancer) {
+        if (e.beamWarnMs > 0) {
+          const pulse = 0.35 + 0.45 * Math.sin(performance.now() / 70);
+          ctx.strokeStyle = 'rgba(180,120,255,' + pulse.toFixed(2) + ')';
+          ctx.lineWidth = LANCER_BEAM_DW * 0.5;
+          ctx.beginPath();
+          ctx.moveTo(e.x, e.y + R);
+          ctx.lineTo(e.x, VIEW_H);
+          ctx.stroke();
+        } else if (e.beamFireMs > 0) {
+          ctx.strokeStyle = 'rgba(210,150,255,0.85)';
+          ctx.lineWidth = LANCER_BEAM_DW;
+          ctx.beginPath();
+          ctx.moveTo(e.x, e.y + R);
+          ctx.lineTo(e.x, VIEW_H);
+          ctx.stroke();
+          ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+          ctx.lineWidth = LANCER_BEAM_DW * 0.35;
+          ctx.beginPath();
+          ctx.moveTo(e.x, e.y + R);
+          ctx.lineTo(e.x, VIEW_H);
+          ctx.stroke();
+        }
+      }
+
       /* 狙擊預警線 */
       if (e.sniper && e.warnMs > 0) {
         const pulse = 0.45 + 0.55 * Math.sin(performance.now() / 80);
@@ -4448,7 +4775,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.22.0 已載入');
+console.log('[啟動] 末日救未來 v0.23.0 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */

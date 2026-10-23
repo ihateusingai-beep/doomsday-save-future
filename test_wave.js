@@ -90,11 +90,16 @@ for (const s of [1, 2, 3, 4, 5]) {
 }
 check('所有 pool 引用都存在（' + total + ' 條引用）', missing === 0);
 
-console.log('\n=== 8. 各關 pool 大小（#35 要求 8–12）===');
+console.log('\n=== 8. 各關 pool 大小（#35 要求 8–12；v3.11 #72 加新敵人後 S3–S5 擴到 14–16）===');
 for (const s of [1, 2, 3, 4, 5]) {
   const cfg = F.STAGE_RAND[s];
   const uniq = new Set(cfg.pool || cfg.slots.flat());
-  check('S' + s + ' pool = ' + uniq.size + ' 個唯一 chunk', uniq.size >= 8 && uniq.size <= 12);
+  /* S1/S2 守 #35 嘅 8–12；S3–S5 因為 v3.11 #72 加咗 3 種新敵人，放寬到 14–16 */
+  const hi = uniq.size >= 8 && uniq.size <= 12;
+  const lo = uniq.size >= 14 && uniq.size <= 16;
+  check('S' + s + ' pool = ' + uniq.size + ' 個唯一 chunk',
+    s <= 2 ? hi : lo,
+    s <= 2 ? '（S1/S2 守 8–12）' : '（S3–S5 加新敵人，寬限 14–16）');
 }
 
 console.log('\n=== 9. 分佈抽樣（看有冇真係變化）===');

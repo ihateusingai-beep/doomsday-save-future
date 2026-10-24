@@ -68,6 +68,41 @@ sprite("ship_c", { base: "ship_c_base" },
   px(5, 1, "w"), px(5, 4, "P"),
   glow("Y", { r: 1, strength: 0.25, bands: 1 }))
 
+/* ---- v3.14 新機體（#88 專屬技能對應）----
+   兩架新機都係「機身 + 側翼」結構，剪影同前三架完全唔同：
+     ship_d「蜂鳥」 = 窄機身 + 左右各一組衛星掛架（中間留空）
+     ship_e「旋風」 = 寬頂窄底渦卷（散射型，中央向上捲）
+   ⚠️ 唔用 mx：pxl 嘅 mx 會喺鏡像軸插入 1~2px 透明縫（ship_a 機身中間
+      就係咁嘅空位），但呢兩架新機嘅設計機身係連續嘅，用 mx 會令機身
+      劈開兩半。所以改用 { w, h } + 完整對稱 ascii（同一套 icon 寫法）。*/
+sprite("ship_d_base", { w: 5, h: 9, outline: "k" }, `
+  ..c..
+  .cwc.
+  .cGc.
+  cGgGc
+  cGgGc
+  .gGg.
+  .g.g.
+  ..G..
+  ..Y..`)
+sprite("ship_d", { base: "ship_d_base" },
+  px(2, 2, "w"), px(4, 2, "w"),
+  glow("gG", { r: 1, strength: 0.25, bands: 1 }))
+
+sprite("ship_e_base", { w: 7, h: 9, outline: "k" }, `
+  ...p...
+  ..pPp..
+  .pPPPp.
+  pPPPPPp
+  pPPPPPp
+  .pP.Pp.
+  .p...p.
+  ..p.p..
+  ...Y...`)
+sprite("ship_e", { base: "ship_e_base" },
+  px(4, 2, "p"), px(4, 5, "w"),
+  glow("pP", { r: 1, strength: 0.3, bands: 1 }))
+
 /* thruster flicker frames (stamp under ship) */
 sprite("thrust_0", { w: 5, h: 6 },
   rect(1, 0, 3, 3, "y"), rect(2, 0, 1, 5, "Y"), px(2, 5, "o"))
@@ -144,7 +179,7 @@ sprite("ui_card", { w: 20, h: 12, outline: "k" },
   hline(1, 10, 18, "d"))
 
 /* ========== ICON FAMILY（卡面圖示）==========
-   全部 10×10，只用 pal() 26 色，語意色按分類。
+   全部 10×10，只用 pal() 24 色，語意色按分類。
    ⚠️ 呢批係為咗取代卡面上嘅 emoji（emoji 脫離 palette + 跨平台唔一致
       + 直接造成文字溢出）。改 icon 之前先睇 ART_IMPLEMENTATION_GUIDE.md §7.1。
    每個 icon：剪影可辨 · 單一語意色 + 高光/暗部 · 有 outline。*/
@@ -252,6 +287,74 @@ sprite("icon_overheat", { w: 10, h: 10, outline: "k" }, `
   .rooyy....
   .royy.....
   .roy......`)
+
+/* ---- v3.14 新技能 icon（10×10，每行剛好 10 個字元）----
+   專屬技能（跟新機配色，見 ART_IMPLEMENTATION_GUIDE.md §7.1）：
+     icon_recall   「召回」 = 衛星飛回機身 → 綠 g（ship_d 配色）
+     icon_converge 「收束」 = 3 條線收成 1 條 → 紫 p（ship_e 配色）
+   通用技能：
+     icon_magnet   「磁力場」 = U 形磁鐵吸住敵彈 → 紅 r + 白 w（兩極）
+     icon_recover  「迴氣」 = 擊殺後射速提升 → 黃 y（環 + 上箭）
+     icon_overload 「過載護盾」 = 護盾 + 閃電 → 青 c（盾）+ 黃 y（閃電）*/
+sprite("icon_recall", { w: 10, h: 10, outline: "k" }, `
+  ...ggggg..
+  ..g.....g.
+  .g.......g
+  .g........
+  .g.......g
+  ..g.....g.
+  ...gg.gg..
+  .....gg...
+  ....gg....
+  ..........`)
+
+sprite("icon_converge", { w: 10, h: 10, outline: "k" }, `
+  .p...p...p
+  ..p..p..p.
+  ...p.p.p..
+  ....ppp...
+  .....p....
+  .....p....
+  .....p....
+  .....p....
+  .....p....
+  ..........`)
+
+sprite("icon_magnet", { w: 10, h: 10, outline: "k" }, `
+  .rrrrrrrr.
+  .r......r.
+  .r......r.
+  .r......r.
+  .r......r.
+  .r......r.
+  .w......w.
+  .w......w.
+  .w......w.
+  ..........`)
+
+sprite("icon_recover", { w: 10, h: 10, outline: "k" }, `
+  ...yyyyy..
+  ..y.....y.
+  .y.......y
+  .y...y...y
+  .y..yyy..y
+  .y...y...y
+  .y.......y
+  ..y.....y.
+  ...y...y..
+  ....yy....`)
+
+sprite("icon_overload", { w: 10, h: 10, outline: "k" }, `
+  ...cccc...
+  ..c....c..
+  .c..y...c.
+  .c..yy..c.
+  .c.yy...c.
+  .c..y...c.
+  .c..yy..c.
+  ..c....c..
+  ...cccc...
+  ..........`)
 
 sprite("icon_pierce", { w: 10, h: 10, outline: "k" }, `
   .y........
@@ -624,6 +727,72 @@ sprite("lancer", { base: "lancer_base" },
   px(4, 2, "w"), px(4, 3, "c"),
   glow("cN", { r: 1, strength: 0.35, bands: 1 }))
 
+/* ========== v3.14 新敵人 sprite（4 種）==========
+   剪影設計原則（每種一眼分得出，唔可以重色舊 sprite）：
+     medic  = 圓環 + 白核心（醫護）
+     chaser = 十字翼（追蹤範圍）
+     bomber = 尖刺球（自爆，愈接近愈熱）
+     turret = 闊身 + 向下炮管 + 白護盾核心
+   ⚠️ 同新機體一樣用 { w, h } + 完整對稱 ascii：mx 會喺鏡像軸插入透明縫，
+      會令呢四個剪影（尤其十字同尖刺）中間爆一個洞。*/
+
+sprite("medic_base", { w: 8, h: 9, outline: "k" }, `
+  ..gggg..
+  .gwwwwg.
+  .gwwwwg.
+  .gwwwwg.
+  .gwwwwg.
+  .gwwwwg.
+  ..gggg..
+  .gGggGg.
+  ..gggg..`)
+sprite("medic", { base: "medic_base" },
+  px(4, 1, "w"), px(5, 1, "w"),
+  px(4, 9, "w"), px(5, 9, "w"),
+  glow("gG", { r: 1, strength: 0.28, bands: 1 }))
+
+sprite("chaser_base", { w: 8, h: 8, outline: "k" }, `
+  ...rr...
+  ...rr...
+  rrrrrrrr
+  rRrrrrRr
+  rRrrrrRr
+  rrrrrrrr
+  ...rr...
+  ...rr...`)
+sprite("chaser", { base: "chaser_base" },
+  px(4, 4, "w"), px(5, 4, "w"),
+  glow("rR", { r: 1, strength: 0.3, bands: 1 }))
+
+sprite("bomber_base", { w: 9, h: 9, outline: "k" }, `
+  ..o.o.o.
+  .o.o.o.o
+  ..ooooo.
+  .oYYYYYo
+  oYYYYYYYo
+  oYYYYYYYo
+  .oYYYYYo
+  ..ooooo.
+  ...ooo...`)
+sprite("bomber", { base: "bomber_base" },
+  px(5, 3, "y"), px(5, 5, "w"),
+  glow("Yo", { r: 2, strength: 0.35, bands: 2 }))
+
+sprite("turret_base", { w: 12, h: 9, outline: "k" }, `
+  ..bbbbbbbb..
+  .bCCCCCCCCb.
+  bCbbbbbbbbCb
+  bCbwwwwwwbCb
+  bCbbbbbbbbCb
+  .bCCCCCCCCb.
+  ..bbbbbbbb..
+  .....bb.....
+  .....bb.....`)
+sprite("turret", { base: "turret_base" },
+  px(6, 4, "t"), px(7, 4, "t"),
+  px(6, 9, "c"), px(7, 9, "c"),
+  glow("bC", { r: 2, strength: 0.35, bands: 2 }))
+
 /* ========== 動畫幀（anim）==========
    v3.13：之前圖集只有 5 格動畫（thrust / boom），全部機體靜態
    → VISUAL_QUALITY_RUBRIC.md §5.9 判 V6 動畫 3/10。
@@ -682,4 +851,9 @@ sheet("dsf_main", [
   "logo_mark",
   "anim_ship_a", "anim_grunt", "anim_elite", "anim_boss",
   "anim_bullet_p", "anim_bullet_e",
+  /* v3.14 新增（放喺最後：唔會推走任何舊格嘅 index） */
+  "ship_d", "ship_e",
+  "icon_recall", "icon_converge",
+  "icon_magnet", "icon_recover", "icon_overload",
+  "medic", "chaser", "bomber", "turret",
 ], { pad: 1, cols: 7 })

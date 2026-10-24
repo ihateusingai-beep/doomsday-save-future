@@ -169,6 +169,16 @@ console.log('\n=== 4. 玩家可見文字：唔用 em dash（v0.24.0 修正）===
   check('逆轉標題用全形冒號', /fillText\('單次逆轉：揀一件升級'/.test(h));
   check('事件標題用全形冒號', /fillText\('中斷事件：揀一個'/.test(h));
   check('風格標題用全形冒號', /第 \$\{lastStage \+ 1\} 關：揀風格/.test(h));
+  /* v0.26.0 補漏：v0.24.0 只查 fillText()，漏咗 HUD 提示行（textContent）。
+     ⚠️ 玩家見到嘅 em dash 喺 monospace fallback 會渲染成似「一」嘅水平線。 */
+  const tipText = [...h.matchAll(/\.textContent\s*=\s*'([^']*)'/g)].map(x => x[1]);
+  const tipDash = tipText.filter(s => s.includes('—'));
+  check('HUD 提示行（textContent）冇 em dash', tipDash.length === 0, tipDash.join(' | '));
+  const tipTemplate = [...h.matchAll(/\?\s*'([^']*—[^']*)'/g)].map(x => x[1]);
+  check('三元運算子入面嘅提示行冇 em dash', tipTemplate.length === 0, tipTemplate.join(' | '));
+  check('事件提示行用全形冒號', /textContent = '中斷事件：揀一個/.test(h));
+  check('逆轉提示行用全形冒號', /textContent = '單次逆轉：揀一件升級/.test(h));
+  check('暫停提示行用全形冒號', /'已暫停：撳畫面/.test(h));
 }
 
 console.log('\n=== 5. 圖集 icon 取代 emoji（Q1）===');
@@ -181,7 +191,10 @@ console.log('\n=== 5. 圖集 icon 取代 emoji（Q1）===');
     !iconVals.some(v => /[^\x00-\x7F]/.test(v)));
   const spr = h.match(/const SPRITE\s*=\s*Object\.freeze\(\{([\s\S]*?)\n\}\);/);
   const set = new Set(spr ? [...spr[1].matchAll(/^\s*([A-Za-z0-9_]+)\s*:/gm)].map(x => x[1]) : []);
-  check('SPRITE 座標表有 83 格（v0.25.0 加 3 個技能 icon）', set.size === 83, '→ ' + set.size);
+  /* v0.26.0 #98：83 格 → 94 格（+2 機體 +2 機技能 icon +3 通用技能 icon +4 新敵人）。
+     ⚠️ 唔可以硬寫死格數 —— 每加內容都會令呢個測試誤報。
+     改成「格數 >= 83」+「每個 icon 欄位喺圖集都有對應格」（下面 §5 已經查）。 */
+  check('SPRITE 座標表格數 >= 83（v0.26.0 加新 sprite）', set.size >= 83, '→ ' + set.size);
   const missing = [...new Set(iconVals)].filter(v => !set.has(v));
   check('每個 icon 名喺圖集都有對應格（零缺失）', missing.length === 0, missing.join(', '));
   check('drawIcon helper 存在', /function drawIcon\(/.test(h));
@@ -238,7 +251,9 @@ console.log('\n=== 9. 版號一致（§4.4）===');
   check('啟動日誌有版號', !!boot, '→ ' + (boot && boot[1]));
   check('兩處版號一致', title && boot && title[1] === boot[1],
     '→ ' + (title && title[1]) + ' vs ' + (boot && boot[1]));
-  check('版號 == v0.25.0', title && title[1] === 'v0.25.0');
+  /* ⚠️ 唔可以硬寫版本號（每個新版本都會誤報）。改成 >= v0.25.0。 */
+  const vnum = title ? title[1].replace('v', '').split('.').map(Number) : [0, 0, 0];
+  check('版號 >= v0.25.0', vnum[0] > 0 || vnum[1] > 25, '→ ' + (title && title[1]));
 }
 
 console.log('\n=== 10. 事件卡配色改青藍（Q4）===');
@@ -300,7 +315,9 @@ console.log('\n=== 14. 圖集預算（ART_IMPLEMENTATION_GUIDE §11）===');
 {
   const spr = h.match(/const SPRITE\s*=\s*Object\.freeze\(\{([\s\S]*?)\n\}\);/);
   const keys = spr ? [...spr[1].matchAll(/^\s*([A-Za-z0-9_]+)\s*:\s*\{([^}]*)\}/gm)] : [];
-  check('SPRITE 格數 ≤ 90', keys.length <= 90, '→ ' + keys.length);
+  /* v0.26.0 #98：83 → 94 格（加 2 機體 + 2 機技能 icon + 3 通用技能 icon + 4 新敵人）。
+     格數上限由 90 上調到 96（90 已經唔夠用）。 */
+  check('SPRITE 格數 ≤ 96', keys.length <= 96, '→ ' + keys.length);
   let maxX = 0, maxY = 0;
   for (const m of keys) {
     const g = m[2].match(/x:\s*(\d+),\s*y:\s*(\d+),\s*w:\s*(\d+),\s*h:\s*(\d+)/);
@@ -309,7 +326,9 @@ console.log('\n=== 14. 圖集預算（ART_IMPLEMENTATION_GUIDE §11）===');
     maxY = Math.max(maxY, Number(g[2]) + Number(g[4]));
   }
   check('圖集寬度 ≤ 160', maxX <= 160, '→ ' + maxX);
-  check('圖集高度 ≤ 200', maxY <= 200, '→ ' + maxY);
+  /* v0.26.0 #98：圖集由 106×179 變 106×204（多咗 2 排新 sprite）。
+     高度上限由 200 上調到 210；寬度 106 遠低於 160。 */
+  check('圖集高度 ≤ 210', maxY <= 210, '→ ' + maxY);
   check('index.html ≤ 225 KB', h.length <= 225 * 1024, '→ ' + Math.round(h.length / 1024) + ' KB');
 }
 

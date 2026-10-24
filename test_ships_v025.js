@@ -140,17 +140,21 @@ function makeRampModule(shipObj) {
 console.log('=== 1. 每架機有專屬技能（#87/#88）===');
 {
   const src = extractBlock('SHIPS');
-  const ids = [...src.matchAll(/skill:'(dash|bulwark|overheat)'/g)].map(m => m[1]);
-  check('三架機三個唔同技能 id', new Set(ids).size === 3 && ids.length === 3, ids.join(','));
-  check('A = dash / B = bulwark / C = overheat',
-    ids[0] === 'dash' && ids[1] === 'bulwark' && ids[2] === 'overheat', ids.join(','));
+  /* v0.26.0 #93：機體由 3 架加到 5 架（A/B/C 機制唔變，D/E 新增）。
+     ⚠️ 呢個測試鎖嘅係 **A/B/C 三架嘅行為**，唔係「總共有幾多架」——
+        v0.26.0 加咗 D/E，count 硬寫 3 就會誤報。 */
+  const ids = [...src.matchAll(/skill:'(dash|bulwark|overheat|recall|converge)'/g)].map(m => m[1]);
+  check('五架機五個唔同技能 id', new Set(ids).size === 5 && ids.length === 5, ids.join(','));
+  check('A = dash / B = bulwark / C = overheat / D = recall / E = converge',
+    ids[0] === 'dash' && ids[1] === 'bulwark' && ids[2] === 'overheat' &&
+    ids[3] === 'recall' && ids[4] === 'converge', ids.join(','));
   const cds = [...src.matchAll(/skillCD:(\d+)/g)].map(m => Number(m[1]));
-  check('三個技能冷卻唔同（5/10/12 秒）',
-    cds.length === 3 && new Set(cds).size === 3 && cds.join('/') === '5000/10000/12000',
+  check('五個技能冷卻全部唔同（5/10/12/8/9 秒）',
+    cds.length === 5 && new Set(cds).size === 5 && cds.join('/') === '5000/10000/12000/8000/9000',
     cds.join('/'));
-  check('每架機都有節奏名', (src.match(/rhythm:'/g) || []).length === 3);
-  check('每架機都有被動名', (src.match(/perkName:'/g) || []).length === 3);
-  check('每架機都有技能圖示', (src.match(/skillIcon:'icon_/g) || []).length === 3);
+  check('每架機都有節奏名', (src.match(/rhythm:'/g) || []).length === 5);
+  check('每架機都有被動名', (src.match(/perkName:'/g) || []).length === 5);
+  check('每架機都有技能圖示', (src.match(/skillIcon:'icon_/g) || []).length === 5);
   check('右掣炸彈唔喺 SHIPS（真係三架機共用）', !/bombCD/.test(src));
   check('機體名改咗（游隼/堡壘/熔爐）',
     /name:'游隼'/.test(src) && /name:'堡壘'/.test(src) && /name:'熔爐'/.test(src));
@@ -315,8 +319,9 @@ console.log('\n=== 7. focus_d + 節能裝備改成「專屬技能冷卻」===');
     /function lootSkillCd\(\)[\s\S]{0,200}if \(d && d\.skillCdDelta\)/.test(h));
   check('技能冷卻有下限 2000ms',
     /Math\.max\(2000,[\s\S]{0,80}lootSkillCd\(\)\)/.test(h));
-  check('三架機都有專屬技能 → 呢兩樣對三架機都仲有用',
-    /skillCD:5000/.test(h) && /skillCD:10000/.test(h) && /skillCD:12000/.test(h));
+  check('五架機都有專屬技能 → 呢兩樣對五架機都仲有用',
+    /skillCD:5000/.test(h) && /skillCD:10000/.test(h) && /skillCD:12000/.test(h) &&
+    /skillCD:8000/.test(h) && /skillCD:9000/.test(h));
 }
 
 /* ================= 8. 零死代碼（所有新欄位都有讀） ================= */
@@ -373,16 +378,22 @@ console.log('\n=== 10. #90 可讀性規則 ===');
   check('冇 emoji 做 icon（只用圖集 sprite）',
     !/icon:[\s]*'[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(h));
   check('技能 icon 全部來自圖集 icon_*',
-    (h.match(/skillIcon:'icon_[a-z]+'/g) || []).length === 3);
+    (h.match(/skillIcon:'icon_[a-z]+'/g) || []).length === 5);
 }
 
 /* ================= 11. 版號 ================= */
-console.log('\n=== 11. 版號 v0.25.0 ===');
+console.log('\n=== 11. 版號（v0.25.0 嘅基線，之後升版都要仲係 >=）===');
 {
   const title = h.match(/末日救未來 (v[\d.]+) 已載入/);
   check('啟動日誌有版號', !!title, '→ ' + (title && title[1]));
-  check('版號 == v0.25.0', title && title[1] === 'v0.25.0');
-  check('標題畫面版號一致', /v0\.25\.0 · 戰機重設計/.test(h));
+  /* ⚠️ 唔可以硬寫版本號 —— 每個新版本都會令呢個測試誤報。
+     改成「版本 >= v0.25.0」，並且同標題畫面嘅版號一致。 */
+  const ver = title && title[1];
+  const num = ver ? ver.replace('v', '').split('.').map(Number) : [0, 0, 0];
+  check('版號 >= v0.25.0', num[0] > 0 || num[1] > 25, '→ ' + ver);
+  const titleVer = h.match(/fillText\('(v[\d.]+) · /);
+  check('標題畫面版號一致', !!titleVer && titleVer[1] === ver,
+    '→ ' + (titleVer && titleVer[1]));
 }
 
 console.log(fails === 0 ? '\n✅ 全部通過' : '\n❌ ' + fails + ' 項失敗');

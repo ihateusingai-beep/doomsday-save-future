@@ -33,12 +33,12 @@
 
 | 事實 | 值 |
 |---|---|
-| sprite 定義源 | `art.px.js`（`pal()` 26 色 · `sheet("dsf_main", [...])` **83 格**） |
-| 圖集 | **106×179 px PNG，2,696 bytes，base64 3,596 字元** |
+| sprite 定義源 | `art.px.js`（`pal()` 24 色 · `sheet("dsf_main", [...])` **94 格**） |
+| 圖集 | **106×204 px PNG，3,140 bytes，base64 4,188 字元** |
 | build 指令 | `node $HOME/.hermes/skills/creative/pxl-pixel-art/bin/pxl.js build art.px.js --out out` |
 | **同步指令** | `node tools/sync_sheet.js`（寫回 `SPRITE` 座標表 + `SHEET_B64`） |
 | 內部座標 | 320×480 邏輯 px · DPR backing store |
-| palette | 26 色，命名 `k n N m c C d w y Y o p P g G r R b B s S h H t` |
+| palette | 24 色，命名 `k n N m c C d w y Y o p P g G r R b B s S h H t` |
 | 角色語言 | 青 = 玩家 · 粉紅 = 敵 · 橙 = 環境危害 · 綠 = 增益 · 紅 = 生命／危險 · 紫 = 特殊 |
 | icon | **29 個 `icon_*` sprite（10×10）**，取代原本嘅 emoji |
 | 動畫 | **6 個家族、15 幀**（`anim_ship_a` `anim_grunt` `anim_elite` `anim_boss` `anim_bullet_p` `anim_bullet_e`） |
@@ -127,11 +127,18 @@ cd ~/workspace/doomsday-save-future
 for f in test_*.js; do node "$f" >/dev/null 2>&1 && echo "PASS $f" || echo "FAIL $f"; done
 ```
 
-**14 個測試檔**，全部用 Node 直接跑（**冇測試框架，冇 npm install**）。每個檔案自己 `console.log` 逐項結果，最尾印 `✓ 全部通過`。
+**15 個測試檔**，全部用 Node 直接跑（**冇測試框架，冇 npm install**）。每個檔案自己 `console.log` 逐項結果，最尾印 `✓ 全部通過`。
 
 > **`test_visual_v024.js` 係 v0.24.0 視覺優化嘅守門測試**，覆蓋：
 > 鍵盤選單唔會連跳兩級（行為測試，真係抽出 handler 跑）、em dash 零殘留、
 > 48 個 icon 欄位全部係 sprite 名、字級 7 級、動畫幀齊、事件卡配色、卡片貼合內容、圖集預算。
+>
+> **`test_ships_v026.js` 係 v0.26.0 擴充嘅守門測試**（9 節），覆蓋：
+> 5 架機定義完整 + 強化池仍然 26 張、D 機衛星跟機同自動開火（行為測試）、
+> E 機散射扇形同「收束」（行為測試）、群傷／衛星齊射／炮台護盾三個被動
+> （行為測試，抽出 `applyGroupBonus` / `applySatelliteBonus` / `applyTurretShield` 實際執行）、
+> 通用技能 3 個同磁力場係數、三掣位幾何（x = 8/128/248）、2×3 揀機網格逐格對應 A→E、
+> 4 種新敵人同波次投放範圍、13 個新欄位零死碼。
 
 ### 5.2 語法檢查
 
@@ -168,7 +175,7 @@ const spr=[...fs.readFileSync('index.html','utf8').match(/const SPRITE = Object.
 console.log(JSON.stringify(order)===JSON.stringify(spr)?'✓ 座標表一致 ('+order.length+' 格)':'✗ 座標表唔一致');
 "
 
-# 2. palette 合規（sprite 只准用 26 色）
+# 2. palette 合規（sprite 只准用 24 色）
 node -e "
 const pal=new Set(['#000000','#070b18','#121a30','#1c2744','#00f6ff','#00a0c8','#006888','#f8ffff','#ffe566','#ff9a18','#ff6a20','#ff6ad5','#ff1a6a','#3dff8a','#12a855','#ff4d5e','#a01028','#4d8cff','#1a4aaa','#8aa0c8','#3a4868','#2a3548','#5a6a88','#c8d8ff']);
 const bad=[...new Set([...require('fs').readFileSync('art.px.js','utf8').matchAll(/#[0-9a-fA-F]{3,6}\b/g)].map(x=>x[0].toLowerCase()))].filter(c=>!pal.has(c));
@@ -216,7 +223,7 @@ console.log(t.length?'✗ em dash 殘留: '+t.join(' | '):'✓ 零 em dash');
 ### 5.4 交付前檢查清單
 
 ```
-□ 全套 14 個測試檔 PASS
+□ 全套 15 個測試檔 PASS
 □ index.html 語法檢查 OK
 □ 版號已 bump（兩處：標題畫面 + 啟動日誌）
 □ PLAN.md 參考表已更新（如有設計改動）
@@ -288,7 +295,7 @@ console.log(t.length?'✗ em dash 殘留: '+t.join(' | '):'✓ 零 em dash');
 | **中文靠字元數斷行** | 卡面文字溢出框（88px 卡面 9 字 = 90px > 可用 74px） | 用 `ctx.measureText()` 逐字累加斷行 —— **v0.24.0 已做**（`wrapText()`） |
 | **圖集座標表 drift** | 圖靜靜哋錯位，**測試全部照過** | `node tools/sync_sheet.js` —— **v0.24.0 已解** |
 | **加咗 sprite 但唔更新 `SPRITE`** | 圖錯位 / 空白格 | 跑 `node tools/sync_sheet.js`，唔好手改座標表 |
-| **palette 外加色** | 成個畫面唔 coherent | 26 色唯一色源；改形狀先於改色 |
+| **palette 外加色** | 成個畫面唔 coherent | 24 色唯一色源；改形狀先於改色 |
 | **卡面兩個掣同權重** | 玩家唔知揀邊個 | 主行動實心填充 + 次行動描邊 —— **v0.24.0 已做** |
 | **em dash `—` 喺 monospace** | fallback 去中文字體，渲染成**似「一」嘅水平線**，玩家以為係錯字 | 玩家可見單行文字唔用 em dash；用全形冒號 `：` 或直接刪走 |
 | **keydown handler 用 `if` 串連選單分支** | 一次按鍵連跳兩級：難度→機體、強化→風格，**玩家見唔到嗰兩個畫面** | 每個選單分支**必須 `return`**（觸控路徑 `handleMenuTap` 已經有 `return true`） |
@@ -296,6 +303,9 @@ console.log(t.length?'✗ em dash 殘留: '+t.join(' | '):'✓ 零 em dash');
 | **機制層欄位只寫唔讀** | 強化／機制改咗但效果冇生效，測試又照過（死代碼） | 每個新欄位都要有 game logic 讀 —— `test_ships_v025.js` §8 守門（14 個欄位逐個驗） |
 | **用 wall-clock 判定「玩家連續做緊某動作」** | 主迴圈係固定時間步累加器，掉幀時 wall-clock 會跳一大截 → 誤判成「停手」 | 連續性用**遊戲時間**（`gameClockMs`）判定 —— **v0.25.0 已修**（A 機連射加速原本喺低 FPS 永遠升唔到 ×1.6） |
 | **文字疊喺背景 sprite 上面冇底條** | 灰色字喺灰色大樓上完全睇唔清 | 任何疊喺背景圖上面嘅文字都要自己嘅暗色底條 |
+| **底部中央加咗掣，唔記得搬走原本擺喺底部中央嘅 HUD** | 節奏 chip 被新掣蓋住（v0.25.0 已經撞過一次「暫停」掣） | 加底部掣之前，先畫低畫面分區圖（`UI_STYLE_GUIDE.md` §2.1）同現有 HUD 位置對一次 |
+| **新狀態唔喺 `onStateEnter` 加分支** | 揀完卡之後直接入關，`skillOffer` 未初始化 → 揀唔到 / 畫面空白 | 每個新 `STATE` 都要喺 `onStateEnter` 有對應分支（清場 / 候選初始化 / tip 文案） |
+| **`spdMul` 只乘咗 `formSpd` 冇乘 `vx/vy`** | bolt 形態（預設）速度唔變 → 「收束」變成淨係加傷唔加速 | 速度係數要同時乘入子彈初速同形態派生速度 |
 
 ---
 

@@ -36,7 +36,7 @@ new Function(h.match(/<script>([\s\S]*?)<\/script>/)[1]);console.log('語法 OK'
 
 | # | 鐵律 | 點解 |
 |---|---|---|
-| **F1** | **所有 sprite 只能用 `art.px.js` `pal()` 內嘅 26 色** | 色彩語言係全遊戲最強嘅一環。一旦有第 27 個色,成個畫面就唔 coherent |
+| **F1** | **所有 sprite 只能用 `art.px.js` `pal()` 內嘅 24 色** | 色彩語言係全遊戲最強嘅一環。一旦有第 25 個色,成個畫面就唔 coherent |
 | **F2** | **所有 icon 必須係圖集 sprite,絕對唔可以用 emoji / Unicode 符號** | emoji 唔受 palette 控制、跨平台唔一致、寬度唔可預測（直接造成文字溢出） |
 | **F3** | **玩家 = 青 · 敵方 = 粉紅 · 環境危害 = 橙 · 增益 = 綠 · 特殊 = 紫** | 玩家要唔使讀細節就知道邊個要打 |
 | **F4** | **每個敵人家族必須有獨特剪影**,唔可以只靠換色 | 灰度測試要過 |
@@ -65,18 +65,19 @@ new Function(h.match(/<script>([\s\S]*?)<\/script>/)[1]);console.log('語法 OK'
 
 ```
 圖集實際尺寸: 106 × 187 px
-PNG 編碼後:  2,696 bytes
+PNG 編碼後:  3,140 bytes
 base64:       3,444 字元
 格數:         83（32 個 icon + 3 個新敵人 + 6 個動畫家族共 15 幀 + 原有 33 個）
 ```
 
+> **v0.26.0 變化**：83 格 → **94 格**（+2 機體 `ship_d`/`ship_e` · +2 機體技能 icon `icon_recall`/`icon_converge` · +3 通用技能 icon `icon_magnet`/`icon_recover`/`icon_overload` · +4 新敵人 `medic`/`chaser`/`bomber`/`turret`）。PNG 由 2,696 → **3,140 bytes**（+444），圖集 106×179 → **106×204**（+2 排，每排 13px）。⚠️ **高度上限由 200 上調到 210**（格數上限由 90 上調到 96）。
 > **v0.25.0 變化**：80 格 → **83 格**（+3 個機體專屬技能 icon：`icon_dash` / `icon_bulwark` / `icon_overheat`）。PNG 由 2,582 → **2,696 bytes**（+114），圖集 106×187 → **106×179**（高度反而減咗 8px）。
 > **v0.24.0 變化**：33 格 → 80 格（+47）。PNG 只由 1,547 → 2,582 bytes（+1,035），
 > 遠低於 8 KB 預算 —— 因為 10×10 純色塊 icon 壓縮率極高。
 > 圖集高度由 96 → 187（+91），**已超出原本建議嘅 140px 上限**，但寬度 106 仲好有餘裕。
 > 見 §10.1 預算表（已同步更新上限）。
 
-**關鍵限制**：圖集係 106×187。任何 sprite 超過 ~26px 高就會令圖集長一列，每加一列圖集 +13px 高 → PNG 體積線性上升。
+**關鍵限制**：圖集係 106×204。任何 sprite 超過 ~26px 高就會令圖集長一列，每加一列圖集 +13px 高 → PNG 體積線性上升。
 
 ### 2.3 Sprite 分佈
 
@@ -125,6 +126,17 @@ pal({
   t: "#c8d8ff",   // 淡藍白 — 文字
 })
 ```
+
+> **「24 色」嘅準確定義（v0.26.0 核實）**
+>
+> | 數 | 值 | 說明 |
+> |---|---|---|
+> | **`pal()` 色鍵數** | **24** | `k n N m c C d w y Y o p P g G r R b B s S h H t` —— **呢個就係「24 色」嘅意思** |
+> | pxl 內建 pico8 色 | 16 | `pal()` 係 **extend**（唔係覆蓋）內建 palette，所以總 key 數 = 37 |
+> | 覆蓋 | 3 | `c` / `d` / `b` 撞正 pico8 嘅 `c` / `d` / `b`，被自訂色頂替 |
+> | Ramp | 5 條 | 插值後**圖集實際出現 88 個色值**（PLTE 88 項） |
+>
+> ⚠️ **規則冇變**：新 asset **只准用上面呢 24 個 `pal()` 色鍵**（`.` = 透明、`_` = 擦除），**唔准自己寫 `#hex` 字面色**。呢個 24 唔係「仲有 2 個位可以加色」—— 加第 25 個就係加第 25 個色，直接違反 F1。
 
 ### 3.2 Ramp 漸變規律
 
@@ -333,7 +345,7 @@ node tools/sync_sheet.js
 
 ```
 □ art.px.js 加咗 sprite 定義
-□ palette 只用咗 26 色內嘅色
+□ palette 只用咗 24 色內嘅色
 □ outline: "k" 已加（戰場物件）
 □ glow strength ≤ 0.4
 □ sheet() 順序已更新
@@ -351,7 +363,9 @@ node tools/sync_sheet.js
 
 > 解決 `VISUAL_QUALITY_RUBRIC.md` §5.6 —— emoji 係最低分項目（V7 = 4/10）。
 
-**v0.25.0 全部 32 個 icon 已畫好**（每個 10×10 px，3–4 色，全部喺 26 色 palette 內）：
+**v0.26.0 全部 37 個 icon 已畫好**（每個 10×10 px，3–4 色，全部喺 24 色 palette 內）：
+
+> **v0.25.0 全部 32 個 icon 已畫好**（每個 10×10 px，3–4 色，全部喺 24 色 palette 內）：
 
 | 概念 | 對應卡 | sprite |
 |---|---|---|
@@ -366,6 +380,11 @@ node tools/sync_sheet.js
 | 衝刺（A 機技能） | `SHIPS.A.skillIcon` | `icon_dash` |
 | 護盾（B 機技能） | `SHIPS.B.skillIcon` | `icon_bulwark` |
 | 過熱（C 機技能） | `SHIPS.C.skillIcon` | `icon_overheat` |
+| 召回（D 機技能） | `SHIPS.D.skillIcon` | `icon_recall` |
+| 收束（E 機技能） | `SHIPS.E.skillIcon` | `icon_converge` |
+| 磁力場（通用技能） | `UNIVERSAL_SKILLS.magnet.icon` | `icon_magnet` |
+| 迴氣（通用技能） | `UNIVERSAL_SKILLS.recover.icon` | `icon_recover` |
+| 過載護盾（通用技能） | `UNIVERSAL_SKILLS.overload.icon` | `icon_overload` |
 | 貫穿 | `pierce` | `icon_pierce` |
 | 擦彈 | `graze_s` | `icon_graze` |
 | 復活 | `life_st` | `icon_revive` |
@@ -396,15 +415,27 @@ node tools/sync_sheet.js
 雙重 icon 加 `icon2:` 欄位，`drawIconPair()` 左右並排（中間留 2px）。
 **守門**：`test_visual_v024.js` §5 —— 48 個 icon 欄位全部 ASCII sprite 名、零 emoji、零缺失格。
 
-### 7.2 敵人 sprite（**v0.24.0 已完成 —— 3 個全部畫好**）
+### 7.2 敵人 sprite（**v0.26.0 已完成 —— 7 個全部畫好**）
 
 | 敵人 | 剪影 | 尺寸 | 狀態 |
 |---|---|---|---|
 | `splitter` 裂解者 | 六角形 + 中心裂縫（暗示「會分裂」） | 10×8 | ✅ 已畫 |
 | `rammer` 衝撞者 | 楔形撞角朝下（暗示「衝」） | 12×8 | ✅ 已畫 |
 | `lancer` 雷射兵 | 細長槍管 + 底部能源點 | 8×12 | ✅ 已畫 |
+| `medic` 醫護型 | 綠色圓環 + 白色核心（暗示「治療」） | 10×9 | ✅ 已畫 |
+| `chaser` 追蹤型 | **紅色十字翼**（十字形＝追蹤範圍） | 10×8 | ✅ 已畫 |
+| `bomber` 自爆型 | 尖刺球（尖刺＝即刻會爆） | 9×9 | ✅ 已畫 |
+| `turret` 護罩炮台 | 闊身 + 向下炮管 + 白色護盾核心 | 12×9 | ✅ 已畫 |
 
 每個都有 `_base`（底座，同原 sprite 對齊）同主 sprite 兩格。
+
+> **v0.26.0 #97**：4 種新敵人全部有**專屬 base sprite**（唔重色舊 sprite）。
+> ⚠️ **`chaser` 用十字形剪影**係刻意嘅——同其他敵人（三角 / 六角 / 楔形 / 長條 /
+> 圓環 / 尖刺球 / 闊身）都唔撞；`medic` 嘅綠色圓環同 `swarm` 嘅綠色都唔同
+> （medic 係「綠環 + 白心」，swarm 係「綠色實心」）。
+> ⚠️ 新 sprite **冇用 `mx: true`**——pxl 嘅 `mx` 會喺鏡像軸插透明縫
+> （`mx:true` = grid + 2px 縫 + reverse），會令連續機身被劈開；
+> 新圖全部用 `{ w, h }` + 完整對稱 ascii（同一個 icon 家族嘅寫法）。
 
 **要求**：剪影必須同 `enemy_grunt`（三角）明顯不同。做**剪影測試**（見 §8.2）。
 
@@ -412,6 +443,10 @@ node tools/sync_sheet.js
 > （裂解者嘅菱形裂紋、衝撞者嘅速度線、雷射兵嘅光束柱）——
 > 咁 3 秒可辨識度先唔會跌。`index.html` 敵人 sprite 選擇已改：
 > splitter→`splitter`、rammer→`rammer`、lancer→`lancer`（原本全部重色 grunt/swarm/shield_e）。
+>
+> **v0.26.0 新增程序化特徵**（同樣係 canvas 畫，零新資產檔）：
+> 醫護 → 治療範圍圈 + 治療閃光圈 · 追蹤 → 指向玩家嘅紅色虛線 ·
+> 自爆 → 越接近玩家越亮嘅紅色警告圈（公平提示）· 炮台 → 藍色護盾環（越薄越暗）。
 
 ### 7.3 動畫幀（**v0.24.0 已完成 —— 6 個家族、15 幀**）
 
@@ -550,11 +585,11 @@ new Function(h.match(/<script>([\s\S]*?)<\/script>/)[1]);console.log('✓ 語法
 
 | 項目 | 現況 | 預算上限 | 狀態 |
 |---|---|---|---|
-| 圖集 PNG | **2,696 bytes** | ≤ 8 KB | ✅ 餘 67% |
+| 圖集 PNG | **3,140 bytes** | ≤ 8 KB | ✅ 餘 61% |
 | base64 字串 | **3,444 字元** | ≤ 11 KB | ✅ |
-| 圖集格數 | **80** | ≤ 90 | ✅ 餘 10 格 |
-| 圖集尺寸 | **106 × 187 px** | ≤ 160 × 200 px | ✅（寬度原上限 140 已改 200） |
-| `index.html` 總大小 | **211.7 KB** | ≤ 225 KB | ✅ 餘 13 KB |
+| 圖集格數 | **94** | ≤ 96 | ✅ 餘 2 格（⚠️ 接近滿） |
+| 圖集尺寸 | **106 × 204 px** | ≤ 160 × 210 px | ✅（寬度原上限 140 已改 200；高度上限 v0.26.0 由 200 改 210） |
+| `index.html` 總大小 | **222.9 KB** | ≤ 225 KB | ⚠️ 餘 2.1 KB（接近上限，下次加嘢要同步檢查） |
 | 每幀 sprite 繪製呼叫 | ~40–60 | ≤ 120 | ✅ |
 | 背景 sprite 實例 | 3–5 | ≤ 12 | ✅ |
 | 星點 | 48 | ≤ 80 | ✅ |
@@ -588,7 +623,7 @@ new Function(h.match(/<script>([\s\S]*?)<\/script>/)[1]);console.log('✓ 語法
 | **座標表人手同步** | 冇自動驗證，靠 §6.3 script 防 | ✅ **已解** —— `tools/sync_sheet.js` |
 | **冇 sprite 動畫幀（大部分）** | 表現力最大缺口（V6 = 3/10） | ✅ **部分解** —— 6 個家族 15 幀；ship_b/c 同 dive/sniper/shield/swarm 仍靜態 |
 | **動畫幀喺靜態截圖無法證明** | 連續幀驗證要人手睇 | 未解 |
-| **圖集 106×187 接近高度上限** | 加 sprite 容易爆格數 | ⚠️ 餘 10 格，要複用優先 |
+| **圖集 106×204 接近高度上限** | 加 sprite 容易爆格數 | ⚠️ 餘 2 格，要複用優先 |
 
 ---
 

@@ -181,7 +181,7 @@ console.log('\n=== 5. 圖集 icon 取代 emoji（Q1）===');
     !iconVals.some(v => /[^\x00-\x7F]/.test(v)));
   const spr = h.match(/const SPRITE\s*=\s*Object\.freeze\(\{([\s\S]*?)\n\}\);/);
   const set = new Set(spr ? [...spr[1].matchAll(/^\s*([A-Za-z0-9_]+)\s*:/gm)].map(x => x[1]) : []);
-  check('SPRITE 座標表有 80 格', set.size === 80, '→ ' + set.size);
+  check('SPRITE 座標表有 83 格（v0.25.0 加 3 個技能 icon）', set.size === 83, '→ ' + set.size);
   const missing = [...new Set(iconVals)].filter(v => !set.has(v));
   check('每個 icon 名喺圖集都有對應格（零缺失）', missing.length === 0, missing.join(', '));
   check('drawIcon helper 存在', /function drawIcon\(/.test(h));
@@ -238,7 +238,7 @@ console.log('\n=== 9. 版號一致（§4.4）===');
   check('啟動日誌有版號', !!boot, '→ ' + (boot && boot[1]));
   check('兩處版號一致', title && boot && title[1] === boot[1],
     '→ ' + (title && title[1]) + ' vs ' + (boot && boot[1]));
-  check('版號 == v0.24.0', title && title[1] === 'v0.24.0');
+  check('版號 == v0.25.0', title && title[1] === 'v0.25.0');
 }
 
 console.log('\n=== 10. 事件卡配色改青藍（Q4）===');
@@ -281,13 +281,13 @@ console.log('\n=== 13. 卡片貼合內容 + 提示字對比（v0.24.0 修正）=
   const hM = seg.match(/const w = (\d+), h = (\d+)/);
   check('機體卡尺寸搵到', !!hM);
   if (hM) {
-    check('機體卡高收窄到 84（貼合內容，唔留半卡空位）', Number(hM[2]) === 84, '→ ' + hM[2]);
+    check('機體卡高 96（v0.25.0 加多行講機體差異）', Number(hM[2]) === 96, '→ ' + hM[2]);
     check('機體卡寬維持 96（觸控目標唔縮）', Number(hM[1]) === 96, '→ ' + hM[1]);
     check('觸控目標仍 ≥64×64', Number(hM[1]) >= 64 && Number(hM[2]) >= 64);
   }
-  check('機體卡內框高度配合新卡高（48 → 60）',
-    /strokeRect\(r\.x \+ 4, r\.y \+ 4, r\.w - 8, 60\)/.test(h));
-  check('內框唔會超出卡高', /const w = 96, h = 84/.test(seg) && /r\.w - 8, 60\)/.test(h));
+  check('機體卡內框高度跟卡高（r.h - 8，唔會寫死）',
+    /strokeRect\(r\.x \+ 4, r\.y \+ 4, r\.w - 8, r\.h - 8\)/.test(h));
+  check('內框唔會超出卡高', /const w = 96, h = 96/.test(seg) && /r\.w - 8, r\.h - 8\)/.test(h));
 
   const end = h.match(/function drawEndBtns[\s\S]*?\n\}/);
   const eseg = end ? end[0] : '';

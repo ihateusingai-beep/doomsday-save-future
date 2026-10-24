@@ -23,7 +23,7 @@ check('id 全部唯一', new Set(LOOT_DEFS.map(d => d.id)).size === LOOT_DEFS.le
 check('每個都有 icon + name + desc',
   LOOT_DEFS.every(d => d.icon && d.name && d.desc));
 check('每個都有實際效果欄位（唔可以純裝飾）',
-  LOOT_DEFS.every(d => ['bulletDmgBonus','focusCdDelta','bombCdDelta','shieldBonus','armor'].some(k => d[k] != null)));
+  LOOT_DEFS.every(d => ['bulletDmgBonus','skillCdDelta','bombCdDelta','shieldBonus','armor'].some(k => d[k] != null)));
 
 console.log('\n=== 2. #48 文案 ≤12 字 ===');
 const tooLong = LOOT_DEFS.filter(d => Array.from(d.desc).length > 12);
@@ -34,7 +34,7 @@ console.log('\n=== 3. 零死卡：每個欄位都有 game logic 讀 ===');
 /* 每個效果欄位都必須有對應 getter 讀佢 */
 const EFFECT_READERS = {
   bulletDmgBonus: /if \(d && d\.bulletDmgBonus\)/,
-  focusCdDelta:   /if \(d && d\.focusCdDelta\)/,
+  skillCdDelta:   /if \(d && d\.skillCdDelta\)/,
   bombCdDelta:    /if \(d && d\.bombCdDelta\)/,
   shieldBonus:    /if \(d && d\.shieldBonus\)/,
   armor:          /x\.id === id && x\.armor/,
@@ -42,7 +42,7 @@ const EFFECT_READERS = {
 const unreadable = Object.entries(EFFECT_READERS).filter(([k, re]) => !re.test(h)).map(([k]) => k);
 check('5 個效果欄位全部有 getter 讀（零死卡）', unreadable.length === 0, unreadable.join(','));
 /* getter 本身一定要被 game logic 叫 */
-const GETTERS = ['lootBulletDmg', 'lootFocusCd', 'lootBombCd', 'lootShieldBonus', 'hasArmor'];
+const GETTERS = ['lootBulletDmg', 'lootSkillCd', 'lootBombCd', 'lootShieldBonus', 'hasArmor'];
 const uncalled = GETTERS.filter(g => {
   const defs = h.match(new RegExp('function ' + g + '\\(', 'g')) || [];
   const uses = (h.match(new RegExp('(?<![a-zA-Z])' + g + '\\s*\\(', 'g')) || []).length;
@@ -52,7 +52,7 @@ check('5 個 getter 全部有定義且被呼叫', uncalled.length === 0, uncalle
 
 console.log('\n=== 4. 掛鉤點（每個 getter 都有實際 game logic 掛鈎）===');
 check('子彈傷害 + lootBulletDmg()', /baseDmg = \(ship\.bulletDmg \|\| 1\) \+ lootBulletDmg\(\)/.test(h) || /const dmg = \(ship\.bulletDmg \|\| 1\) \+ lootBulletDmg\(\)/.test(h));
-check('聚焦冷卻 + lootFocusCd()（有下限）', /Math\.max\(3000,[\s\S]{0,80}lootFocusCd\(\)\)/.test(h));
+check('專屬技能冷卻 + lootSkillCd()（有下限）', /Math\.max\(2000,[\s\S]{0,80}lootSkillCd\(\)\)/.test(h));
 check('炸彈冷卻 + lootBombCd()（有下限）', /Math\.max\(5000,[\s\S]{0,80}lootBombCd\(\)\)/.test(h));
 check('護盾 + lootShieldBonus()', /ship\.shield\s*=\s*c\.shield[\s\S]{0,90}lootShieldBonus\(\)/.test(h));
 /* 比較位置索引（唔靠固定字元窗口，中間註釋長度會飄） */
@@ -97,7 +97,7 @@ check('裝備欄上限 5 + 顯示 +N', /ids\.length > 5/.test(h));
 check('debug HUD 顯示裝備', /裝備\s/.test(h) || /loot/.test(h));
 
 console.log('\n=== 8. 冷卻下限保護（唔會變成無限連環）===');
-check('聚焦冷卻下限 3000ms', /Math\.max\(3000,/.test(h));
+check('專屬技能冷卻下限 2000ms', /Math\.max\(2000,/.test(h));
 check('炸彈冷卻下限 5000ms', /Math\.max\(5000,/.test(h));
 /* 疊加多件裝備之後仍然喺下限之上 */
 const maxCd = 12000 + 5 * (-3000);

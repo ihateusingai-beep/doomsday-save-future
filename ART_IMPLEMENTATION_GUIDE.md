@@ -61,16 +61,17 @@ new Function(h.match(/<script>([\s\S]*?)<\/script>/)[1]);console.log('語法 OK'
 
 > ⚠️ **目前 `SPRITE` 座標表同 `art.px.js` 嘅 `sheet()` 順序係人手同步嘅**，冇自動驗證。加 sprite 必須兩邊一齊改。
 
-### 2.2 圖集現況（v0.24.0 更新）
+### 2.2 圖集現況（v0.25.0 更新）
 
 ```
 圖集實際尺寸: 106 × 187 px
-PNG 編碼後:  2,582 bytes
+PNG 編碼後:  2,696 bytes
 base64:       3,444 字元
-格數:         80（29 個 icon + 3 個新敵人 + 6 個動畫家族共 15 幀 + 原有 33 個）
+格數:         83（32 個 icon + 3 個新敵人 + 6 個動畫家族共 15 幀 + 原有 33 個）
 ```
 
-> **v0.24.0 變化**：33 格 → **80 格**（+47）。PNG 只由 1,547 → 2,582 bytes（+1,035），
+> **v0.25.0 變化**：80 格 → **83 格**（+3 個機體專屬技能 icon：`icon_dash` / `icon_bulwark` / `icon_overheat`）。PNG 由 2,582 → **2,696 bytes**（+114），圖集 106×187 → **106×179**（高度反而減咗 8px）。
+> **v0.24.0 變化**：33 格 → 80 格（+47）。PNG 只由 1,547 → 2,582 bytes（+1,035），
 > 遠低於 8 KB 預算 —— 因為 10×10 純色塊 icon 壓縮率極高。
 > 圖集高度由 96 → 187（+91），**已超出原本建議嘅 140px 上限**，但寬度 106 仲好有餘裕。
 > 見 §10.1 預算表（已同步更新上限）。
@@ -346,11 +347,11 @@ node tools/sync_sheet.js
 
 ## 7. 新增資產需求（按優先）
 
-### 7.1 Icon family（**v0.24.0 已完成 —— 29 個全部畫好**）
+### 7.1 Icon family（**v0.25.0 —— 32 個全部畫好**）
 
 > 解決 `VISUAL_QUALITY_RUBRIC.md` §5.6 —— emoji 係最低分項目（V7 = 4/10）。
 
-**v0.24.0 全部 29 個 icon 已畫好**（每個 10×10 px，3–4 色，全部喺 26 色 palette 內）：
+**v0.25.0 全部 32 個 icon 已畫好**（每個 10×10 px，3–4 色，全部喺 26 色 palette 內）：
 
 | 概念 | 對應卡 | sprite |
 |---|---|---|
@@ -361,7 +362,10 @@ node tools/sync_sheet.js
 | 多重彈 | `gun_2` `gun_3` | `icon_multi` |
 | 傷害 | `dmg_s` | `icon_damage` |
 | 炸彈 | `bomb_cd` | `icon_bomb` |
-| 聚焦 | `focus_d` | `icon_focus` |
+| 技能快 | `focus_d` | `icon_focus` |
+| 衝刺（A 機技能） | `SHIPS.A.skillIcon` | `icon_dash` |
+| 護盾（B 機技能） | `SHIPS.B.skillIcon` | `icon_bulwark` |
+| 過熱（C 機技能） | `SHIPS.C.skillIcon` | `icon_overheat` |
 | 貫穿 | `pierce` | `icon_pierce` |
 | 擦彈 | `graze_s` | `icon_graze` |
 | 復活 | `life_st` | `icon_revive` |
@@ -546,7 +550,7 @@ new Function(h.match(/<script>([\s\S]*?)<\/script>/)[1]);console.log('✓ 語法
 
 | 項目 | 現況 | 預算上限 | 狀態 |
 |---|---|---|---|
-| 圖集 PNG | **2,582 bytes** | ≤ 8 KB | ✅ 餘 68% |
+| 圖集 PNG | **2,696 bytes** | ≤ 8 KB | ✅ 餘 67% |
 | base64 字串 | **3,444 字元** | ≤ 11 KB | ✅ |
 | 圖集格數 | **80** | ≤ 90 | ✅ 餘 10 格 |
 | 圖集尺寸 | **106 × 187 px** | ≤ 160 × 200 px | ✅（寬度原上限 140 已改 200） |

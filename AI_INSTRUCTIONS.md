@@ -33,8 +33,8 @@
 
 | 事實 | 值 |
 |---|---|
-| sprite 定義源 | `art.px.js`（`pal()` 26 色 · `sheet("dsf_main", [...])` **80 格**） |
-| 圖集 | **106×187 px PNG，2,582 bytes，base64 3,444 字元** |
+| sprite 定義源 | `art.px.js`（`pal()` 26 色 · `sheet("dsf_main", [...])` **83 格**） |
+| 圖集 | **106×179 px PNG，2,696 bytes，base64 3,596 字元** |
 | build 指令 | `node $HOME/.hermes/skills/creative/pxl-pixel-art/bin/pxl.js build art.px.js --out out` |
 | **同步指令** | `node tools/sync_sheet.js`（寫回 `SPRITE` 座標表 + `SHEET_B64`） |
 | 內部座標 | 320×480 邏輯 px · DPR backing store |
@@ -127,7 +127,7 @@ cd ~/workspace/doomsday-save-future
 for f in test_*.js; do node "$f" >/dev/null 2>&1 && echo "PASS $f" || echo "FAIL $f"; done
 ```
 
-**13 個測試檔**，全部用 Node 直接跑（**冇測試框架，冇 npm install**）。每個檔案自己 `console.log` 逐項結果，最尾印 `✓ 全部通過`。
+**14 個測試檔**，全部用 Node 直接跑（**冇測試框架，冇 npm install**）。每個檔案自己 `console.log` 逐項結果，最尾印 `✓ 全部通過`。
 
 > **`test_visual_v024.js` 係 v0.24.0 視覺優化嘅守門測試**，覆蓋：
 > 鍵盤選單唔會連跳兩級（行為測試，真係抽出 handler 跑）、em dash 零殘留、
@@ -216,7 +216,7 @@ console.log(t.length?'✗ em dash 殘留: '+t.join(' | '):'✓ 零 em dash');
 ### 5.4 交付前檢查清單
 
 ```
-□ 全套 13 個測試檔 PASS
+□ 全套 14 個測試檔 PASS
 □ index.html 語法檢查 OK
 □ 版號已 bump（兩處：標題畫面 + 啟動日誌）
 □ PLAN.md 參考表已更新（如有設計改動）
@@ -293,6 +293,8 @@ console.log(t.length?'✗ em dash 殘留: '+t.join(' | '):'✓ 零 em dash');
 | **em dash `—` 喺 monospace** | fallback 去中文字體，渲染成**似「一」嘅水平線**，玩家以為係錯字 | 玩家可見單行文字唔用 em dash；用全形冒號 `：` 或直接刪走 |
 | **keydown handler 用 `if` 串連選單分支** | 一次按鍵連跳兩級：難度→機體、強化→風格，**玩家見唔到嗰兩個畫面** | 每個選單分支**必須 `return`**（觸控路徑 `handleMenuTap` 已經有 `return true`） |
 | **卡片高度唔貼合內容** | 卡底留白過半，睇落似未填完 | 卡高按內容收；觸控目標仍 ≥64×64 |
+| **機制層欄位只寫唔讀** | 強化／機制改咗但效果冇生效，測試又照過（死代碼） | 每個新欄位都要有 game logic 讀 —— `test_ships_v025.js` §8 守門（14 個欄位逐個驗） |
+| **用 wall-clock 判定「玩家連續做緊某動作」** | 主迴圈係固定時間步累加器，掉幀時 wall-clock 會跳一大截 → 誤判成「停手」 | 連續性用**遊戲時間**（`gameClockMs`）判定 —— **v0.25.0 已修**（A 機連射加速原本喺低 FPS 永遠升唔到 ×1.6） |
 | **文字疊喺背景 sprite 上面冇底條** | 灰色字喺灰色大樓上完全睇唔清 | 任何疊喺背景圖上面嘅文字都要自己嘅暗色底條 |
 
 ---

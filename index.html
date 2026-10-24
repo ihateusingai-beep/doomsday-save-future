@@ -143,10 +143,33 @@ const STATE_LABEL = Object.freeze({
 const stateLabel = (s) => STATE_LABEL[s] || s;
 
 /* SHIPS（PLAN #1：A速/B盾/C火 — 移速·子彈數·傷害·彈速·射速·盾 六軸） */
+/* ---------- 戰機（v0.25.0：純數值 → 機制差異，PLAN #87–#92）----------
+   三架機各 = 六軸（基礎調味）+ 1 條攻擊節奏 + 1 條被動 + 1 個專屬主動技能。
+   ⚠️ 右掣「炸彈」三架機共用（萬能安全感唔應該因機體而變）；左掣係每架機專屬技能。
+   ⚠️ 節奏／被動／技能全部要一句話講得清（白板學生 3 秒要讀得明）。
+   ⚠️ 零新卡、零新配色；形態卡（6 種）同 tag（4 個）完全不受影響。 */
 const SHIPS = Object.freeze({
-  A: { id:'A', name:'速', speed:3.6, shield:1, fireRate:14, bulletCount:1, bulletDmg:1, bulletSpd:0.38 },
-  B: { id:'B', name:'盾', speed:2.2, shield:3, fireRate:8,  bulletCount:2, bulletDmg:1, bulletSpd:0.28 },
-  C: { id:'C', name:'火', speed:1.8, shield:0, fireRate:5,  bulletCount:3, bulletDmg:2, bulletSpd:0.24 },
+  A: {
+    id:'A', name:'游隼', tag:'速',
+    speed:4.2, shield:1, fireRate:15, bulletCount:1, bulletDmg:1, bulletSpd:0.44,
+    rhythm:'連射加速',   /* 節奏：連住唔停手，射速會愈嚟愈快 */
+    perkName:'擦彈回充 ×2',
+    skill:'dash', skillName:'衝刺', skillIcon:'icon_dash', skillCD:5000,
+  },
+  B: {
+    id:'B', name:'堡壘', tag:'盾',
+    speed:1.8, shield:5, fireRate:7, bulletCount:2, bulletDmg:1, bulletSpd:0.26,
+    rhythm:'齊射扇形',   /* 節奏：每 3 發之後，第 4 發散開成扇形 */
+    perkName:'受傷後無敵 1.2 秒',
+    skill:'bulwark', skillName:'護盾', skillIcon:'icon_bulwark', skillCD:10000,
+  },
+  C: {
+    id:'C', name:'熔爐', tag:'火',
+    speed:1.4, shield:0, fireRate:4, bulletCount:1, bulletDmg:6, bulletSpd:0.30,
+    rhythm:'重炮擊退',   /* 節奏：單發粗彈，命中會將敵人打飛 */
+    perkName:'擊殺回充炸彈',
+    skill:'overheat', skillName:'過熱', skillIcon:'icon_overheat', skillCD:12000,
+  },
 });
 
 const isStage = (s) => s && s.indexOf('STAGE_') === 0;
@@ -227,31 +250,34 @@ const SPRITE = Object.freeze({
   icon_blackout: { x:65, y:99, w:12, h:12 },
   icon_glass: { x:78, y:99, w:12, h:12 },
   icon_static: { x:0, y:112, w:12, h:12 },
-  star_0: { x:13, y:112, w:3, h:3 },
-  star_1: { x:17, y:112, w:5, h:5 },
-  star_2: { x:23, y:112, w:5, h:5 },
-  bldg: { x:29, y:112, w:14, h:22 },
-  tower: { x:44, y:112, w:10, h:30 },
-  meteor: { x:55, y:112, w:12, h:12 },
-  debris: { x:0, y:143, w:12, h:10 },
-  gate: { x:13, y:143, w:26, h:18 },
-  logo_mark: { x:40, y:143, w:18, h:18 },
-  anim_ship_a_0: { x:59, y:143, w:8, h:9 },
-  anim_ship_a_1: { x:68, y:143, w:8, h:9 },
-  anim_grunt_0: { x:77, y:143, w:10, h:7 },
-  anim_grunt_1: { x:88, y:143, w:10, h:7 },
-  anim_elite_0: { x:0, y:162, w:12, h:9 },
-  anim_elite_1: { x:13, y:162, w:12, h:9 },
-  anim_boss_0: { x:26, y:162, w:12, h:10 },
-  anim_boss_1: { x:39, y:162, w:12, h:10 },
-  anim_boss_2: { x:52, y:162, w:12, h:10 },
-  anim_boss_3: { x:65, y:162, w:12, h:10 },
-  anim_bullet_p_0: { x:78, y:162, w:7, h:12 },
-  anim_bullet_p_1: { x:0, y:175, w:7, h:12 },
-  anim_bullet_e_0: { x:8, y:175, w:9, h:9 },
-  anim_bullet_e_1: { x:18, y:175, w:9, h:9 },
+  icon_dash: { x:13, y:112, w:12, h:12 },
+  icon_bulwark: { x:26, y:112, w:12, h:12 },
+  icon_overheat: { x:39, y:112, w:12, h:12 },
+  star_0: { x:52, y:112, w:3, h:3 },
+  star_1: { x:56, y:112, w:5, h:5 },
+  star_2: { x:62, y:112, w:5, h:5 },
+  bldg: { x:0, y:125, w:14, h:22 },
+  tower: { x:15, y:125, w:10, h:30 },
+  meteor: { x:26, y:125, w:12, h:12 },
+  debris: { x:39, y:125, w:12, h:10 },
+  gate: { x:52, y:125, w:26, h:18 },
+  logo_mark: { x:79, y:125, w:18, h:18 },
+  anim_ship_a_0: { x:98, y:125, w:8, h:9 },
+  anim_ship_a_1: { x:0, y:156, w:8, h:9 },
+  anim_grunt_0: { x:9, y:156, w:10, h:7 },
+  anim_grunt_1: { x:20, y:156, w:10, h:7 },
+  anim_elite_0: { x:31, y:156, w:12, h:9 },
+  anim_elite_1: { x:44, y:156, w:12, h:9 },
+  anim_boss_0: { x:57, y:156, w:12, h:10 },
+  anim_boss_1: { x:70, y:156, w:12, h:10 },
+  anim_boss_2: { x:0, y:167, w:12, h:10 },
+  anim_boss_3: { x:13, y:167, w:12, h:10 },
+  anim_bullet_p_0: { x:26, y:167, w:7, h:12 },
+  anim_bullet_p_1: { x:34, y:167, w:7, h:12 },
+  anim_bullet_e_0: { x:42, y:167, w:9, h:9 },
+  anim_bullet_e_1: { x:52, y:167, w:9, h:9 },
 });
-const SHEET_B64 = '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';
+const SHEET_B64 = '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';
 const sheetImg = new Image();
 let sheetReady = false;
 sheetImg.onload = () => { sheetReady = true; console.log('[貼圖] 圖集就緒 ·', Object.keys(SPRITE).length, '格'); };
@@ -765,6 +791,31 @@ function drawHudChips() {
     ctx.textAlign = 'left';
     ctx.fillText('+' + (ids.length - 5), 12 + 5 * 17, 41);
   }
+  /* v0.25.0 #90：機體節奏狀態（畫面底部中央，兩個能力掣之間）。
+     令玩家隨時見得到「而家呢架機嘅節奏係乜」——
+     A 機射速升到幾多、B 機齊射就唔就緒、C 機重炮。
+     ⚠️ 位置係揀出嚟嘅：右上角被「暫停」掣（x 258–314, y 6–62）蓋住，
+     左上角被血心／裝備 icon 佔用，底部中央係唯一冇固定 UI 嘅空位。
+     置中喺 x=160，能力掣喺 x 8–72 / 248–312，擦彈條喺 y 442，機身最低 405，
+     所以 y 410–423 呢條唔會撞任何嘢。 */
+  if (ship && isStage(fsm.cur) && SHIPS[ship.chassis]) {
+    const c = SHIPS[ship.chassis];
+    let txt = c.rhythm;
+    if (ship.chassis === 'A') {
+      const f = shipRampFactor();
+      if (f > 1.01) txt = c.rhythm + ' ×' + f.toFixed(2);
+    } else if (ship.chassis === 'B') {
+      if (ship._burstReady) txt = '齊射就緒';
+    }
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'center';
+    const tw = ctx.measureText(txt).width;
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(VIEW_W / 2 - tw / 2 - 5, VIEW_H - 70, tw + 10, 13);
+    ctx.fillStyle = '#8ff';
+    ctx.fillText(txt, VIEW_W / 2, VIEW_H - 60);
+    ctx.textAlign = 'left';
+  }
   /* 裝備掉落橫幅（2.6 秒，同詞綴橫幅節奏一致） */
   if (lootShownAt && performance.now() - lootShownAt < 2600 && isStage(fsm.cur)) {
     const last = LOOT_DEFS.find(x => x.id === Object.keys(loots).slice(-1)[0]);
@@ -789,7 +840,7 @@ const InputState = {
   /* 鍵盤代理 */
   keys: { up:false, down:false, left:false, right:false },
 
-  /* 聚焦／炸彈而家由冷卻時間驅動（focusActiveUntil、bombCDUntil
+  /* 專屬技能／炸彈而家由冷卻時間驅動（skillCdUntil、bombCDUntil
      係模組層級變量變數），唔係讀取後即清嘅旗標 */
 
   /* 拖曳記帳（觸控用） */
@@ -945,7 +996,7 @@ function onStateEnter(s, from) {
     } else {
       runScore = 0;
     }
-    hudEl.tip.textContent = `第 ${lastStage} 關 · ${STAGE_TABLE[lastStage].name} · 滑鼠跟機／拖曳／WASD · 自動開火 · 空白聚焦 · Shift 炸彈 · P 暫停`;
+    hudEl.tip.textContent = `第 ${lastStage} 關 · ${STAGE_TABLE[lastStage].name} · 滑鼠跟機／拖曳／WASD · 自動開火 · 空白技能 · Shift 炸彈 · P 暫停`;
   } else if (s === STATE.CHOICE) {
     beginFreezeClocks();               /* modal freezes run timer (PLAN §Score) */
     choiceOffer = generateChoiceOffer();
@@ -1040,7 +1091,12 @@ const UPGRADES = [
               cost:(s,n)=>{ s.maxHp = Math.max(1, s.maxHp - n); } },
   { id:'dmg_s',   cat:'火力', nameZh:'火力+',    icon:'icon_damage',   desc:'子彈傷害 +1',            mod:(s,n)=>{ s.bulletDmg = (s.bulletDmg||1) + n; } },
   { id:'bomb_cd', cat:'輔助', nameZh:'炸彈冷卻-',icon:'icon_bomb',   desc:'炸彈冷卻 -25%',          mod:(s,n)=>{ s.bombCD *= Math.pow(0.75, n); } },
-  { id:'focus_d', cat:'輔助', nameZh:'聚焦+',    icon:'icon_focus',    desc:'聚焦減速 0.3 → 0.2',    mod:(s,n)=>{ s.focusFactor = Math.max(0.1, s.focusFactor - 0.1*n); } },
+  /* v0.25.0 #89：原本係「聚焦+」（全機共用嘅減速）。機制差異化之後「聚焦」冇咗，
+     呢張卡嘅語意改成**專屬技能冷卻 −25%**——三架機都有專屬技能，所以呢張卡
+     對三架機都仍然有意義（id 保持 focus_d，強化池仍然 26 張、零新卡）。
+     skillCdMul 係純乘數（<1 = 快啲），下限 0.4，唔會變成無限連環。 */
+  { id:'focus_d', cat:'輔助', nameZh:'技能快', icon:'icon_focus', desc:'專屬技能冷卻 −25%',
+    mod:(s,n)=>{ s.skillCdMul = Math.max(0.4, (s.skillCdMul||1) * Math.pow(0.75, n)); } },
   { id:'pierce',  cat:'火力', nameZh:'貫穿',     icon:'icon_pierce',    desc:'子彈多穿過一個敵人',   mod:(s,n)=>{ s.pierce += n; } },
   { id:'graze_s', cat:'輔助', nameZh:'擦彈+',    icon:'icon_graze',    desc:'擦彈分數 ×2',          mod:(s,n)=>{ s.grazeMult *= Math.pow(2, n); } },
   { id:'life_st', cat:'防禦', nameZh:'復活',     icon:'icon_revive',    desc:'死亡時復活一次',         mod:(s,n)=>{ s.resurrect += n; } },
@@ -1112,9 +1168,12 @@ function applyPickedReverse(idx) {
 
 /* ---------- 7. 實體 ---------- */
 let ship = null;            /* { chassis, x, y, hp, maxHp, shield, speed, fireRate, fireCD,
-                                 bulletCount, bulletDmg, bombCD, focusFactor,
-                                 focusDuration, focusCD, pierce, resurrect,
-                                 grazeMult, masterStacks, iFrameUntil } */
+                                 bulletCount, bulletDmg, bulletSpd, bombCD,
+                                 skillId, skillCdBase, skillCdMul,
+                                 _holdMs, _ramp, _lastFireAt,
+                                 _burstCount, _burstReady,
+                                 _bulSpdMul, _bulSpdMulUntil,
+                                 pierce, resurrect, grazeMult, masterStacks } */
 let bullets = [];           /* { x, y, vx, vy, owner:'player' } */
 let enemies = [];           /* spiral(=boss) | grunt(=雜魚) | bullet | laser */
 
@@ -1136,9 +1195,28 @@ function pickShip(id) {
     bulletDmg: c.bulletDmg,
     bulletSpd: c.bulletSpd,
     bombCD: 12000 * d.bombCdMul,
-    focusFactor: 0.3,
-    focusDuration: 4000,
-    focusCD: 8000,
+    /* v0.25.0 專屬主動技能（#87/#88）。原本嘅 focusFactor/focusDuration/focusCD
+       係「全機共用嘅聚焦」欄位，機制差異化之後**全部清走**——
+       留低冇 game logic 讀嘅欄位就係死代碼（強化池驗收守則）。 */
+    skillId: c.skill,
+    skillCdBase: c.skillCD,
+    skillCdMul: 1,
+    /* A 機連射加速 */
+    _holdMs: 0,
+    _ramp: 0,
+    _lastFireGameMs: 0,
+    /* B 機齊射 */
+    _burstCount: 0,
+    _burstReady: false,
+    /* A 機衝刺技能：短時間彈速 ×1.8 */
+    _bulSpdMul: 1,
+    _bulSpdMulUntil: 0,
+    /* B 機護盾技能：生效期間護盾唔會被打穿 */
+    _bulwarkUntil: 0,
+    /* C 機過熱技能：生效期間射速 ×2 + 移速 ×0.6 */
+    _overheatUntil: 0,
+    /* 衝刺方向：記低玩家最後一次移動方向（預設向上） */
+    _lastDx: 0, _lastDy: -1,
     grazeMult: 1,
     pierce: 0,
     resurrect: 0,
@@ -1165,9 +1243,20 @@ function applyUpgrades() {
   ship.bulletDmg    = c.bulletDmg;
   ship.bulletSpd    = c.bulletSpd;
   ship.bombCD       = 12000 * d.bombCdMul;
-  ship.focusFactor  = 0.3;
-  ship.focusDuration= 4000;
-  ship.focusCD      = 8000;
+  /* v0.25.0：機體專屬技能（#87/#88） */
+  ship.skillId      = c.skill;
+  ship.skillCdBase  = c.skillCD;
+  ship.skillCdMul   = 1;
+  ship._holdMs      = 0;
+  ship._ramp        = 0;
+  ship._lastFireGameMs = 0;
+  ship._burstCount  = 0;
+  ship._burstReady  = false;
+  ship._bulSpdMul   = 1;
+  ship._bulSpdMulUntil = 0;
+  ship._bulwarkUntil  = 0;
+  ship._overheatUntil = 0;
+  ship._lastDx = 0; ship._lastDy = -1;
   ship.grazeMult    = 1;
   ship.pierce       = 0;
   ship.resurrect    = 0;
@@ -1665,9 +1754,11 @@ const LOOT_DEFS = [
      同 elite 類係唔同 type，遊戲內根本冇「護盾擋子彈傷害」機制——照原案實作
      會變成零效果嘅死卡。改為純傷害加值，對所有敵人有效、可實測。 */
   { id:'ap',    name:'穿甲彈', icon:'icon_damage', desc:'子彈傷害+1', bulletDmgBonus:1 },
-  /* 節能：聚焦冷卻 −2 秒。淨係減 cd，唔減生效時間。 */
-  { id:'eco',   name:'節能',   icon:'icon_supply', desc:'聚焦冷卻−2秒',
-    focusCdDelta:-2000 },
+  /* 節能：專屬技能冷卻 −2 秒。淨係減 cd，唔減生效時間。
+     v0.25.0：原本係「聚焦冷卻」（全機共用），而家改成**專屬技能**（#88/#89），
+     三架機都有專屬技能，所以呢件裝備對三架機都仍然有用。 */
+  { id:'eco',   name:'節能',   icon:'icon_supply', desc:'技能冷卻−2秒',
+    skillCdDelta:-2000 },
   /* 保險：受致命傷時免疫 1 次（hp 扣到 ≤0 就救返，唔會即刻死）。 */
   { id:'guard', name:'保險',   icon:'icon_iron', desc:'致命傷免疫1次', armor:1 },
   /* 加固：每關開始多 1 個護盾。簡單直接，唔使記住規則。 */
@@ -1682,11 +1773,11 @@ let lootShownAt = 0;          /* 裝備掉落橫幅時間戳 */
 let armorUsed = false;        /* 「保險」用咗未（一次性） */
 
 /* 裝備加總 → 一個純數值 getter，避免散落四處加總邏輯 */
-function lootFocusCd() {
+function lootSkillCd() {
   let ms = 0;
   for (const id in loots) {
     const d = LOOT_DEFS.find(x => x.id === id);
-    if (d && d.focusCdDelta) ms += d.focusCdDelta;
+    if (d && d.skillCdDelta) ms += d.skillCdDelta;
   }
   return ms;   /* 負數 = 冷卻縮短 */
 }
@@ -1757,7 +1848,7 @@ function resumeEvent() {
   hudEl.state.textContent = `狀態：${stateLabel(resumeTo)}`;
   hudEl.paused.textContent = '';
   if (STAGE_TABLE[lastStage]) {
-    hudEl.tip.textContent = `第 ${lastStage} 關 · ${STAGE_TABLE[lastStage].name} · 滑鼠跟機／拖曳／WASD · 自動開火 · 空白聚焦 · Shift 炸彈 · P 暫停`;
+    hudEl.tip.textContent = `第 ${lastStage} 關 · ${STAGE_TABLE[lastStage].name} · 滑鼠跟機／拖曳／WASD · 自動開火 · 空白技能 · Shift 炸彈 · P 暫停`;
   }
   return true;
 }
@@ -1790,7 +1881,7 @@ function resumeReverse() {
   hudEl.state.textContent = `狀態：${stateLabel(resumeTo)}`;
   hudEl.paused.textContent = '';
   if (STAGE_TABLE[lastStage]) {
-    hudEl.tip.textContent = `第 ${lastStage} 關 · ${STAGE_TABLE[lastStage].name} · 滑鼠跟機／拖曳／WASD · 自動開火 · 空白聚焦 · Shift 炸彈 · P 暫停`;
+    hudEl.tip.textContent = `第 ${lastStage} 關 · ${STAGE_TABLE[lastStage].name} · 滑鼠跟機／拖曳／WASD · 自動開火 · 空白技能 · Shift 炸彈 · P 暫停`;
   }
   return true;
 }
@@ -1965,16 +2056,21 @@ function doGraze(ex, ey) {
   runScore += gained;
   grazeScoreTotal += gained;
   grazeEnergy++;
-  /* 集滿一次就回充兩個技能嘅冷卻，令走位可以「賺」返炸彈 */
+  /* 集滿一次就回充兩個技能嘅冷卻，令走位可以「賺」返炸彈
+     v0.25.0：回充目標由「聚焦」改成**專屬技能**（#88）。
+     A 機被動 = 擦彈回充 ×2（靠貼彈賺返技能 CD）。 */
   if (grazeEnergy >= GRAZE_ENERGY_NEED) {
     grazeEnergy -= GRAZE_ENERGY_NEED;
-    focusCDUntil = Math.max(0, focusCDUntil - GRAZE_REFUND_MS);
+    /* A 機「靈活」被動：擦彈回充速度 ×2 */
+    const grazeMul = ship.chassis === 'A' ? 2 : 1;
+    const refund = GRAZE_REFUND_MS * grazeMul;
+    skillCdUntil = Math.max(0, skillCdUntil - refund);
     bombCDUntil  = Math.max(0, bombCDUntil  - GRAZE_REFUND_MS);
     grazeFlash = 1;
     const t = performance.now();
     const cdText = (until) => until - t > 0 ? ((until - t) / 1000).toFixed(1) + ' 秒' : '就緒';
-    console.log('[擦彈] 集滿 ' + GRAZE_ENERGY_NEED + ' 次 → 回充 ' + (GRAZE_REFUND_MS / 1000).toFixed(1) +
-      ' 秒　聚焦剩 ' + cdText(focusCDUntil) + '　炸彈剩 ' + cdText(bombCDUntil) +
+    console.log('[擦彈] 集滿 ' + GRAZE_ENERGY_NEED + ' 次 → 回充 ' + (refund / 1000).toFixed(1) +
+      ' 秒　技能剩 ' + cdText(skillCdUntil) + '　炸彈剩 ' + cdText(bombCDUntil) +
       ' @' + (t / 1000).toFixed(2));
   }
   grazeRingT = 1;
@@ -2320,7 +2416,7 @@ canvas.addEventListener('pointerdown', (e) => {
   if (isStage(fsm.cur)) {
     if (hitPauseBtn(px, py)) { enterPause('manual'); return; }
     const ab = hitAbilityBtn(px, py);
-    if (ab === 'focus') { tryFocus(); return; }
+    if (ab === 'focus') { trySkill(); return; }
     if (ab === 'bomb')  { tryBomb();  return; }
     /* 只有 touch 先記 drag；mouse 已由 window mousemove 絕對跟機 */
     if (e.pointerType === 'touch') {
@@ -2441,7 +2537,7 @@ window.addEventListener('keydown', (e) => {
   if (k === 'arrowleft'  || k === 'a') { InputState.keys.left = true; }
   if (k === 'arrowright' || k === 'd') { InputState.keys.right = true; }
   if (k === ' ')  {
-    tryFocus();
+    trySkill();
     e.preventDefault();
   }
   if (k === 'shift') {
@@ -2617,11 +2713,14 @@ function shipCardsLayout() {
   /* v0.21.2：卡加大 + 垂直帶加闊，智慧白板手指易撳
      v0.24.0：卡高 128 → 84。原本內容只用咗上面 65px（sprite + 名 + 一行數值），
      下面 63px 係空嘅，睇落似未填完嘅卡。收窄到貼合內容，
-     觸控目標仍 96×84（遠高於 PLAN #20 要求嘅 64×64）。 */
-  const w = 96, h = 84, gap = 12;
+     觸控目標仍 96×84（遠高於 PLAN #20 要求嘅 64×64）。
+     v0.25.0 #90：卡高 84 → 96。多咗一行位置擺「節奏 / 專屬技能 / 被動」，
+     令學生 3 秒認得出三架機嘅分別（唔係淨係睇數值）。
+     觸控目標 96×96，依然遠高於 64×64。 */
+  const w = 96, h = 96, gap = 12;
   const total = w * 3 + gap * 2;
   const startX = (VIEW_W - total) / 2;
-  const y = VIEW_H / 2 - 20;
+  const y = VIEW_H / 2 - 28;
   return {
     w, h, gap, startX, y,
     rect: (i) => ({ x: startX + i * (w + gap), y: y - 20, w, h }),
@@ -2739,8 +2838,8 @@ function resetRunFresh() {
   grazeScoreTotal = 0;
   grazeRingT = 0;
   grazeFlash = 0;
-  focusActiveUntil = 0;
-  focusCDUntil = 0;
+  skillActiveUntil = 0;
+  skillCdUntil = 0;
   bombCDUntil = 0;
   iFrameUntil = 0;
   particles.length = 0;
@@ -2802,7 +2901,7 @@ function resumePause() {
   hudEl.state.textContent = `狀態：${stateLabel(resumeTo)}`;
   hudEl.paused.textContent = '';
   if (STAGE_TABLE[lastStage]) {
-    hudEl.tip.textContent = `第 ${lastStage} 關 · ${STAGE_TABLE[lastStage].name} · 滑鼠跟機／拖曳／WASD · 自動開火 · 空白聚焦 · Shift 炸彈 · P 暫停`;
+    hudEl.tip.textContent = `第 ${lastStage} 關 · ${STAGE_TABLE[lastStage].name} · 滑鼠跟機／拖曳／WASD · 自動開火 · 空白技能 · Shift 炸彈 · P 暫停`;
   }
   console.log(`[狀態機] 已暫停 → ${stateLabel(resumeTo)} @ ${(performance.now()/1000).toFixed(2)}秒（唔補時間）`);
   return true;
@@ -2937,30 +3036,72 @@ function setDifficulty(id) {
 }
 let isNewBest = false;          /* set on VICTORY entry, displayed on render */
 
-/* 聚焦／炸彈冷卻（PLAN v2 #6-#7）—— 啟動時由戰機讀取時長同冷卻 */
+/* ---------- 專屬主動技能 + 炸彈（v0.25.0 · PLAN #87/#88）----------
+   ⚠️ v0.24.0 之前左掣係「聚焦」—— 全機共用同一套機制（時間減慢 + 係數放大），
+   零 per-ship 差異，玩家三架機手感一樣。v0.25.0 起左掣改成**每架機專屬技能**：
+     A 衝刺 dash      —— 向前突進 + 短暫無敵 + 彈速提升（慢動作閃避）
+     B 護盾 bulwark   —— 補護盾 + 一段時間內護盾唔會被打穿
+     C 過熱 overheat  —— 壓上：射速倍增 + 移速下降
+   **右掣「炸彈」三架機共用** —— 炸彈係「萬能安全感」，
+   唔應該因機體而變，否則白板學生要學三套唔同嘅「救命掣」。
+   三個技能施放瞬間都有**短暫慢動作**做共通回饋（視覺同手感一致）。 */
 const BOMB_IFRAME_MS = 1500;
-let focusActiveUntil = 0;    /* perf.now() ms */
-let focusCDUntil    = 0;
-let bombCDUntil     = 0;
-let iFrameUntil     = 0;
-function isFocusActive() { return performance.now() < focusActiveUntil; }
-function isIFramed()    { return performance.now() < iFrameUntil; }
-function focusSlowFactor() {
-  if (!isFocusActive()) return 1.0;
-  const f = ship && ship.focusFactor != null ? ship.focusFactor : 0.3;
-  return f;
+let skillActiveUntil   = 0;    /* 技能效果結束 */
+let skillCdUntil       = 0;    /* 技能冷卻完 */
+let skillTimeScale     = 1;    /* 慢動作係數 */
+let skillTimeScaleUntil = 0;
+let bombCDUntil        = 0;
+let iFrameUntil        = 0;
+function isSkillActive() { return performance.now() < skillActiveUntil; }
+function isIFramed()     { return performance.now() < iFrameUntil; }
+/* C 機「過熱」技能生效中？（6 秒射速 ×2 + 移速 ×0.6） */
+function isOverheatActive() {
+  return !!(ship && ship._overheatUntil && performance.now() < ship._overheatUntil);
 }
-function tryFocus() {
+/* 慢動作係數：技能生效期間 < 1，其餘 1.0（原本 focusSlowFactor 嘅位置） */
+function skillTimeScaleNow() {
+  return performance.now() < skillTimeScaleUntil ? skillTimeScale : 1;
+}
+function trySkill() {
   if (!isStage(fsm.cur) || !ship) return false;
   const now = performance.now();
-  if (now < focusCDUntil) return false;
-  const dur = ship.focusDuration || 4000;
-  /* #44 裝備：聚焦冷卻 −N ms（負數 = 縮短）。下限夾到 3000ms，唔會變成無限連環。 */
-  const cd  = Math.max(3000, (ship.focusCD || 8000) + lootFocusCd());
-  focusActiveUntil = now + dur;
-  focusCDUntil     = focusActiveUntil + cd;   /* CD starts after focus ends */
+  if (now < skillCdUntil) return false;
+  const kind = ship.skillId;
+  /* #44 裝備 skillCdDelta（負數 = 縮短）+ #89 強化卡 focus_d（skillCdMul < 1）。
+     兩者都減冷卻，下限 2000ms，唔會變成無限連環。 */
+  const cd = Math.max(2000, (ship.skillCdBase || 8000) * (ship.skillCdMul || 1) + lootSkillCd());
+
+  if (kind === 'dash') {
+    /* A 衝刺：向前突進 60px + 0.6 秒無敵 + 0.9 秒彈速 ×1.8 + 短暫慢動作 0.4× */
+    const dx = ship._lastDx || 0, dy = ship._lastDy || -1;
+    const len = Math.hypot(dx, dy) || 1;
+    ship.x = clamp(ship.x + (dx / len) * 60, 8, VIEW_W - 8);
+    ship.y = clamp(ship.y + (dy / len) * 60, 8, PLAY_BOTTOM);
+    iFrameUntil = Math.max(iFrameUntil, now + 600);
+    ship._bulSpdMul = 1.8;
+    ship._bulSpdMulUntil = now + 900;
+    /* 慢動作只做 0.35 秒嘅施放回饋（唔係長 buffs），效果本身有 0.9 秒 */
+    skillTimeScale = 0.4; skillTimeScaleUntil = now + 350;
+    skillActiveUntil = now + 900;
+    console.log('[技能] 衝刺 · 無敵 0.6 秒 · 彈速 ×1.8 @', (now / 1000).toFixed(2));
+  } else if (kind === 'bulwark') {
+    /* B 護盾展開：+5 盾 + 4 秒內護盾唔會被打穿（擋到傷害時唔減盾值） */
+    ship.shield += 5;
+    ship._bulwarkUntil = now + 4000;
+    skillTimeScale = 0.5; skillTimeScaleUntil = now + 500;
+    skillActiveUntil = now + 4000;
+    console.log('[技能] 護盾展開 · 盾', ship.shield, '· 4 秒唔會被打穿 @', (now / 1000).toFixed(2));
+  } else if (kind === 'overheat') {
+    /* C 過熱：6 秒射速 ×2 + 移速 ×0.6（睇 isOverheatActive() 嘅實際效果） */
+    ship._overheatUntil = now + 6000;
+    skillTimeScale = 0.5; skillTimeScaleUntil = now + 500;
+    skillActiveUntil = now + 6000;
+    console.log('[技能] 過熱 · 6 秒射速 ×2 · 移速 ×0.6 @', (now / 1000).toFixed(2));
+  } else {
+    return false;   /* 冇對應技能（例如將來加新機體）*/
+  }
+  skillCdUntil = now + cd;
   sfx('focus');
-  console.log('[聚焦] 開啟', (dur/1000).toFixed(1) + '秒 · 係數', ship.focusFactor, '@', (now/1000).toFixed(2));
   return true;
 }
 function tryBomb() {
@@ -2983,10 +3124,12 @@ function tryBomb() {
   return true;
 }
 function abilityBtns() {
-  /* 觸控 ≥64×64，底部兩角 —— 先判按鈕，避免同拖曳衝突 */
+  /* 觸控 ≥64×64，底部兩角 —— 先判按鈕，避免同拖曳衝突
+     v0.25.0：左掣 label 跟機體技能名（衝刺／護盾／過熱），#90 可讀性規則 */
   const w = 64, h = 64, m = 8;
+  const c = ship ? SHIPS[ship.chassis] : null;
   return {
-    focus: { x: m, y: VIEW_H - h - m, w, h, label: '聚焦' },
+    focus: { x: m, y: VIEW_H - h - m, w, h, label: c ? c.skillName : '技能' },
     bomb:  { x: VIEW_W - w - m, y: VIEW_H - h - m, w, h, label: '炸彈' },
   };
 }
@@ -3001,11 +3144,13 @@ function drawAbilityBtns() {
   if (!isStage(fsm.cur)) return;
   const now = performance.now();
   const b = abilityBtns();
+  const c = ship ? SHIPS[ship.chassis] : null;
   const items = [
-    { key: 'focus', ready: now >= focusCDUntil, active: isFocusActive(),
-      cdLeft: Math.max(0, focusCDUntil - now) },
+    { key: 'focus', ready: now >= skillCdUntil, active: isSkillActive(),
+      cdLeft: Math.max(0, skillCdUntil - now),
+      icon: c ? c.skillIcon : 'ui_focus', scale: 2.2, name: c ? c.skillName : '技能' },
     { key: 'bomb',  ready: now >= bombCDUntil,  active: isIFramed(),
-      cdLeft: Math.max(0, bombCDUntil - now) },
+      cdLeft: Math.max(0, bombCDUntil - now), icon: 'ui_bomb', scale: 1.4, name: '炸彈' },
   ];
   for (const it of items) {
     const r = b[it.key];
@@ -3016,23 +3161,29 @@ function drawAbilityBtns() {
     ctx.strokeStyle = it.active ? '#ff0' : it.ready ? '#0ff' : '#555';
     ctx.lineWidth = 2;
     ctx.strokeRect(r.x, r.y, r.w, r.h);
-    const icon = it.key === 'focus' ? 'ui_focus' : 'ui_bomb';
-    const iconDrawn = drawSprite(icon, r.x + r.w/2, r.y + r.h/2 - 6, 1);
-    ctx.fillStyle = it.ready || it.active ? '#fff' : '#888';
-    ctx.font = 'bold 9px monospace';
+    const iconDrawn = drawSprite(it.icon, r.x + r.w/2, r.y + 18, it.scale);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    if (!iconDrawn) ctx.fillText(r.label, r.x + r.w/2, r.y + r.h/2 - 8);
+    /* v0.25.0：技能名一定要見到（#90 3 秒認得出）——
+       原本只喺 icon 畫唔到先 fallback 顯示 label，而家 icon + 名同時顯示。 */
+    ctx.fillStyle = it.ready || it.active ? '#fff' : '#888';
+    ctx.font = 'bold 9px monospace';
+    if (!iconDrawn) {
+      ctx.fillText(r.label, r.x + r.w/2, r.y + 18);
+    } else {
+      ctx.font = '9px monospace';
+      ctx.fillText(it.name, r.x + r.w/2, r.y + 38);
+    }
     ctx.font = '9px monospace';
     if (it.active) {
       ctx.fillStyle = '#ff0';
-      ctx.fillText('生效中', r.x + r.w/2, r.y + r.h - 12);
+      ctx.fillText('生效中', r.x + r.w/2, r.y + r.h - 10);
     } else if (!it.ready) {
       ctx.fillStyle = '#f06';
       ctx.fillText(Math.ceil(it.cdLeft/1000) + '秒', r.x + r.w/2, r.y + r.h - 12);
     } else {
       ctx.fillStyle = '#0f6';
-      ctx.fillText('就緒', r.x + r.w/2, r.y + r.h - 12);
+      ctx.fillText('就緒', r.x + r.w/2, r.y + r.h - 10);
     }
   }
   ctx.textBaseline = 'alphabetic';
@@ -3204,19 +3355,95 @@ function onBossDown(e) {
 
 /* v3.11 #74：wave 連射計數（持續壓住 → 波越闊） */
 let waveShotCount = 0;
+/* ---------- 機體攻擊節奏（v0.25.0 · PLAN #87）----------
+   三架機嘅節奏差異全部喺呢層，唔掂操控層（白板學生唔使重新學操作），
+   亦都唔掂 6 種形態卡同 4 個 tag（#92「形態無關」原則）。
+     A 連射加速：連住唔停手，每 0.4 秒射速 +8%，上限 ×1.6；停手 0.4 秒回落。
+     B 齊射扇形：每 3 發普通之後，第 4 發變 3 發 ±20° 扇形。
+     C 重炮擊退：單發粗彈，命中會將雜魚打飛。
+   ⚠️ 每個常數都必須有 game logic 讀，否則就係死代碼。 */
+const RAMP_STEP_MS = 400;                 /* 每連住 0.4 秒升一級 */
+const RAMP_GAIN   = 0.08;                 /* 每級 +8% 射速 */
+const RAMP_MAX    = 1.6;                  /* 絕對上限（fr_s/fr_l 冇 cap，靠呢個兜住） */
+const RAMP_MAX_LV = 8;                    /* 8 級 = 1.64，被 RAMP_MAX 夾返 1.6 */
+const SALVO_EVERY = 4;                    /* B 機每 4 發一次齊射（即每 3 發普通之後） */
+const SALVO_N     = 3;                    /* 齊射彈數 */
+const SALVO_ANGLE = 20 * Math.PI / 180;   /* ±20° */
+const HEAVY_SCALE = 2.4;                  /* C 機粗彈 sprite 倍數（1.4 基準 × 1.7） */
+const HEAVY_KNOCK = 3.2;                  /* 擊退初速（px/frame；衰減後總位移約 27px） */
+
+/* 遊戲時間（毫秒）—— 由主迴圈嘅固定時間步累加器行出嚟。
+   暫停 / 揀卡期間 tick() 唔行，所以呢個鐘會凍結；
+   對「玩家感受到幾耐」嚟講反而比真實時間更一致。 */
+let gameClockMs = 0;
+
+/* A 機連射加速：目前嘅射速倍數（1 = 未加速） */
+function shipRampFactor() {
+  if (!ship || ship.chassis !== 'A') return 1;
+  return Math.min(RAMP_MAX, 1 + (ship._ramp || 0) * RAMP_GAIN);
+}
+/* 每幀更新 A 機嘅連射計數：停手超過 0.4 秒就回落
+   ⚠️ 連續性用「遊戲時間」（gameClockMs，固定時間步累加器）判定，
+      **唔用 wall-clock**：主迴圈用固定步累加器（見 loop()），
+      掉幀時遊戲時間會慢過真實時間，但至少**唔會**因為一次長停頓
+      就誤判成「玩家停手」而清走連射累積。
+      實機驗證發現過：內建瀏覽器將背景分頁節流到低 FPS 時，
+      wall-clock 400ms 判定會令 A 機永遠升唔到 ×1.6（招牌機制失效）。
+      改用遊戲時間後，低 FPS 裝置都照計。 */
+function tickShipRhythm(dtMs) {
+  if (!ship || ship.chassis !== 'A') return;
+  if (ship._lastFireGameMs && (gameClockMs - ship._lastFireGameMs) <= RAMP_STEP_MS) {
+    ship._holdMs += dtMs;
+    ship._ramp = Math.min(RAMP_MAX_LV, Math.floor(ship._holdMs / RAMP_STEP_MS));
+  } else {
+    ship._holdMs = 0;
+    ship._ramp = 0;
+  }
+}
+/* C 機重炮擊退：令雜魚飛走。⚠️ boss（spiral）走固定路線、唔應該被推走，
+   所以只對 kind === 'grunt' 生效。方向由子彈指向敵人計（玩家向上打飛），
+   唔用 Math.random()（tick 路徑禁用非 seeded RNG）。 */
+function applyKnockback(e, dirX, dirY, power) {
+  if (!e || e.kind !== 'grunt') return;
+  const len = Math.hypot(dirX, dirY) || 1;
+  e.kx = (e.kx || 0) + (dirX / len) * power;
+  e.ky = (e.ky || 0) + (dirY / len) * power;
+}
+
 function spawnPlayerShot() {
   if (!ship) return;
   /* v3.11 #74：連射計數，>520ms 冇開火就歸零（代表「持續壓住」） */
   if (ship._lastShotAt && performance.now() - ship._lastShotAt > 520) waveShotCount = 0;
   ship._lastShotAt = performance.now();
+  /* v0.25.0 A 機：記低今次開火時間（連射加速節奏用）
+     ⚠️ 用**遊戲時間**而唔係 wall-clock——見 tickShipRhythm() 嘅說明。 */
+  ship._lastFireGameMs = gameClockMs;
   const form = ship.shotForm || 'bolt';
   const tags = ship.shotTags || {};
   const baseDmg = (ship.bulletDmg || 1) + lootBulletDmg();
-  const n = Math.max(1, ship.bulletCount | 0);
-  const mid = (n - 1) / 2;
-  const spread = n <= 1 ? 0 : (n <= 2 ? 0.08 : 0.12);
+  let n = Math.max(1, ship.bulletCount | 0);
+  let mid = (n - 1) / 2;
+  let spread = n <= 1 ? 0 : (n <= 2 ? 0.08 : 0.12);
   let spd = ship.bulletSpd || 0.30;
   const pierce = ship.pierce || 0;
+  /* v0.25.0 A 機衝刺：技能生效期間彈速 ×1.8（0.9 秒） */
+  if (ship._bulSpdMulUntil && performance.now() < ship._bulSpdMulUntil) {
+    spd *= ship._bulSpdMul || 1;
+  }
+  /* v0.25.0 C 機：重炮（粗彈 + 擊退）。⚠️ 唔加新 form，
+     避免同 6 種形態卡（#57–#66）撞 id；只係子彈加 heavy 標記。 */
+  const heavy = ship.chassis === 'C';
+  /* v0.25.0 B 機齊射：每 3 發普通之後，第 4 發變 3 發 ±20° 扇形。
+     ⚠️ 計數放喺最前面，連 laser / rail 都會計（節奏唔會被形態卡打斷）。
+     如果今次唔出實彈（laser / rail / 導彈已滿），齊射會「存起」，
+     下次出實彈時先兌現，唔會白白消失。 */
+  if (ship.chassis === 'B') {
+    ship._burstCount++;
+    if (ship._burstCount >= SALVO_EVERY) {
+      ship._burstCount = 0;
+      ship._burstReady = true;
+    }
+  }
 
   /* v3.11 #68：laser 係機身光束，**唔產生子彈實體**——
      光束畫面喺 render 畫，傷害喺 fireLaser() 即時判定。
@@ -3243,6 +3470,16 @@ function spawnPlayerShot() {
 
   if (form === 'missile' && countPlayerBullets('missile') >= MISSILE_CAP) {
     return; /* 場上導彈滿 → 呢下唔射 */
+  }
+
+  /* v0.25.0 B 機齊射兌現：改成 3 發 ±20° 扇形。
+     ⚠️ 放喺 laser / rail / 導彈上限之後，確保「存起」嘅齊射唔會被
+     唔出實彈嘅形態白白食掉。 */
+  if (ship.chassis === 'B' && ship._burstReady) {
+    ship._burstReady = false;
+    n = SALVO_N;
+    mid = (n - 1) / 2;
+    spread = SALVO_ANGLE;
   }
 
   for (let i = 0; i < n; i++) {
@@ -3302,6 +3539,9 @@ function spawnPlayerShot() {
       _splitDone: false,
       waveLv: waveShotCount,     /* v3.11 #74 */
       spin: 0,
+      /* v0.25.0 C 機重炮：粗彈（渲染用 HEAVY_SCALE）+ 命中擊退 */
+      heavy: heavy || undefined,
+      knock: heavy ? HEAVY_KNOCK : 0,
     });
   }
   sfx('shoot');
@@ -3480,10 +3720,17 @@ function damageShip(n) {
   screenFlash = Math.max(screenFlash, 0.35);
   sfx('hurt');
   if (ship.shield > 0) {
-    ship.shield -= 1;
+    /* v0.25.0 B 機「護盾」技能：生效期間護盾唔會被打穿（擋到但唔減盾值） */
+    if (!ship._bulwarkUntil || performance.now() >= ship._bulwarkUntil) {
+      ship.shield -= 1;
+    }
     return false;
   }
   ship.hp -= (n || 1);
+  /* v0.25.0 B 機被動：真係扣到血（唔係用盾擋）之後 1.2 秒無敵 */
+  if (ship.chassis === 'B') {
+    iFrameUntil = Math.max(iFrameUntil, performance.now() + 1200);
+  }
   if (ship.hp > 0) return false;
   /* #44「保險」：致命傷免疫 1 次。優先過 life_st 復活——
      兩者都係「唔好死」，但保險係裝備、復活係強化，唔應該互相吞噬。 */
@@ -3517,6 +3764,8 @@ function damageShip(n) {
 function tick(dtMs) {
   /* 非遊戲狀態下凍結 */
   if (!isStage(fsm.cur)) return;
+  /* v0.25.0：遊戲時間鐘（A 機連射加速用遊戲時間判定連續性） */
+  gameClockMs += dtMs;
 
   /* ---- 波次排程：到達關卡時間目標就產生波次 ---- */
   if (stageStartMs) {
@@ -3560,24 +3809,29 @@ function tick(dtMs) {
     }
   }
 
-  /* ---- 戰機移動（鍵盤優先，否則收斂到拖曳目標） ---- */
+  /* ---- 戰機移動（鍵盤優先，否則收斂到拖曳目標） ----
+     v0.25.0：移動速度受 C 機「過熱」技能影響（×0.6），
+     同時記低最後一次移動方向（A 機衝刺技能靠佢決定突進方向）。 */
   let vx = 0, vy = 0;
   if (InputState.keys.left)  vx -= 1;
   if (InputState.keys.right) vx += 1;
   if (InputState.keys.up)    vy -= 1;
   if (InputState.keys.down)  vy += 1;
+  const moveMul = isOverheatActive() ? 0.6 : 1;
   if (vx || vy) {
     InputState.device = 'key';
     const len = Math.hypot(vx, vy);
-    const step = ship.speed * (dtMs / 16.67);  /* ship.speed is per-frame @60fps */
+    const step = ship.speed * moveMul * (dtMs / 16.67);  /* ship.speed is per-frame @60fps */
     ship.x = clamp(ship.x + (vx/len) * step, 8, VIEW_W - 8);
     ship.y = clamp(ship.y + (vy/len) * step, 8, PLAY_BOTTOM);
+    ship._lastDx = vx / len;
+    ship._lastDy = vy / len;
     InputState.targetX = ship.x;
     InputState.targetY = ship.y;
   } else {
     /* P0-4：拖曳朝 target 行，但每幀最多行 ship.speed * DRAG_SPEED_MULT。
        唔再瞬移，所以 spd_s / spd_l 喺觸控平台真係有用。 */
-    const step = ship.speed * DRAG_SPEED_MULT * (dtMs / 16.67);
+    const step = ship.speed * moveMul * DRAG_SPEED_MULT * (dtMs / 16.67);
     const dx = InputState.targetX - ship.x;
     const dy = InputState.targetY - ship.y;
     const d = Math.hypot(dx, dy);
@@ -3585,17 +3839,24 @@ function tick(dtMs) {
       const k = Math.min(1, step / d);
       ship.x += dx * k;
       ship.y += dy * k;
+      ship._lastDx = dx / d;
+      ship._lastDy = dy / d;
     }
     ship.x = clamp(ship.x, 8, VIEW_W - 8);
     ship.y = clamp(ship.y, 8, PLAY_BOTTOM);
   }
 
 
-  /* ---- 自動開火（PC／觸控都唔使撳射；只需移動） · v3.10 form+tag ---- */
+  /* ---- 自動開火（PC／觸控都唔使撳射；只需移動） · v3.10 form+tag ----
+     v0.25.0 #87：A 機「連射加速」—— 實際射速 = 基礎射速 × 連射倍數（上限 ×1.6）。
+     連射倍數喺 tickShipRhythm() 更新：連住唔停手就愈嚟愈快，停手 0.4 秒就回落。 */
+  tickShipRhythm(dtMs);
   ship.fireCD -= dtMs;
   if (ship.fireCD <= 0) {
     spawnPlayerShot();
-    ship.fireCD = 1000 / Math.max(0.5, ship.fireRate || 1);
+    const ramp = shipRampFactor();
+    const oh = isOverheatActive() ? 2 : 1;   /* C 機過熱：射速 ×2 */
+    ship.fireCD = 1000 / Math.max(0.5, (ship.fireRate || 1) * ramp * oh);
   }
 
   /* v3.11 #68：laser 係**持續**光束，每幀判定（唔靠開火維持）。
@@ -3605,7 +3866,7 @@ function tick(dtMs) {
   /* ---- 玩家子彈移動／形態路徑 ---- */
   tickPlayerBullets(dtMs);
 
-  /* ---- 聚焦同炸彈由按鍵觸發並檢查冷卻；
+  /* ---- 專屬技能同炸彈由按鍵觸發並檢查冷卻；
        清彈喺觸發當下處理，無敵時段喺碰撞時判斷。 ---- */
 
   /* ---- 敵機更新（boss 招式各自不同） ---- */
@@ -3675,7 +3936,7 @@ function tick(dtMs) {
       }
     } else if (e.kind === 'laser') {
       /* 聚焦令敵方彈幕減速（PLAN v2 #6；係數由戰機決定） */
-      const slow = focusSlowFactor();
+      const slow = skillTimeScaleNow();
       e.x += e.vx * dtMs * (e._slowMul == null ? 1 : e._slowMul) * slow;
       e.y += e.vy * dtMs * (e._slowMul == null ? 1 : e._slowMul) * slow;
       e.lifeMs -= dtMs;
@@ -3696,7 +3957,7 @@ function tick(dtMs) {
         }
       } else {
         if (e.warnMs > 0) e.warnMs -= dtMs;
-        const slow = focusSlowFactor();
+        const slow = skillTimeScaleNow();
         e.x += e.vx * dtMs * (e._slowMul == null ? 1 : e._slowMul) * slow;
         e.y += e.vy * dtMs * (e._slowMul == null ? 1 : e._slowMul) * slow;
       }
@@ -3714,6 +3975,19 @@ function tick(dtMs) {
         e.x += Math.sin(e.t / 620) * (e.sway || 0) * dtMs;
       } else if (e.diving) {
         e.vy += 0.000012 * dtMs;
+      }
+      /* v0.25.0 #87 C 機重炮擊退：額外推力獨立於敵人自己嘅 AI，
+         逐幀衰減，所以唔會搶走 dive / rammer 原本嘅走位。 */
+      if (e.kx || e.ky) {
+        e.x += e.kx * (dtMs / 16.67);
+        e.y += e.ky * (dtMs / 16.67);
+        const decay = Math.pow(0.88, dtMs / 16.67);
+        e.kx *= decay;
+        e.ky *= decay;
+        if (Math.abs(e.kx) < 0.02 && Math.abs(e.ky) < 0.02) { e.kx = 0; e.ky = 0; }
+        /* ⚠️ 唔好將敵人推出畫面頂——離開畫面 = 走脫（唔計分），
+           會變成「重炮打中反而冇分」嘅陷阱。推到頂就停住。 */
+        if (e.y < 10) { e.y = 10; e.ky = 0; }
       }
       e.x = clamp(e.x, 12, VIEW_W - 12);
       e.y += e.vy * dtMs * (e._slowMul == null ? 1 : e._slowMul);
@@ -3849,6 +4123,11 @@ function tick(dtMs) {
                 }
               }
               e.hp -= (b.dmg || 1);
+              /* v0.25.0 #87 C 機重炮：命中會將雜魚打飛（boss 唔受擊退）。
+                 方向由玩家指向敵人計 —— 玩家喺下面，所以係向上打飛。 */
+              if (b.knock) {
+                applyKnockback(e, e.x - ship.x, e.y - ship.y, b.knock);
+              }
               spawnSparks(b.x, b.y, 3, 0.08);
               sfx('hit');
               const remove = onPlayerBulletHit(b, e);
@@ -3863,6 +4142,11 @@ function tick(dtMs) {
                 runScore += (e.score || GRUNT_SCORE) * affScore * styScore;
                 runKills++;
                 runGrunts++;
+                /* v0.25.0 C 機被動：每次擊殺回充 5% 炸彈冷卻
+                   （打得越多，炸彈越快回來——鼓勵主動出擊） */
+                if (ship.chassis === 'C' && bombCDUntil > 0) {
+                  bombCDUntil = Math.max(0, bombCDUntil - (ship.bombCD || 12000) * 0.05);
+                }
                 e._dead = true;
                 sfx(e.elite ? 'kill' : 'hit');
                 /* 分裂蟲 → mini；護盾機死 → 裂彈；v3.11 裂解者 → 散射小彈 */
@@ -3939,14 +4223,21 @@ function tick(dtMs) {
 
   /* ---- 狀態列 ---- */
   const now = performance.now();
-  const focusState = isFocusActive()
-    ? `聚焦生效 ×${(ship.focusFactor != null ? ship.focusFactor : 0.3).toFixed(1)}`
-    : `聚焦冷卻 ${Math.max(0, Math.ceil((focusCDUntil - now)/1000))} 秒`;
+  /* v0.25.0：左掣由「聚焦」改成**每架機專屬技能**，
+     所以狀態列要跟機體顯示技能名同冷卻剩餘時間
+     （原本仲引用已刪嘅 isFocusActive / focusFactor / focusCDUntil → 每次 tick 都會 throw）。 */
+  const sk = ship ? SHIPS[ship.chassis] : null;
+  const skillName = sk ? sk.skillName : '技能';
+  const skillState = isSkillActive()
+    ? `${skillName}生效中`
+    : (skillCdUntil > now
+        ? `${skillName}冷卻 ${Math.ceil((skillCdUntil - now) / 1000)} 秒`
+        : `${skillName}就緒`);
   const bombState  = isIFramed()
     ? `炸彈無敵 ${(Math.max(0, iFrameUntil - now)/1000).toFixed(1)} 秒`
     : (bombCDUntil > now ? `炸彈冷卻 ${Math.max(0, Math.ceil((bombCDUntil - now)/1000))} 秒` : '炸彈就緒');
   hudEl.hp.textContent = `生命：${ship.hp}  護盾：${ship.shield}  分數：${Math.floor(runScore)}`;
-  hudEl.tip.textContent = `${focusState} · ${bombState}`;
+  hudEl.tip.textContent = `${skillState} · ${bombState}`;
   /* 必須喺 tip 賦值之後，否則下一行會即刻覆蓋咗 */
   if (DEBUG) {
     hudEl.tip.textContent =
@@ -4176,7 +4467,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.24.0 · 視覺優化', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.25.0 · 戰機重設計', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -4259,36 +4550,47 @@ function render() {
     ctx.fillText('選擇機體', VIEW_W/2, 40);
     ctx.font = '10px monospace';
     ctx.fillStyle = '#9ab';
-    ctx.fillText('揀你嘅逃生船', VIEW_W/2, 56);
+    ctx.fillText('揀你嘅逃生船 · 三架機打法唔同', VIEW_W/2, 56);
     const labels = [
-      { id:'A', n:'速', sub:'1彈·快·傷1', col:'#0ff' },
-      { id:'B', n:'盾', sub:'2彈·盾3·傷1', col:'#4df' },
-      { id:'C', n:'火', sub:'3彈·慢·傷2',  col:'#f6a' },
+      { id:'A', col:'#0ff' },
+      { id:'B', col:'#4df' },
+      { id:'C', col:'#f6a' },
     ];
     labels.forEach((lab, i) => {
       const r = shipCardsLayout().rect(i);
-      const x = r.x + r.w / 2, y = shipCardsLayout().y;
+      const x = r.x + r.w / 2;
+      const c = SHIPS[lab.id];
       ctx.fillStyle = 'rgba(0,30,50,0.75)';
       ctx.fillRect(r.x, r.y, r.w, r.h);
       ctx.strokeStyle = lab.col;
       ctx.lineWidth = 2;
       ctx.strokeRect(r.x, r.y, r.w, r.h);
       ctx.strokeStyle = 'rgba(0,255,255,0.25)';
-      ctx.strokeRect(r.x + 4, r.y + 4, r.w - 8, 60);
-      /* v0.24.0：機體 sprite 中心由 y-8 移到 y（= r.y+20）。
-         原本 sprite 頂部會突出卡框上邊界（scale 3.2 × 9px = 29px 高，中心喺 r.y+12
-         → 頂部喺 r.y-2.4）。收窄卡高之後更明顯，而家完全收喺卡內框。 */
-      if (!drawSprite(SHIP_SPRITE[lab.id], x, y, 3.2)) {
+      ctx.strokeRect(r.x + 4, r.y + 4, r.w - 8, r.h - 8);
+      /* v0.25.0 #90：機體差異 3 秒認得出——
+         sprite + 機名 + 節奏 + 專屬技能（圖示 + 名）+ 被動，四行講晒玩法。
+         ⚠️ 節奏／技能／被動全部要一句話講得清（白板學生 3 秒要讀得明）。 */
+      const sprY = r.y + 20;
+      if (!drawSprite(SHIP_SPRITE[lab.id], x, sprY, 2.6)) {
         ctx.fillStyle = lab.col;
         ctx.font = 'bold 24px monospace';
-        ctx.fillText(lab.id, x, y + 4);
+        ctx.fillText(lab.id, x, sprY + 4);
       }
       ctx.fillStyle = lab.col;
       ctx.font = 'bold 14px monospace';
-      ctx.fillText(lab.id + ' · ' + lab.n, x, y + 28);
+      ctx.fillText(lab.id + ' · ' + c.name, x, r.y + 42);
+      ctx.font = '10px monospace';
+      ctx.fillStyle = '#0ff';
+      ctx.fillText(c.rhythm, x, r.y + 55);
+      /* 專屬技能：圖集 icon + 名（絕對唔用 emoji / Unicode 符號） */
+      drawIcon(c.skillIcon, x - 16, r.y + 66, 1.25);
+      ctx.font = '10px monospace';
+      ctx.fillStyle = '#fd6';
+      ctx.fillText(c.skillName, x + 6, r.y + 69);
+      /* 被動 */
       ctx.font = '9px monospace';
-      ctx.fillStyle = '#cde';
-      ctx.fillText(lab.sub, x, y + 42);
+      ctx.fillStyle = '#8ac';
+      ctx.fillText(c.perkName, x, r.y + 82);
     });
     ctx.fillStyle = '#ff6';
     ctx.font = '12px monospace';
@@ -4640,7 +4942,21 @@ function render() {
         continue;
       }
       /* bolt 預設 */
-      if (!drawSpriteAnim('anim_bullet_p', 'bullet_p', b.x, b.y, 1.4, animT)) {
+      if (b.heavy) {
+        /* v0.25.0 C 機重炮：同一粒彈 sprite 放大 + 白色描邊，
+           令學生一眼認出「呢架機嘅彈好粗」（零新 sprite、零新配色）。
+           ⚠️ 用 save/restore 包住，避免白色描邊漏去後面其他圖層。 */
+        ctx.save();
+        const ok = drawSpriteAnim('anim_bullet_p', 'bullet_p', b.x, b.y, HEAVY_SCALE, animT);
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(b.x - 3.5 * HEAVY_SCALE, b.y - 6 * HEAVY_SCALE, 7 * HEAVY_SCALE, 12 * HEAVY_SCALE);
+        if (!ok) {
+          ctx.fillStyle = '#f96';
+          ctx.fillRect(b.x - 3 * HEAVY_SCALE, b.y - 6 * HEAVY_SCALE, 6 * HEAVY_SCALE, 12 * HEAVY_SCALE);
+        }
+        ctx.restore();
+      } else if (!drawSpriteAnim('anim_bullet_p', 'bullet_p', b.x, b.y, 1.4, animT)) {
         ctx.fillStyle = '#0ff';
         ctx.fillRect(b.x - 1, b.y - 4, 2, 8);
       }
@@ -4888,7 +5204,7 @@ function render() {
       ctx.closePath();
       ctx.fill();
     }
-    if (isFocusActive()) {
+    if (isSkillActive()) {
       ctx.strokeStyle = 'rgba(255,255,0,0.6)';
       ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(ship.x, ship.y, 15, 0, Math.PI * 2); ctx.stroke();
@@ -4984,7 +5300,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.24.0 已載入');
+console.log('[啟動] 末日救未來 v0.25.0 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */

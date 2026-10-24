@@ -185,26 +185,73 @@ const SPRITE = Object.freeze({
   sniper: { x:59, y:13, w:8, h:8 },
   shield_e: { x:68, y:13, w:12, h:7 },
   swarm: { x:0, y:26, w:10, h:7 },
-  spark: { x:11, y:26, w:5, h:5 },
-  boom_0: { x:17, y:26, w:14, h:14 },
-  boom_1: { x:32, y:26, w:16, h:16 },
-  boom_2: { x:49, y:26, w:16, h:16 },
-  ui_focus: { x:66, y:26, w:16, h:16 },
-  ui_bomb: { x:83, y:26, w:16, h:16 },
-  ui_card: { x:0, y:43, w:22, h:14 },
-  ui_heart: { x:23, y:43, w:7, h:7 },
-  ui_shield: { x:31, y:43, w:11, h:12 },
-  star_0: { x:43, y:43, w:3, h:3 },
-  star_1: { x:47, y:43, w:5, h:5 },
-  star_2: { x:53, y:43, w:5, h:5 },
-  bldg: { x:59, y:43, w:14, h:22 },
-  tower: { x:0, y:66, w:10, h:30 },
-  meteor: { x:11, y:66, w:12, h:12 },
-  debris: { x:24, y:66, w:12, h:10 },
-  gate: { x:37, y:66, w:26, h:18 },
-  logo_mark: { x:64, y:66, w:18, h:18 },
+  splitter: { x:11, y:26, w:14, h:8 },
+  rammer: { x:26, y:26, w:14, h:8 },
+  lancer: { x:41, y:26, w:12, h:9 },
+  spark: { x:54, y:26, w:5, h:5 },
+  boom_0: { x:60, y:26, w:14, h:14 },
+  boom_1: { x:75, y:26, w:16, h:16 },
+  boom_2: { x:0, y:43, w:16, h:16 },
+  ui_focus: { x:17, y:43, w:16, h:16 },
+  ui_bomb: { x:34, y:43, w:16, h:16 },
+  ui_card: { x:51, y:43, w:22, h:14 },
+  ui_heart: { x:74, y:43, w:7, h:7 },
+  ui_shield: { x:82, y:43, w:11, h:12 },
+  icon_hp: { x:94, y:43, w:12, h:12 },
+  icon_shield: { x:0, y:60, w:12, h:12 },
+  icon_speed: { x:13, y:60, w:12, h:12 },
+  icon_rapid: { x:26, y:60, w:12, h:12 },
+  icon_multi: { x:39, y:60, w:12, h:12 },
+  icon_damage: { x:52, y:60, w:12, h:12 },
+  icon_bomb: { x:65, y:60, w:12, h:12 },
+  icon_focus: { x:78, y:60, w:12, h:12 },
+  icon_pierce: { x:0, y:73, w:12, h:12 },
+  icon_graze: { x:13, y:73, w:12, h:12 },
+  icon_revive: { x:26, y:73, w:12, h:12 },
+  icon_master: { x:39, y:73, w:12, h:12 },
+  icon_laser: { x:52, y:73, w:12, h:12 },
+  icon_rail: { x:65, y:73, w:12, h:12 },
+  icon_boomerang: { x:78, y:73, w:12, h:12 },
+  icon_rocket: { x:0, y:86, w:12, h:12 },
+  icon_wave: { x:13, y:86, w:12, h:12 },
+  icon_homing: { x:26, y:86, w:12, h:12 },
+  icon_split: { x:39, y:86, w:12, h:12 },
+  icon_slow: { x:52, y:86, w:12, h:12 },
+  icon_bounce: { x:65, y:86, w:12, h:12 },
+  icon_supply: { x:78, y:86, w:12, h:12 },
+  icon_repair: { x:0, y:99, w:12, h:12 },
+  icon_gamble: { x:13, y:99, w:12, h:12 },
+  icon_wind: { x:26, y:99, w:12, h:12 },
+  icon_iron: { x:39, y:99, w:12, h:12 },
+  icon_swarm: { x:52, y:99, w:12, h:12 },
+  icon_blackout: { x:65, y:99, w:12, h:12 },
+  icon_glass: { x:78, y:99, w:12, h:12 },
+  icon_static: { x:0, y:112, w:12, h:12 },
+  star_0: { x:13, y:112, w:3, h:3 },
+  star_1: { x:17, y:112, w:5, h:5 },
+  star_2: { x:23, y:112, w:5, h:5 },
+  bldg: { x:29, y:112, w:14, h:22 },
+  tower: { x:44, y:112, w:10, h:30 },
+  meteor: { x:55, y:112, w:12, h:12 },
+  debris: { x:0, y:143, w:12, h:10 },
+  gate: { x:13, y:143, w:26, h:18 },
+  logo_mark: { x:40, y:143, w:18, h:18 },
+  anim_ship_a_0: { x:59, y:143, w:8, h:9 },
+  anim_ship_a_1: { x:68, y:143, w:8, h:9 },
+  anim_grunt_0: { x:77, y:143, w:10, h:7 },
+  anim_grunt_1: { x:88, y:143, w:10, h:7 },
+  anim_elite_0: { x:0, y:162, w:12, h:9 },
+  anim_elite_1: { x:13, y:162, w:12, h:9 },
+  anim_boss_0: { x:26, y:162, w:12, h:10 },
+  anim_boss_1: { x:39, y:162, w:12, h:10 },
+  anim_boss_2: { x:52, y:162, w:12, h:10 },
+  anim_boss_3: { x:65, y:162, w:12, h:10 },
+  anim_bullet_p_0: { x:78, y:162, w:7, h:12 },
+  anim_bullet_p_1: { x:0, y:175, w:7, h:12 },
+  anim_bullet_e_0: { x:8, y:175, w:9, h:9 },
+  anim_bullet_e_1: { x:18, y:175, w:9, h:9 },
 });
-const SHEET_B64 = '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';
+const SHEET_B64 = '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';
 const sheetImg = new Image();
 let sheetReady = false;
 sheetImg.onload = () => { sheetReady = true; console.log('[貼圖] 圖集就緒 ·', Object.keys(SPRITE).length, '格'); };
@@ -227,6 +274,72 @@ function drawSprite(name, cx, cy, scale) {
 }
 const SHIP_SPRITE = Object.freeze({ A: 'ship_a', B: 'ship_b', C: 'ship_c' });
 
+/* 動畫 sprite 播放（v3.13）。
+   ⚠️ art.px.js 用 anim() 定義嘅動畫，build 之後喺 sheet() 展開成
+      name_0 / name_1 / ... 逐幀格。呢個 helper 負責按時間揀幀。
+   幀率同 art.px.js 嘅 fps 一致（見 ART_IMPLEMENTATION_GUIDE.md §7.3）。
+   單幀 sprite（例如只有 icon_grunt_0）會自動退化為靜態圖。 */
+const ANIM_FPS = { anim_ship_a: 8, anim_grunt: 8, anim_elite: 6, anim_boss: 6, anim_bullet_p: 12, anim_bullet_e: 12 };
+function animFrame(name, tMs) {
+  const fps = ANIM_FPS[name] || 8;
+  const i = Math.floor((tMs / 1000) * fps);
+  /* 幀數由 sheet 展開結果決定：搵 _N 存在嘅最大 N */
+  let n = 0;
+  while (SPRITE[name + '_' + (n + 1)]) n++;
+  if (n === 0) return null;            /* 冇動畫 → 叫 caller 用靜態圖 */
+  return name + '_' + (i % (n + 1));
+}
+/* 畫動畫 sprite；冇對應動畫就畫原圖 */
+function drawSpriteAnim(animName, staticName, cx, cy, scale, tMs) {
+  const f = animFrame(animName, tMs);
+  if (f && drawSprite(f, cx, cy, scale)) return true;
+  return drawSprite(staticName, cx, cy, scale);
+}
+
+/* 畫卡面 icon（v3.13）。   ⚠️ 之前用 emoji 字元（❤🛡🔥💥💣…）—— 脫離 26 色 palette、跨平台唔一致，
+   而且 emoji 寬度唔可預測 → 直接令卡面文字溢出。現在全部改用圖集 sprite。
+   icon2 = 雙重 icon（例如「速度++」畫兩個），第二個向右偏。 */
+function drawIcon(name, cx, cy, scale) {
+  if (!name) return;
+  if (!drawSprite(name, cx, cy, scale)) {
+    /* 圖集未就緒嘅 fallback：畫一個方框，唔好靜靜咩都冇 */
+    const s = scale == null ? 2 : scale;
+    ctx.strokeStyle = '#8aa0c8';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(Math.round(cx - 6 * s), Math.round(cy - 6 * s), 12 * s, 12 * s);
+  }
+}
+function drawIconPair(name, name2, cx, cy, scale) {
+  if (!name) return;
+  const s = scale == null ? 2 : scale;
+  if (name2 && name2 !== name) {
+    /* 雙 icon：左右並排，中間留 2px */
+    drawIcon(name, cx - 7 * s, cy, s);
+    drawIcon(name2, cx + 7 * s, cy, s);
+  } else {
+    drawIcon(name, cx, cy, s);
+  }
+}
+
+/* 依實際像素寬度斷行（v3.13）。
+   ⚠️ 唔可以用「字元數」硬斷 —— 中文全形 ≈ 1em，而 emoji／全角標點
+   寬度唔同，靠字元數一定會溢出容器。用 measureText 逐字累加先準。 */
+function wrapText(ctx, text, maxWidth) {
+  const lines = [];
+  let line = '';
+  for (const ch of Array.from(text)) {
+    const test = line + ch;
+    if (line && ctx.measureText(test).width > maxWidth) {
+      lines.push(line);
+      line = ch;
+    } else {
+      line = test;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
 /* ---------- 特效 / 場景（美化） ---------- */
 const STAGE_THEME = Object.freeze({
   1: { name:'維港起飛', skyTop:'#030814', skyBot:'#0a1a3a', accent:'#00f0ff', prop:'tower', tint:'rgba(0,180,255,0.06)' },
@@ -245,6 +358,9 @@ let particles = [];
 let screenFlash = 0;
 let hitShake = 0;
 let bgScroll = 0;
+/* v3.13：動畫 sprite 嘅全域時間軸（毫秒）。所有 anim 共用同一條時間軸，
+   咁同一個 anim 嘅所有實例同步閃爍（同 sprite-pipeline 嘅「同 anchor 對齊」原則）。 */
+let animT = 0;
 
 function spawnSparks(x, y, n, speed) {
   const sp = speed == null ? 0.12 : speed;
@@ -640,9 +756,8 @@ function drawHudChips() {
   for (let i = 0; i < Math.min(ids.length, 5); i++) {
     const d = LOOT_DEFS.find(x => x.id === ids[i]);
     if (!d) continue;
-    ctx.font = '13px sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(d.icon, 12 + i * 17, 41);
+    drawIcon(d.icon, 18 + i * 17, 38, 1);
   }
   if (ids.length > 5) {
     ctx.font = '9px monospace';
@@ -907,48 +1022,48 @@ const UPGRADES = [
      ⚠️ 原設計係「每類最多持有 1 件」，已廢除——4 類 × 每局 4 次強化會令
      第 4 次抽卡只得一個選項（冇得揀），而且每局必然集齊 4 類，
      build 每次一樣，同「每局唔同」嘅目標相反。見 PLAN #40。 */
-  { id:'spd_s',   cat:'靈活', nameZh:'速度+',    icon:'⚡',   desc:'移動速度 +15%',          mod:(s,n)=>{ s.speed *= Math.pow(1.15, n); } },
-  { id:'spd_l',   cat:'靈活', nameZh:'速度++',   icon:'⚡⚡',  desc:'移速 +30%｜炸彈冷卻 +20%',
+  { id:'spd_s',   cat:'靈活', nameZh:'速度+',    icon:'icon_speed',   desc:'移動速度 +15%',          mod:(s,n)=>{ s.speed *= Math.pow(1.15, n); } },
+  { id:'spd_l',   cat:'靈活', nameZh:'速度++',   icon:'icon_speed', icon2:'icon_speed',  desc:'移速 +30%｜炸彈冷卻 +20%',
               mod:(s,n)=>{ s.speed *= Math.pow(1.30, n); },
               cost:(s,n)=>{ s.bombCD *= Math.pow(1.20, n); } },
-  { id:'hp_s',    cat:'防禦', nameZh:'生命+',    icon:'❤',   desc:'生命上限 +1',            mod:(s,n)=>{ s.maxHp += 1 * n; } },
-  { id:'hp_l',    cat:'防禦', nameZh:'生命+2',   icon:'❤❤',  desc:'生命上限 +2',            mod:(s,n)=>{ s.maxHp += 2 * n; } },
-  { id:'shd_s',   cat:'防禦', nameZh:'盾+',      icon:'🛡',   desc:'初始護盾 +1',            mod:(s,n)=>{ s.shield += 1 * n; } },
-  { id:'shd_l',   cat:'防禦', nameZh:'盾+2',     icon:'🛡🛡',  desc:'初始護盾 +2',            mod:(s,n)=>{ s.shield += 2 * n; } },
-  { id:'fr_s',    cat:'火力', nameZh:'射速+',    icon:'🔥',   desc:'射速 +25%',              mod:(s,n)=>{ s.fireRate *= Math.pow(1.25, n); } },
-  { id:'fr_l',    cat:'火力', nameZh:'射速++',   icon:'🔥🔥',  desc:'射速 +50%｜初始護盾 −1',
+  { id:'hp_s',    cat:'防禦', nameZh:'生命+',    icon:'icon_hp',   desc:'生命上限 +1',            mod:(s,n)=>{ s.maxHp += 1 * n; } },
+  { id:'hp_l',    cat:'防禦', nameZh:'生命+2',   icon:'icon_hp', icon2:'icon_hp',  desc:'生命上限 +2',            mod:(s,n)=>{ s.maxHp += 2 * n; } },
+  { id:'shd_s',   cat:'防禦', nameZh:'盾+',      icon:'icon_shield',   desc:'初始護盾 +1',            mod:(s,n)=>{ s.shield += 1 * n; } },
+  { id:'shd_l',   cat:'防禦', nameZh:'盾+2',     icon:'icon_shield', icon2:'icon_shield',  desc:'初始護盾 +2',            mod:(s,n)=>{ s.shield += 2 * n; } },
+  { id:'fr_s',    cat:'火力', nameZh:'射速+',    icon:'icon_rapid',   desc:'射速 +25%',              mod:(s,n)=>{ s.fireRate *= Math.pow(1.25, n); } },
+  { id:'fr_l',    cat:'火力', nameZh:'射速++',   icon:'icon_rapid', icon2:'icon_rapid',  desc:'射速 +50%｜初始護盾 −1',
               mod:(s,n)=>{ s.fireRate *= Math.pow(1.50, n); },
               cost:(s,n)=>{ s.shield = Math.max(0, s.shield - n); } },
-  { id:'gun_2',   cat:'火力', nameZh:'雙砲',     icon:'✦',    desc:'2 連發 → 3 連發',       mod:(s,n)=>{ s.bulletCount = 2 + n; } },
-  { id:'gun_3',   cat:'火力', nameZh:'三砲',     icon:'✦✦',    desc:'3 連發 → 4 連發｜生命 −1',
+  { id:'gun_2',   cat:'火力', nameZh:'雙砲',     icon:'icon_multi',    desc:'2 連發 → 3 連發',       mod:(s,n)=>{ s.bulletCount = 2 + n; } },
+  { id:'gun_3',   cat:'火力', nameZh:'三砲',     icon:'icon_multi', icon2:'icon_multi',    desc:'3 連發 → 4 連發｜生命 −1',
               mod:(s,n)=>{ s.bulletCount = Math.min(4, 3 + n); },
               cost:(s,n)=>{ s.maxHp = Math.max(1, s.maxHp - n); } },
-  { id:'dmg_s',   cat:'火力', nameZh:'火力+',    icon:'💥',   desc:'子彈傷害 +1',            mod:(s,n)=>{ s.bulletDmg = (s.bulletDmg||1) + n; } },
-  { id:'bomb_cd', cat:'輔助', nameZh:'炸彈冷卻-',icon:'💣',   desc:'炸彈冷卻 -25%',          mod:(s,n)=>{ s.bombCD *= Math.pow(0.75, n); } },
-  { id:'focus_d', cat:'輔助', nameZh:'聚焦+',    icon:'◉',    desc:'聚焦減速 0.3 → 0.2',    mod:(s,n)=>{ s.focusFactor = Math.max(0.1, s.focusFactor - 0.1*n); } },
-  { id:'pierce',  cat:'火力', nameZh:'貫穿',     icon:'➶',    desc:'子彈多穿過一個敵人',   mod:(s,n)=>{ s.pierce += n; } },
-  { id:'graze_s', cat:'輔助', nameZh:'擦彈+',    icon:'»',    desc:'擦彈分數 ×2',          mod:(s,n)=>{ s.grazeMult *= Math.pow(2, n); } },
-  { id:'life_st', cat:'防禦', nameZh:'復活',     icon:'✝',    desc:'死亡時復活一次',         mod:(s,n)=>{ s.resurrect += n; } },
-  { id:'master',  cat:'靈活', nameZh:'大師',     icon:'★',    desc:'速度與射速 +20%',       mod:(s,n)=>{ s.masterStacks = (s.masterStacks||0) + n; } },
+  { id:'dmg_s',   cat:'火力', nameZh:'火力+',    icon:'icon_damage',   desc:'子彈傷害 +1',            mod:(s,n)=>{ s.bulletDmg = (s.bulletDmg||1) + n; } },
+  { id:'bomb_cd', cat:'輔助', nameZh:'炸彈冷卻-',icon:'icon_bomb',   desc:'炸彈冷卻 -25%',          mod:(s,n)=>{ s.bombCD *= Math.pow(0.75, n); } },
+  { id:'focus_d', cat:'輔助', nameZh:'聚焦+',    icon:'icon_focus',    desc:'聚焦減速 0.3 → 0.2',    mod:(s,n)=>{ s.focusFactor = Math.max(0.1, s.focusFactor - 0.1*n); } },
+  { id:'pierce',  cat:'火力', nameZh:'貫穿',     icon:'icon_pierce',    desc:'子彈多穿過一個敵人',   mod:(s,n)=>{ s.pierce += n; } },
+  { id:'graze_s', cat:'輔助', nameZh:'擦彈+',    icon:'icon_graze',    desc:'擦彈分數 ×2',          mod:(s,n)=>{ s.grazeMult *= Math.pow(2, n); } },
+  { id:'life_st', cat:'防禦', nameZh:'復活',     icon:'icon_revive',    desc:'死亡時復活一次',         mod:(s,n)=>{ s.resurrect += n; } },
+  { id:'master',  cat:'靈活', nameZh:'大師',     icon:'icon_master',    desc:'速度與射速 +20%',       mod:(s,n)=>{ s.masterStacks = (s.masterStacks||0) + n; } },
   /* ---- v3.10 主彈形態（互斥：mod 寫死 shotForm）---- */
-  { id:'form_laser', cat:'火力', nameZh:'激光',   icon:'｜',  desc:'線傷快',
+  { id:'form_laser', cat:'火力', nameZh:'激光',   icon:'icon_laser',  desc:'線傷快',
               mod:(s,n)=>{ s.shotForm = 'laser'; } },
-  { id:'form_rail',  cat:'火力', nameZh:'軌道炮', icon:'┃',  desc:'一條線',
+  { id:'form_rail',  cat:'火力', nameZh:'軌道炮', icon:'icon_rail',  desc:'一條線',
               mod:(s,n)=>{ s.shotForm = 'rail'; } },
-  { id:'form_boom',  cat:'火力', nameZh:'迴力鏢', icon:'↺',  desc:'去返都打',
+  { id:'form_boom',  cat:'火力', nameZh:'迴力鏢', icon:'icon_boomerang',  desc:'去返都打',
               mod:(s,n)=>{ s.shotForm = 'boomerang'; } },
-  { id:'form_miss',  cat:'火力', nameZh:'導彈',   icon:'🚀', desc:'慢但追',
+  { id:'form_miss',  cat:'火力', nameZh:'導彈',   icon:'icon_rocket', desc:'慢但追',
               mod:(s,n)=>{ s.shotForm = 'missile'; } },
-  { id:'form_wave',  cat:'火力', nameZh:'波動彈', icon:'〰',  desc:'左右擺',
+  { id:'form_wave',  cat:'火力', nameZh:'波動彈', icon:'icon_wave',  desc:'左右擺',
               mod:(s,n)=>{ s.shotForm = 'wave'; } },
   /* ---- v3.10 彈效 tag（可疊）---- */
-  { id:'tag_home', cat:'火力', nameZh:'追蹤',   icon:'◎',  desc:'輕鎖敵',
+  { id:'tag_home', cat:'火力', nameZh:'追蹤',   icon:'icon_homing',  desc:'輕鎖敵',
               mod:(s,n)=>{ s.shotTags.homing = (s.shotTags.homing||0) + n; } },
-  { id:'tag_split',cat:'火力', nameZh:'分裂',   icon:'✴',  desc:'中裂2',
+  { id:'tag_split',cat:'火力', nameZh:'分裂',   icon:'icon_split',  desc:'中裂2',
               mod:(s,n)=>{ s.shotTags.split = (s.shotTags.split||0) + n; } },
-  { id:'tag_slow', cat:'輔助', nameZh:'緩速彈', icon:'❄',  desc:'敵慢一截',
+  { id:'tag_slow', cat:'輔助', nameZh:'緩速彈', icon:'icon_slow',  desc:'敵慢一截',
               mod:(s,n)=>{ s.shotTags.slow = (s.shotTags.slow||0) + n; } },
-  { id:'tag_rico', cat:'輔助', nameZh:'彈牆',   icon:'↔',  desc:'左右反1',
+  { id:'tag_rico', cat:'輔助', nameZh:'彈牆',   icon:'icon_bounce',  desc:'左右反1',
               mod:(s,n)=>{ s.shotTags.ricochet = (s.shotTags.ricochet||0) + n; } },
 ];
 
@@ -1425,12 +1540,12 @@ function assembleWaves(stageId, seed) {
    ⚠️ 每個欄位都必須有 game logic 讀，否則就係死卡（項目驗收標準）。 */
 const AFFIX_DEFS = [
   /* #48：desc ≤12 字，一個 icon + 一個數字，唔解釋機制。橫幅位闊度有限，唔加空格。 */
-  { id:'headwind', name:'逆風', icon:'\u{1F32C}', desc:'敵速+25%｜分×1.3',  score:1.3,  enemySpd:1.25 },
-  { id:'iron',     name:'鐵壁', icon:'\u{1F6E1}', desc:'敵血+40%｜分×1.3',  score:1.3,  enemyHp:1.4 },
-  { id:'swarm',    name:'蟲潮', icon:'\u{1F41B}', desc:'數量+50%｜血−15%', count:1.5,  enemyHp:0.85 },
-  { id:'blackout', name:'停電', icon:'\u{1F311}', desc:'畫面暗｜擦彈+8',    dark:1,     grazeBonus:8 },
-  { id:'glass',    name:'玻璃', icon:'\u26A0',   desc:'生命−1｜分×1.6',    score:1.6,  hpDelta:-1 },
-  { id:'static',   name:'靜電', icon:'\u26A1',   desc:'敵彈−18%｜分×1.2',  score:1.2,  bulletSpd:0.82 },
+  { id:'headwind', name:'逆風', icon:'icon_wind', desc:'敵速+25%｜分×1.3',  score:1.3,  enemySpd:1.25 },
+  { id:'iron',     name:'鐵壁', icon:'icon_iron', desc:'敵血+40%｜分×1.3',  score:1.3,  enemyHp:1.4 },
+  { id:'swarm',    name:'蟲潮', icon:'icon_swarm', desc:'數量+50%｜血−15%', count:1.5,  enemyHp:0.85 },
+  { id:'blackout', name:'停電', icon:'icon_blackout', desc:'畫面暗｜擦彈+8',    dark:1,     grazeBonus:8 },
+  { id:'glass',    name:'玻璃', icon:'icon_glass',   desc:'生命−1｜分×1.6',    score:1.6,  hpDelta:-1 },
+  { id:'static',   name:'靜電', icon:'icon_static',   desc:'敵彈−18%｜分×1.2',  score:1.2,  bulletSpd:0.82 },
 ];
 /* 本關生效嘅乘數。每次入關由 rollStageAffix() 重設（唔跨關、唔跨局）。 */
 let stageAffix    = null;
@@ -1473,18 +1588,18 @@ function grazeRadius() { return GRAZE_RADIUS + affGrazeBonus; }
 const STAGE_STYLES = [
   /* 彈幕關：偏彈幕家族（spray/aim/ranger），雜魚少但擦彈賺。
      代價 = 擊殺分少（打得慢）。 */
-  { id:'bullet',  name:'彈幕關', icon:'\u{1F30A}', desc:'彈多｜擦×1.5',
+  { id:'bullet',  name:'彈幕關', icon:'icon_multi', desc:'彈多｜擦×1.5',
     prefer:{ sp:3, ai:3, rg:2 }, count:0.75, grazeScore:1.5 },
   /* 雜兵關：偏雜魚家族（grunt/mortar），數量多但血薄、擊殺分 ×1.3。
      代價 = 場面亂、容易撞。 */
-  { id:'swarm',  name:'雜兵關', icon:'\u{1F41D}', desc:'兵多｜分×1.3',
+  { id:'swarm',  name:'雜兵關', icon:'icon_swarm', desc:'兵多｜分×1.3',
     prefer:{ g:3, mt:2, mix:2 }, count:1.4, enemyHp:0.75, score:1.3 },
   /* 精英關：偏精英家族（elite/mortar/dive/snake），血厚但 boss 射速慢。
      代價 = 場面慢、打得耐。
      ⚠️ S2 未解鎖任何精英家族（pool 只有 g/sp/ai/rg），所以精英關喺 S2
         會退化成「純血厚 + boss 慢」，敵種組成冇變。呢個係設計現實：
         風格唔可以越關 intro 新敵人，所以寧願降級都唔偷新怪。 */
-  { id:'elite',   name:'精英關', icon:'\u{1F6E1}', desc:'敵血+35%｜boss慢',
+  { id:'elite',   name:'精英關', icon:'icon_iron', desc:'敵血+35%｜boss慢',
     prefer:{ el:3, mt:2, dv:2, sn:2, sh:2 }, count:0.9, enemyHp:1.35, bossFire:0.75, score:1.15 },
 ];
 /* 本關生效嘅風格。由 pickStageStyle() 喺 STYLE 狀態寫入，resetStyle() 清。 */
@@ -1549,16 +1664,16 @@ const LOOT_DEFS = [
   /* 穿甲彈：子彈傷害 +1。⚠️ 原案寫「子彈破精英護盾」，但查證：shield 類敵人
      同 elite 類係唔同 type，遊戲內根本冇「護盾擋子彈傷害」機制——照原案實作
      會變成零效果嘅死卡。改為純傷害加值，對所有敵人有效、可實測。 */
-  { id:'ap',    name:'穿甲彈', icon:'\u{1F4A5}', desc:'子彈傷害+1', bulletDmgBonus:1 },
+  { id:'ap',    name:'穿甲彈', icon:'icon_damage', desc:'子彈傷害+1', bulletDmgBonus:1 },
   /* 節能：聚焦冷卻 −2 秒。淨係減 cd，唔減生效時間。 */
-  { id:'eco',   name:'節能',   icon:'\u{1F50B}', desc:'聚焦冷卻−2秒',
+  { id:'eco',   name:'節能',   icon:'icon_supply', desc:'聚焦冷卻−2秒',
     focusCdDelta:-2000 },
   /* 保險：受致命傷時免疫 1 次（hp 扣到 ≤0 就救返，唔會即刻死）。 */
-  { id:'guard', name:'保險',   icon:'\u{1F6E1}', desc:'致命傷免疫1次', armor:1 },
+  { id:'guard', name:'保險',   icon:'icon_iron', desc:'致命傷免疫1次', armor:1 },
   /* 加固：每關開始多 1 個護盾。簡單直接，唔使記住規則。 */
-  { id:'plate', name:'加固',   icon:'\u{1F6E2}', desc:'每關多1個護盾', shieldBonus:1 },
+  { id:'plate', name:'加固',   icon:'icon_shield', desc:'每關多1個護盾', shieldBonus:1 },
   /* 散熱：炸彈冷卻 −3 秒。 */
-  { id:'cool',  name:'散熱',   icon:'\u{1F525}', desc:'炸彈冷卻−3秒', bombCdDelta:-3000 },
+  { id:'cool',  name:'散熱',   icon:'icon_rapid', desc:'炸彈冷卻−3秒', bombCdDelta:-3000 },
 ];
 /* 已持有嘅裝備（id → 件數）。boss 每死一次掉 1 件，所以可以重複持有。
    裝備係純被動，冇上限壓力，所以重複疊加唔設上限（但同 id 只讀一次效果）。 */
@@ -1735,16 +1850,16 @@ function eventGamble() {
 const EVENT_DEFS = [
   /* 搶救物資：即時 +800 分，但下一關雜魚血 +30%。即時獎勵 vs 長線代價。 */
   /* #48：desc ≤12 字。數字前後唔加空格、縮寫受詞（「下關敵血」→「下關血」）。 */
-  { id:'salvage', name:'搶救物資', icon:'\u{1F4E6}', desc:'+800｜下關血+30%',
+  { id:'salvage', name:'搶救物資', icon:'icon_supply', desc:'+800｜下關血+30%',
     apply: () => { runScore += 800 * affScore * styScore; eventNextHp = 1.3; } },
   /* 維修引擎：即時回滿盾 + 1 命，但燒走一件現有強化（卡面必須寫明邊件）。
      burnId 由出卡時（buildEventOffer）預先選定，確保「卡面寫邊件就真係燒邊件」。
      冇強化可燒 → 退化為純回血，卡面同步唔提燒裝備。 */
-  { id:'repair',  name:'維修引擎', icon:'\u{1F527}', desc:'',
+  { id:'repair',  name:'維修引擎', icon:'icon_repair', desc:'',
     apply: (burnId) => { healShipFull(); burnUpgrade(burnId); } },
   /* 賭一把：60% 下一關詞綴變鐵壁（敵血 +40%，但分 ×1.3）／40% 變蟲潮（數量 +50%，血 −15%）。
      ⚠️ 誠實賭博：結果即時用橫幅講明，唔會靜靜地發生。 */
-  { id:'gamble',  name:'賭一把',   icon:'\u{1F3B2}', desc:'60%鐵壁｜40%蟲潮',
+  { id:'gamble',  name:'賭一把',   icon:'icon_gamble', desc:'60%鐵壁｜40%蟲潮',
     apply: () => { eventGamble(); } },
 ];
 let eventOffer  = [];
@@ -2333,11 +2448,18 @@ window.addEventListener('keydown', (e) => {
     tryBomb();
     e.preventDefault();
   }
-  /* 用鍵盤揀難度 */
+  /* 用鍵盤揀難度
+     ⚠️ v0.24.0 修正：每個選單分支**必須 return**。
+        呢啲分支啲 action 會改 fsm.cur（揀完難度 → SHIP_SELECT）。
+        原本用 if 而唔係 else-if，flow 會繼續落到下一個 if，
+        撞到「而家已經變咗」嗰個 state 嘅分支再執行一次
+        → 一次按鍵連跳兩級：按 '2' 揀難度之後即刻揀機體開始，
+          揀強化之後即刻揀風格，玩家根本見唔到嗰兩個畫面。 */
   if (fsm.cur === STATE.DIFF_SELECT) {
     if (k === '1') selectDiffAndContinue(1);
-    if (k === '2') selectDiffAndContinue(2);
-    if (k === '3') selectDiffAndContinue(3);
+    else if (k === '2') selectDiffAndContinue(2);
+    else if (k === '3') selectDiffAndContinue(3);
+    return;   /* 一次按鍵只處理一個選單 */
   }
   /* 用鍵盤揀機體 */
   if (fsm.cur === STATE.SHIP_SELECT) {
@@ -2347,6 +2469,7 @@ window.addEventListener('keydown', (e) => {
     else if (k === 'enter' || k === ' ' || k === 'escape' || k === '1') pickShipAndStart('A');
     else if (k === '2') pickShipAndStart('B');
     else if (k === '3') pickShipAndStart('C');
+    return;
   }
   if (fsm.cur === STATE.CHOICE) {
     /* 按 1/2/3 揀卡（PLAN v2 #3 可重複） */
@@ -2358,6 +2481,7 @@ window.addEventListener('keydown', (e) => {
       applyPickedUpgrade(0);
       advanceStage();
     }
+    return;
   }
   /* #41 風格選擇：1/2/3。Esc = 揀第一個（同 CHOICE 一致，唔會卡死） */
   if (fsm.cur === STATE.STYLE) {
@@ -2366,6 +2490,7 @@ window.addEventListener('keydown', (e) => {
       applyPickedStyle(idx);
       advanceStage();
     }
+    return;
   }
   /* #42 中斷事件：揀完即刻 resumeEvent() 返回同一關（唔入下一關） */
   if (fsm.cur === STATE.EVENT) {
@@ -2374,6 +2499,7 @@ window.addEventListener('keydown', (e) => {
       applyPickedEvent(idx);
       resumeEvent();
     }
+    return;
   }
   /* #46 單次逆轉：揀完 resumeReverse() 返回同一關（boss 仍未出） */
   if (fsm.cur === STATE.REVERSE) {
@@ -2382,11 +2508,13 @@ window.addEventListener('keydown', (e) => {
       applyPickedReverse(idx);
       resumeReverse();
     }
+    return;
   }
   /* PLAN：任務失敗／勝利 → [重試] / [標題] */
   if (fsm.cur === STATE.GAMEOVER || fsm.cur === STATE.VICTORY) {
     if (k === 'r' || k === 'enter') { goRetry(); e.preventDefault(); }
     else if (k === 't' || k === 'escape') { goTitle(); e.preventDefault(); }
+    return;
   }
 });
 window.addEventListener('keyup', (e) => {
@@ -2486,8 +2614,11 @@ function hitStyleCard(px, py) {
 }
 
 function shipCardsLayout() {
-  /* v0.21.2：卡加大 + 垂直帶加闊，智慧白板手指易撳 */
-  const w = 96, h = 128, gap = 12;
+  /* v0.21.2：卡加大 + 垂直帶加闊，智慧白板手指易撳
+     v0.24.0：卡高 128 → 84。原本內容只用咗上面 65px（sprite + 名 + 一行數值），
+     下面 63px 係空嘅，睇落似未填完嘅卡。收窄到貼合內容，
+     觸控目標仍 96×84（遠高於 PLAN #20 要求嘅 64×64）。 */
+  const w = 96, h = 84, gap = 12;
   const total = w * 3 + gap * 2;
   const startX = (VIEW_W - total) / 2;
   const y = VIEW_H / 2 - 20;
@@ -2536,20 +2667,37 @@ function drawEndBtns() {
   const b = endScreenBtns();
   for (const key of ['retry', 'title']) {
     const r = b[key];
-    ctx.fillStyle = key === 'retry' ? 'rgba(0,80,60,0.95)' : 'rgba(0,40,60,0.95)';
-    ctx.fillRect(r.x, r.y, r.w, r.h);
-    ctx.strokeStyle = key === 'retry' ? '#0f6' : '#0ff';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(r.x, r.y, r.w, r.h);
-    ctx.fillStyle = '#fff';
+    const primary = key === 'retry';
+    /* v3.13：原本兩個掣同一份量（綠描邊 vs 青描邊，面積一樣粗度一樣），
+       玩家唔知邊個係主行動。UI_STYLE_GUIDE.md §6.3：
+       主行動 = 實心填充 + 白字；次行動 = 描邊 + 灰字。 */
+    if (primary) {
+      ctx.fillStyle = '#0aa8c8';
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.strokeStyle = '#0ff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(r.x, r.y, r.w, r.h);
+      ctx.fillStyle = '#fff';
+    } else {
+      ctx.fillStyle = 'rgba(0,30,50,0.85)';
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.strokeStyle = '#3a4868';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(r.x, r.y, r.w, r.h);
+      ctx.fillStyle = '#8aa0c8';
+    }
     ctx.font = 'bold 14px monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(r.label, r.x + r.w / 2, r.y + r.h / 2);
   }
   ctx.textBaseline = 'alphabetic';
+  /* v0.24.0：提示字加暗色底條。背景大樓 sprite 會穿過灰色文字，
+     實機睇完全睇唔清係咩掣。加底條 + 提亮字色，唔靠玩家猜。 */
+  ctx.fillStyle = 'rgba(0,0,0,0.72)';
+  ctx.fillRect(VIEW_W / 2 - 132, VIEW_H - 36, 264, 22);
   ctx.font = '10px monospace';
-  ctx.fillStyle = '#888';
+  ctx.fillStyle = '#cde';
   ctx.textAlign = 'center';
   ctx.fillText('R / Enter = 重試 · T / Esc = 返回標題', VIEW_W / 2, VIEW_H - 22);
 }
@@ -3907,14 +4055,14 @@ function drawAudioUi() {
   ctx.strokeStyle = audioOn ? '#0f6' : '#f66';
   ctx.strokeRect(b.power.x, b.power.y, b.power.w, b.power.h);
   drawSpeakerIcon(b.power.x + 34, b.power.y + b.power.h / 2, audioOn);
-  ctx.fillStyle = '#fff'; ctx.font = 'bold 17px ui-monospace, monospace';
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 16px ui-monospace, monospace';
   ctx.fillText(audioOn ? '音效 開' : '音效 關', b.power.x + 116, b.power.y + b.power.h / 2);
 
   /* 音量列：[−] 標籤 + 進度點 [+]，唔用滑條（智慧白板要粗撳得中） */
   const step = (rc, sign) => {
     ctx.fillStyle = 'rgba(0,60,80,0.95)'; ctx.fillRect(rc.x, rc.y, rc.w, rc.h);
     ctx.strokeStyle = '#0ff'; ctx.lineWidth = 2; ctx.strokeRect(rc.x, rc.y, rc.w, rc.h);
-    ctx.fillStyle = '#0ff'; ctx.font = 'bold 22px ui-monospace, monospace'; ctx.textAlign = 'center';
+    ctx.fillStyle = '#0ff'; ctx.font = 'bold 24px ui-monospace, monospace'; ctx.textAlign = 'center';
     ctx.fillText(sign, rc.x + rc.w / 2, rc.y + rc.h / 2 + 1);
   };
   const row = (label, val, minus, plus) => {
@@ -3954,10 +4102,10 @@ function drawStageAffixFx() {
   ctx.strokeRect(VIEW_W / 2 - 92, y - 22, 184, 44);
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillStyle = '#fff';
-  ctx.font = 'bold 15px ui-monospace, monospace';
+  ctx.font = 'bold 16px ui-monospace, monospace';
   ctx.fillText(stageAffix.icon + ' ' + stageAffix.name, VIEW_W / 2, y - 6);
   ctx.fillStyle = '#ffd56a';
-  ctx.font = '11px ui-monospace, monospace';
+  ctx.font = '12px ui-monospace, monospace';
   ctx.fillText(stageAffix.desc, VIEW_W / 2, y + 12);
   ctx.globalAlpha = 1;
   ctx.textBaseline = 'alphabetic';
@@ -3978,6 +4126,9 @@ function render() {
   const shakeY = hitShake > 0 ? (Math.random() - 0.5) * 4 * hitShake : 0;
   ctx.save();
   ctx.translate(shakeX, shakeY);
+  /* v3.13：動畫時間軸（統一用 performance.now()，唔受暫停影響 —— 暫停時
+     動畫繼續轉但畫面靜止，唔會有「跳幀」錯覺） */
+  animT = performance.now();
 
   /* 背景 —— 依關卡主題，或標題畫面 */
   const bgStage = isStage(fsm.cur) ? lastStage
@@ -3992,7 +4143,7 @@ function render() {
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
     ctx.fillRect(0, 0, VIEW_W, VIEW_H);
     ctx.fillStyle = '#0ff';
-    ctx.font = 'bold 28px monospace';
+    ctx.font = 'bold 32px monospace';
     ctx.textAlign = 'center';
     ctx.fillText('已暫停', VIEW_W/2, VIEW_H/2 - 8);
     ctx.font = '12px monospace';
@@ -4003,14 +4154,17 @@ function render() {
       ctx.font = '10px monospace';
       ctx.fillText('課堂用 · 計時已凍結', VIEW_W/2, VIEW_H/2 + 36);
     } else {
-      ctx.fillText('（分頁切換中 — 返去即繼續）', VIEW_W/2, VIEW_H/2 + 16);
+      ctx.fillText('（分頁切換中：返去即繼續）', VIEW_W/2, VIEW_H/2 + 16);
     }
     renderTail();
     return;
   }
 
   if (fsm.cur === STATE.TITLE) {
-    drawSprite('logo_mark', VIEW_W/2, VIEW_H/2 - 110, 2.2);
+    /* v3.13：logo 由 VIEW_H/2−110 移近到 −92，並放大到 2.6。
+       原本 logo 底部（−110 + 35/2 ≈ −92）同標題頂（−48 − 24 ≈ −60）
+       之間有 32px 空隙 → logo 同標題斷開咗，唔似一個 lockup。 */
+    drawSprite('logo_mark', VIEW_W/2, VIEW_H/2 - 92, 2.6);
     ctx.fillStyle = '#0ff';
     ctx.font = 'bold 24px monospace';
     ctx.textAlign = 'center';
@@ -4018,23 +4172,27 @@ function render() {
     ctx.shadowBlur = 12;
     ctx.fillText('末日救未來', VIEW_W/2, VIEW_H/2 - 48);
     ctx.shadowBlur = 0;
-    ctx.font = '11px monospace';
+    ctx.font = '12px monospace';
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.23.1 · 形態深化 + 新敵人', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.24.0 · 視覺優化', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
-    drawSprite('boss', VIEW_W/2, VIEW_H/2 + 110, 2.5);
+    drawSprite('boss', VIEW_W/2, VIEW_H/2 + 106, 2.5);
+    /* boss 下面加標籤：原本 boss 單獨喺度，唔知係咩（§5.12 判 V10 構圖） */
+    ctx.fillStyle = '#f6a';
+    ctx.font = '10px monospace';
+    ctx.fillText('敵方母艦', VIEW_W/2, VIEW_H/2 + 132);
     if (bestScore > 0 || bestTime > 0) {
       ctx.fillStyle = '#ff6';
       ctx.font = 'bold 12px monospace';
       ctx.fillText(diffName() + ' 最佳：' + Math.floor(bestScore) + '（' + (bestTime > 0 ? bestTime.toFixed(1) + ' 秒' : '—') + '）', VIEW_W/2, VIEW_H/2 + 18);
     } else {
       ctx.fillStyle = '#889';
-      ctx.font = '11px monospace';
-      ctx.fillText('暫無紀錄 — 挑戰第一次！', VIEW_W/2, VIEW_H/2 + 18);
+      ctx.font = '12px monospace';
+      ctx.fillText('暫無紀錄：挑戰第一次！', VIEW_W/2, VIEW_H/2 + 18);
     }
     const pulse = 0.55 + 0.45 * Math.sin(performance.now() / 320);
     ctx.fillStyle = 'rgba(255,220,80,' + pulse.toFixed(2) + ')';
@@ -4069,7 +4227,7 @@ function render() {
       ctx.lineWidth = on ? 3 : 2;
       ctx.strokeRect(r.x, r.y, r.w, r.h);
       ctx.fillStyle = c.col;
-      ctx.font = 'bold 22px monospace';
+      ctx.font = 'bold 24px monospace';
       ctx.textAlign = 'center';
       ctx.fillText(String(c.id), r.x + r.w/2, r.y + 28);
       ctx.font = 'bold 14px monospace';
@@ -4116,14 +4274,17 @@ function render() {
       ctx.lineWidth = 2;
       ctx.strokeRect(r.x, r.y, r.w, r.h);
       ctx.strokeStyle = 'rgba(0,255,255,0.25)';
-      ctx.strokeRect(r.x + 4, r.y + 4, r.w - 8, 48);
-      if (!drawSprite(SHIP_SPRITE[lab.id], x, y - 8, 3.2)) {
+      ctx.strokeRect(r.x + 4, r.y + 4, r.w - 8, 60);
+      /* v0.24.0：機體 sprite 中心由 y-8 移到 y（= r.y+20）。
+         原本 sprite 頂部會突出卡框上邊界（scale 3.2 × 9px = 29px 高，中心喺 r.y+12
+         → 頂部喺 r.y-2.4）。收窄卡高之後更明顯，而家完全收喺卡內框。 */
+      if (!drawSprite(SHIP_SPRITE[lab.id], x, y, 3.2)) {
         ctx.fillStyle = lab.col;
-        ctx.font = 'bold 22px monospace';
-        ctx.fillText(lab.id, x, y - 4);
+        ctx.font = 'bold 24px monospace';
+        ctx.fillText(lab.id, x, y + 4);
       }
       ctx.fillStyle = lab.col;
-      ctx.font = 'bold 13px monospace';
+      ctx.font = 'bold 14px monospace';
       ctx.fillText(lab.id + ' · ' + lab.n, x, y + 28);
       ctx.font = '9px monospace';
       ctx.fillStyle = '#cde';
@@ -4140,7 +4301,7 @@ function render() {
     ctx.fillStyle = 'rgba(20,0,0,0.55)';
     ctx.fillRect(0, 0, VIEW_W, VIEW_H);
     ctx.fillStyle = '#f06';
-    ctx.font = 'bold 30px monospace';
+    ctx.font = 'bold 32px monospace';
     ctx.textAlign = 'center';
     ctx.shadowColor = '#f06';
     ctx.shadowBlur = 10;
@@ -4150,7 +4311,7 @@ function render() {
     ctx.fillStyle = '#fcc';
     ctx.fillText('戰機被擊毀 · 分數 ' + Math.floor(runScore), VIEW_W/2, VIEW_H/2 + 4);
     ctx.fillStyle = '#9ab';
-    ctx.font = '11px monospace';
+    ctx.font = '12px monospace';
     ctx.fillText('難度 ' + diffName() + ' · 倒數第 ' + lastStage + ' 關', VIEW_W/2, VIEW_H/2 + 22);
     drawEndBtns();
     renderTail();
@@ -4185,7 +4346,7 @@ function render() {
     ctx.fillStyle = '#ff6';
     ctx.font = 'bold 16px monospace';
     ctx.fillText('分數：' + scoreDisplay, VIEW_W/2, VIEW_H/2 + 28);
-    ctx.font = '11px monospace';
+    ctx.font = '12px monospace';
     ctx.fillStyle = '#aaa';
     ctx.fillText('（擊殺 ' + Math.floor(runScore - grazeScoreTotal)
                + ' + 擦彈 ' + Math.floor(grazeScoreTotal) + '（' + grazeCount + ' 次）'
@@ -4205,7 +4366,7 @@ function render() {
     ctx.fillStyle = '#ff6';
     ctx.font = 'bold 14px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('選擇 — 揀一個強化', VIEW_W/2, cardY - 18);
+    ctx.fillText('揀一個強化', VIEW_W/2, cardY - 18);
     for (let i = 0; i < 3; i++) {
       const up = choiceOffer[i];
       if (!up) continue;
@@ -4221,10 +4382,8 @@ function render() {
       ctx.strokeRect(x, y, cardW, cardH);
       ctx.strokeStyle = 'rgba(255,255,255,0.15)';
       ctx.strokeRect(x + 3, y + 3, cardW - 6, cardH - 6);
-      ctx.fillStyle = '#fff';
-      ctx.font = '24px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(up.icon, x + cardW/2, y + 30);
+      drawIconPair(up.icon, up.icon2, x + cardW/2, y + 24, 2);
       /* 分類標籤（PLAN v3.8 #40）：卡片**左上**細章，令玩家睇得出 build 走向。
          只係顯示，唔限制揀卡。顏色跟分類，方便一眼掃。
          ⚠️ 放左上唔放右上——右上已經有疊加次數「x2」（y+14 右對齊），
@@ -4241,13 +4400,13 @@ function render() {
       ctx.fillText(up.nameZh, x + cardW/2, y + 50);
       ctx.font = '10px monospace';
       ctx.fillStyle = '#bcd';
-      /* 中文逐字斷行；Array.from 先拆 code point，唔會切爛 emoji */
-      const descLines = [];
-      {
-        const chars = Array.from(up.desc);
-        for (let li = 0; li < chars.length; li += 9) descLines.push(chars.slice(li, li + 9).join(''));
-      }
-      for (let li = 0; li < Math.min(descLines.length, 3); li++) {
+      /* v3.13：改用 measureText 逐字斷行。
+         ⚠️ 之前靠「字元數」硬斷（每 9 字）—— 但中文喺 monospace 係全形
+         （≈ 1em = 10px），9 字 = 90px 已經超出卡面可用寬度 ≈ 74px，
+         實測「子彈多穿過一個敵人」直接溢出卡框。emoji／全角標點寬度更加
+         唔同，靠字元數一定會出事。 */
+      const descLines = wrapText(ctx, up.desc, cardW - 14);
+      for (let li = 0; li < Math.min(descLines.length, 2); li++) {
         ctx.fillText(descLines[li], x + cardW/2, y + 66 + li * 11);
       }
       const n = playerStacks[up.id] || 0;
@@ -4275,7 +4434,7 @@ function render() {
     ctx.fillStyle = '#ffd24a';
     ctx.font = 'bold 14px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('單次逆轉 — 揀一件升級', VIEW_W/2, cardY - 18);
+    ctx.fillText('單次逆轉：揀一件升級', VIEW_W/2, cardY - 18);
     for (let i = 0; i < 3; i++) {
       const up = reverseOffer[i];
       if (!up) continue;
@@ -4292,10 +4451,8 @@ function render() {
       ctx.strokeRect(x, y, cardW, cardH);
       ctx.strokeStyle = 'rgba(255,255,255,0.2)';
       ctx.strokeRect(x + 3, y + 3, cardW - 6, cardH - 6);
-      ctx.fillStyle = '#fff';
-      ctx.font = '24px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(up.icon, x + cardW/2, y + 30);
+      drawIconPair(up.icon, up.icon2, x + cardW/2, y + 24, 2);
       /* 傳說級標記（卡片中央橫幅） */
       ctx.font = 'bold 9px monospace';
       ctx.fillStyle = '#ffd24a';
@@ -4323,35 +4480,34 @@ function render() {
     ctx.fillStyle = '#fc6';
     ctx.font = 'bold 14px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('中斷事件 — 揀一個', VIEW_W/2, cardY - 18);
+    ctx.fillText('中斷事件：揀一個', VIEW_W/2, cardY - 18);
     for (let i = 0; i < 3; i++) {
       const ev = eventOffer[i];
       if (!ev) continue;
       const r = L.rect(i);
       const x = r.x, y = r.y;
       const grd = ctx.createLinearGradient(x, y, x, y + cardH);
-      grd.addColorStop(0, 'rgba(90,40,20,0.95)');
-      grd.addColorStop(1, 'rgba(35,14,6,0.95)');
+      /* v3.13：原本係棕黃底（rgba(90,40,20)），同強化卡嘅青藍完全唔同世界，
+         玩家會以為係另一個系統（VISUAL_QUALITY_RUBRIC.md §6.1 判最弱狀態）。
+         而家改用同一套青藍底，事件嘅「特殊感」靠標題色 + 卡名色表達。 */
+      grd.addColorStop(0, 'rgba(0,60,90,0.95)');
+      grd.addColorStop(1, 'rgba(0,20,40,0.95)');
       ctx.fillStyle = grd;
       ctx.fillRect(x, y, cardW, cardH);
-      ctx.strokeStyle = '#fc6';
+      ctx.strokeStyle = '#0ff';
       ctx.lineWidth = 2;
       ctx.strokeRect(x, y, cardW, cardH);
       ctx.strokeStyle = 'rgba(255,255,255,0.15)';
       ctx.strokeRect(x + 3, y + 3, cardW - 6, cardH - 6);
-      ctx.fillStyle = '#fff';
-      ctx.font = '24px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(ev.icon, x + cardW/2, y + 32);
+      drawIcon(ev.icon, x + cardW/2, y + 26, 2);
       ctx.font = 'bold 12px monospace';
       ctx.fillStyle = '#fd6';
       ctx.fillText(ev.name, x + cardW/2, y + 54);
       /* desc 動態（維修引擎要寫明燒邊件）→ 用 eventDesc() */
       ctx.font = '10px monospace';
       ctx.fillStyle = '#bcd';
-      const chars = Array.from(eventDesc(ev));
-      const lines = [];
-      for (let li = 0; li < chars.length; li += 6) lines.push(chars.slice(li, li + 6).join(''));
+      const lines = wrapText(ctx, eventDesc(ev), cardW - 14);
       for (let li = 0; li < Math.min(lines.length, 3); li++) {
         ctx.fillText(lines[li], x + cardW/2, y + 70 + li * 11);
       }
@@ -4372,7 +4528,7 @@ function render() {
     ctx.fillStyle = '#ff6';
     ctx.font = 'bold 14px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText(`第 ${lastStage + 1} 關 — 揀風格`, VIEW_W/2, cardY - 18);
+    ctx.fillText(`第 ${lastStage + 1} 關：揀風格`, VIEW_W/2, cardY - 18);
     for (let i = 0; i < 3; i++) {
       const st = styleOffer[i];
       if (!st) continue;
@@ -4392,19 +4548,15 @@ function render() {
       ctx.strokeRect(x, y, cardW, cardH);
       ctx.strokeStyle = 'rgba(255,255,255,0.15)';
       ctx.strokeRect(x + 3, y + 3, cardW - 6, cardH - 6);
-      ctx.fillStyle = '#fff';
-      ctx.font = '24px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(st.icon, x + cardW/2, y + 34);
+      drawIcon(st.icon, x + cardW/2, y + 28, 2);
       ctx.font = 'bold 12px monospace';
       ctx.fillStyle = '#0ff';
       ctx.fillText(st.name, x + cardW/2, y + 56);
       /* #48 文案 ≤12 字；逐字斷行，Array.from 先拆 code point */
       ctx.font = '10px monospace';
       ctx.fillStyle = '#bcd';
-      const chars = Array.from(st.desc);
-      const lines = [];
-      for (let li = 0; li < chars.length; li += 6) lines.push(chars.slice(li, li + 6).join(''));
+      const lines = wrapText(ctx, st.desc, cardW - 14);
       for (let li = 0; li < Math.min(lines.length, 2); li++) {
         ctx.fillText(lines[li], x + cardW/2, y + 72 + li * 11);
       }
@@ -4488,7 +4640,7 @@ function render() {
         continue;
       }
       /* bolt 預設 */
-      if (!drawSprite('bullet_p', b.x, b.y, 1.4)) {
+      if (!drawSpriteAnim('anim_bullet_p', 'bullet_p', b.x, b.y, 1.4, animT)) {
         ctx.fillStyle = '#0ff';
         ctx.fillRect(b.x - 1, b.y - 4, 2, 8);
       }
@@ -4500,17 +4652,20 @@ function render() {
       /* pxl：role 決定 sprite；失敗回退三角 */
       const frac = clamp(e.hp / (e.maxHp || 1), 0, 1);
       let spr = 'grunt', scale = e.mini ? 1.2 : 1.55, R = e.mini ? 6 : 8;
-      if (e.elite) { spr = 'elite'; scale = 2.0; R = 12; }
+      let anim = null;   /* 有動畫幀嘅家族填 anim 名 */
+      if (e.elite) { spr = 'elite'; scale = 2.0; R = 12; anim = 'anim_elite'; }
       else if (e.diving) { spr = 'dive'; scale = 1.7; R = 9; }
       else if (e.sniper) { spr = 'sniper'; scale = 1.75; R = 9; }
       else if (e.shield) { spr = 'shield_e'; scale = 1.9; R = 11; }
       else if (e.swarm) { spr = 'swarm'; scale = 1.6; R = 8; }
-      /* v3.11 #71 新敵人：用既有 sprite 重色 + 額外程序特徵（零新資產檔）。
-         3 秒可辨識係驗收重點，所以每種都有明顯輪廓特徵：
-         splitter 菱形裂紋 · rammer 尖頭 + 加速拖尾 · lancer 直立柱 + 光束口 */
-      else if (e.splitter) { spr = 'swarm'; scale = 1.7; R = 9; }
-      else if (e.rammer) { spr = 'grunt'; scale = 1.5; R = 8; }
-      else if (e.lancer) { spr = 'shield_e'; scale = 1.9; R = 10; }
+      /* v3.13 #71 新敵人：而家有專屬 base sprite（之前係重色 grunt/swarm/shield_e，
+         剪影完全一樣 → 玩家分唔出，VISUAL_QUALITY_RUBRIC.md §5.4 判 V2 剪影 6/10）。
+         新 sprite：splitter 六角（左右對稱 + 中心裂縫）· rammer 楔形（撞角朝下）
+         · lancer 長條（槍管極瘦高）。程序特徵保留，強化 3 秒可辨識。 */
+      else if (e.splitter) { spr = 'splitter'; scale = 1.7; R = 9; }
+      else if (e.rammer) { spr = 'rammer'; scale = 1.5; R = 8; }
+      else if (e.lancer) { spr = 'lancer'; scale = 1.9; R = 10; }
+      if (!anim && spr === 'grunt') anim = 'anim_grunt';
       /* v3.8 #45 雜魚小詞綴：sprite 外圍加一圈色環（唔改 sprite 本身，
          免得同一個 sprite 變到認唔出）。 */
       if (e.minorTint) {
@@ -4522,7 +4677,9 @@ function render() {
         ctx.stroke();
         ctx.globalAlpha = 1;
       }
-      const drawn = drawSprite(spr, e.x, e.y, scale);
+      const drawn = anim
+        ? drawSpriteAnim(anim, spr, e.x, e.y, scale, animT)
+        : drawSprite(spr, e.x, e.y, scale);
       if (!drawn) {
         ctx.fillStyle = e.elite ? (frac > 0.4 ? '#ffd54a' : '#ff9a3c')
           : e.sniper ? '#6cf' : e.shield ? '#4af' : e.swarm ? '#6f6'
@@ -4640,7 +4797,7 @@ function render() {
       }
       if (e.label) {
         ctx.fillStyle = e.sniper ? '#9ef' : e.shield ? '#8cf' : e.swarm ? '#afa' : '#ffe9a8';
-        ctx.font = 'bold 8px monospace';
+        ctx.font = 'bold 9px monospace';
         ctx.textAlign = 'center';
         ctx.fillText(e.label, e.x, e.y + R + 11);
       }
@@ -4667,12 +4824,12 @@ function render() {
       } else if (e.sniperShot) {
         ctx.fillStyle = '#8ff';
         ctx.fillRect(e.x - 1.5, e.y - 3, 3, 6);
-      } else if (!drawSprite('bullet_e', e.x, e.y, 1.2)) {
+      } else if (!drawSpriteAnim('anim_bullet_e', 'bullet_e', e.x, e.y, 1.2, animT)) {
         ctx.fillStyle = '#f6c';
         ctx.fillRect(e.x - 2, e.y - 2, 4, 4);
       }
     } else if (e.kind === 'spiral') {
-      if (!drawSprite('boss', e.x, e.y, 2.6)) {
+      if (!drawSpriteAnim('anim_boss', 'boss', e.x, e.y, 2.6, animT)) {
         ctx.fillStyle = '#f06';
         ctx.beginPath(); ctx.arc(e.x, e.y, 12, 0, Math.PI * 2); ctx.fill();
       }
@@ -4691,7 +4848,7 @@ function render() {
       }
       if (e.label) {
         ctx.fillStyle = '#fff';
-        ctx.font = '8px monospace';
+        ctx.font = '9px monospace';
         ctx.textAlign = 'center';
         ctx.fillText(e.label, e.x, e.y + 30);
       }
@@ -4718,7 +4875,11 @@ function render() {
       ctx.beginPath(); ctx.arc(ship.x, ship.y, 13, 0, Math.PI * 2); ctx.stroke();
     }
     const sn = SHIP_SPRITE[ship.chassis] || 'ship_a';
-    if (!drawSprite(sn, ship.x, ship.y, 2.1)) {
+    /* v3.13：ship_a 有動畫幀（引擎閃爍），其他機體靜態（anim 冇對應就自動退化） */
+    const drawnShip = ship.chassis === 'A'
+      ? drawSpriteAnim('anim_ship_a', sn, ship.x, ship.y, 2.1, animT)
+      : drawSprite(sn, ship.x, ship.y, 2.1);
+    if (!drawnShip) {
       ctx.fillStyle = '#0ff';
       ctx.beginPath();
       ctx.moveTo(ship.x, ship.y - 8);
@@ -4775,7 +4936,7 @@ function drawGrazeMeter() {
   ctx.lineWidth = 1;
   ctx.strokeRect(x, y, w, h);
   ctx.fillStyle = '#8ff';
-  ctx.font = '8px monospace';
+  ctx.font = '9px monospace';
   ctx.textAlign = 'center';
   ctx.fillText('擦彈 ' + grazeCount + '　' + (GRAZE_ENERGY_NEED - grazeEnergy) + ' 次回充', VIEW_W / 2, y - 4);
 }
@@ -4823,7 +4984,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.23.1 已載入');
+console.log('[啟動] 末日救未來 v0.24.0 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */

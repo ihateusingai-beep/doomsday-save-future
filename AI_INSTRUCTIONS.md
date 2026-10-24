@@ -33,15 +33,21 @@
 
 | 事實 | 值 |
 |---|---|
-| sprite 定義源 | `art.px.js`（`pal()` 26 色 · `sheet("dsf_main", [...])` 35 格） |
-| 圖集 | 99×96 px PNG，1,547 bytes，base64 2,064 字元 |
+| sprite 定義源 | `art.px.js`（`pal()` 26 色 · `sheet("dsf_main", [...])` **80 格**） |
+| 圖集 | **106×187 px PNG，2,582 bytes，base64 3,444 字元** |
 | build 指令 | `node $HOME/.hermes/skills/creative/pxl-pixel-art/bin/pxl.js build art.px.js --out out` |
+| **同步指令** | `node tools/sync_sheet.js`（寫回 `SPRITE` 座標表 + `SHEET_B64`） |
 | 內部座標 | 320×480 邏輯 px · DPR backing store |
 | palette | 26 色，命名 `k n N m c C d w y Y o p P g G r R b B s S h H t` |
 | 角色語言 | 青 = 玩家 · 粉紅 = 敵 · 橙 = 環境危害 · 綠 = 增益 · 紅 = 生命／危險 · 紫 = 特殊 |
+| icon | **29 個 `icon_*` sprite（10×10）**，取代原本嘅 emoji |
+| 動畫 | **6 個家族、15 幀**（`anim_ship_a` `anim_grunt` `anim_elite` `anim_boss` `anim_bullet_p` `anim_bullet_e`） |
 
-> ⚠️ **`SPRITE` 座標表喺 `index.html`，同 `art.px.js` 嘅 `sheet()` 順序要人手同步。**
-> 座標錯位**唔會令任何測試失敗** —— 圖會靜靜哋錯位。改 sprite 必須跑 `ART_IMPLEMENTATION_GUIDE.md` §8.6 嘅一致性 script。
+> ✅ **v0.24.0：座標表唔再要人手同步。** `tools/sync_sheet.js` 自動由 `out/dsf_main.json`
+> + `out/dsf_main.png` 寫回 `index.html`，並讀返驗證一致。
+> 座標錯位**唔會令任何測試失敗** —— 圖會靜靜哋錯位，所以呢個工具係唯一防線。
+>
+> ⚠️ **改 sprite 之後一定要跑 `node tools/sync_sheet.js`**，否則 `index.html` 用緊舊座標。
 
 ---
 
@@ -121,7 +127,11 @@ cd ~/workspace/doomsday-save-future
 for f in test_*.js; do node "$f" >/dev/null 2>&1 && echo "PASS $f" || echo "FAIL $f"; done
 ```
 
-12 個測試檔，全部用 Node 直接跑（**冇測試框架，冇 npm install**）。每個檔案自己 `console.log` 逐項結果，最尾印 `✓ 全部通過`。
+**13 個測試檔**，全部用 Node 直接跑（**冇測試框架，冇 npm install**）。每個檔案自己 `console.log` 逐項結果，最尾印 `✓ 全部通過`。
+
+> **`test_visual_v024.js` 係 v0.24.0 視覺優化嘅守門測試**，覆蓋：
+> 鍵盤選單唔會連跳兩級（行為測試，真係抽出 handler 跑）、em dash 零殘留、
+> 48 個 icon 欄位全部係 sprite 名、字級 7 級、動畫幀齊、事件卡配色、卡片貼合內容、圖集預算。
 
 ### 5.2 語法檢查
 
@@ -146,7 +156,11 @@ console.log('index.html script block 語法 OK');
 ```bash
 cd ~/workspace/doomsday-save-future
 
-# 1. 圖集座標表一致性（⚠️ 座標錯位唔會令任何測試失敗 —— 呢個 script 係唯一防線）
+# 0. 改完 art.px.js 先 build + 同步（v0.24.0 新增工具）
+node $HOME/.hermes/skills/creative/pxl-pixel-art/bin/pxl.js build art.px.js --out out
+node tools/sync_sheet.js
+
+# 1. 圖集座標表一致性（工具自動做，呢個係人手複查）
 node -e "
 const fs=require('fs');
 const order=[...fs.readFileSync('art.px.js','utf8').match(/sheet\(\"dsf_main\",\s*\[([\s\S]*?)\]/)[1].matchAll(/\"([^\"]+)\"/g)].map(x=>x[1]);
@@ -171,25 +185,38 @@ console.log('圖集 PNG:', Buffer.from(h.match(/SHEET_B64 = '([^']+)'/)[1],'base
 ```bash
 cd ~/workspace/doomsday-save-future
 
-# 1. 字級收斂（應該 ≤ 6 級，最細 9px）
+# 1. 字級收斂（**7 級**：9/10/12/14/16/24/32，最細 9px）
 node -e "
 const sizes=[...new Set([...require('fs').readFileSync('index.html','utf8').matchAll(/font = '[^']*?(\d+)px/g)].map(x=>+x[1]))].sort((a,b)=>a-b);
 console.log('字級:', sizes.join(', '));
-console.log(sizes.length<=6?'✓ 6 級以內':'✗ 超過 6 級');
+console.log(sizes.length<=7?'✓ 7 級以內':'✗ 超過 7 級');
 console.log(sizes[0]<9?'✗ 有 9px 以下':'✓ 最細 9px+');
 "
 
 # 2. emoji icon 掃描（規則要求 0 命中）
 grep -n "fillText(up.icon\|fillText(ev.icon\|fillText(st.icon\|fillText(sf.icon" index.html
 
+# 2b. **v0.24.0**：icon 欄位全部要係 ASCII sprite 名（唔准 emoji 漏網）
+node -e "
+const v=[...require('fs').readFileSync('index.html','utf8').matchAll(/\bicon2?\s*:\s*'([^']*)'/g)].map(x=>x[1]);
+const bad=v.filter(s=>!/^[A-Za-z0-9_]+\$/.test(s));
+console.log(bad.length?'✗ 非 sprite 名: '+bad.join(' '):'✓ '+v.length+' 個 icon 欄位全部係 sprite 名');
+"
+
 # 3. 觸控目標尺寸（全部 ≥ 64）
 grep -n "const w = \|const cardW = \|const cardH = \|w = 88\|w = 96" index.html | head
+
+# 4. **v0.24.0**：玩家可見文字零 em dash（monospace 會渲染成似「一」嘅字形）
+node -e "
+const t=[...require('fs').readFileSync('index.html','utf8').matchAll(/fillText\('([^']*)'/g)].map(x=>x[1]).filter(s=>s.includes('—'));
+console.log(t.length?'✗ em dash 殘留: '+t.join(' | '):'✓ 零 em dash');
+"
 ```
 
 ### 5.4 交付前檢查清單
 
 ```
-□ 全套 12 個測試檔 PASS
+□ 全套 13 個測試檔 PASS
 □ index.html 語法檢查 OK
 □ 版號已 bump（兩處：標題畫面 + 啟動日誌）
 □ PLAN.md 參考表已更新（如有設計改動）
@@ -201,11 +228,13 @@ grep -n "const w = \|const cardW = \|const cardH = \|w = 88\|w = 96" index.html 
 ### 5.4.1 美術／介面改動額外檢查
 
 ```
+□ node tools/sync_sheet.js 跑過（改咗 art.px.js 就必須）
 □ 圖集座標表一致性 script 通過（§5.3.1）
 □ palette 合規 script 通過（§5.3.1）
-□ 圖集 PNG ≤ 8 KB
-□ 字級 ≤ 6 級、最細 9px（§5.3.2）
-□ 卡面 icon 零 emoji（§5.3.2）
+□ 圖集 PNG ≤ 8 KB · 格數 ≤ 90
+□ 字級 ≤ 7 級、最細 9px（§5.3.2）
+□ 卡面 icon 零 emoji + 全部係 sprite 名（§5.3.2）
+□ 玩家可見文字零 em dash（§5.3.2）
 □ 灰度剪影測試通過（新敵人／新 icon）
 □ 三秒可讀測試通過（每個改動嘅畫面）
 □ 實機截圖覆核（至少桌面 Chromium；真機未驗證要標明）
@@ -255,12 +284,16 @@ grep -n "const w = \|const cardW = \|const cardH = \|w = 88\|w = 96" index.html 
 | **同類音效 60ms 去重** | 一發打中兩隻 → 第二隻完全無聲（已記錄 `PLAN.md` #77） | 實作修正方案時見 `AUDIO_VIDEO_OPTIMIZATION.md` §13 批次 A1 |
 | **BGM 單一 7.5 秒 loop** | 一局播 23–37 次，長時間機械化 | 修正方案見審計 §13 批次 B1（改 gain 參數，零新資產） |
 | **`rm` / `mv` 被權限閘擋** | 刪唔到磁盤殘留檔（例如 `.t_wave_test.js`） | 用 `cp` 覆寫做廢；真刪要人手喺 terminal 做 |
-| **emoji 做卡面 icon** | 脫離像素風 + 跨平台唔一致 + 文字溢出 | 用圖集 sprite（`ART_IMPLEMENTATION_GUIDE.md` §7.1 完整清單） |
-| **中文靠字元數斷行** | 卡面文字溢出框（88px 卡面 9 字 = 90px > 可用 74px） | 用 `ctx.measureText()` 逐字累加斷行 |
-| **圖集座標表 drift** | 圖靜靜哋錯位，**測試全部照過** | 跑 §5.3.1 座標表一致性 script |
-| **加咗 sprite 但唔更新 `SPRITE`** | 圖錯位 / 空白格 | `art.px.js` `sheet()` 同 `index.html` `SPRITE` 兩邊一齊改 |
+| **emoji 做卡面 icon** | 脫離像素風 + 跨平台唔一致 + 文字溢出 | 用圖集 sprite（`ART_IMPLEMENTATION_GUIDE.md` §7.1 完整清單）—— **v0.24.0 已做** |
+| **中文靠字元數斷行** | 卡面文字溢出框（88px 卡面 9 字 = 90px > 可用 74px） | 用 `ctx.measureText()` 逐字累加斷行 —— **v0.24.0 已做**（`wrapText()`） |
+| **圖集座標表 drift** | 圖靜靜哋錯位，**測試全部照過** | `node tools/sync_sheet.js` —— **v0.24.0 已解** |
+| **加咗 sprite 但唔更新 `SPRITE`** | 圖錯位 / 空白格 | 跑 `node tools/sync_sheet.js`，唔好手改座標表 |
 | **palette 外加色** | 成個畫面唔 coherent | 26 色唯一色源；改形狀先於改色 |
-| **卡面兩個掣同權重** | 玩家唔知揀邊個 | 主行動實心填充 + 次行動描邊 |
+| **卡面兩個掣同權重** | 玩家唔知揀邊個 | 主行動實心填充 + 次行動描邊 —— **v0.24.0 已做** |
+| **em dash `—` 喺 monospace** | fallback 去中文字體，渲染成**似「一」嘅水平線**，玩家以為係錯字 | 玩家可見單行文字唔用 em dash；用全形冒號 `：` 或直接刪走 |
+| **keydown handler 用 `if` 串連選單分支** | 一次按鍵連跳兩級：難度→機體、強化→風格，**玩家見唔到嗰兩個畫面** | 每個選單分支**必須 `return`**（觸控路徑 `handleMenuTap` 已經有 `return true`） |
+| **卡片高度唔貼合內容** | 卡底留白過半，睇落似未填完 | 卡高按內容收；觸控目標仍 ≥64×64 |
+| **文字疊喺背景 sprite 上面冇底條** | 灰色字喺灰色大樓上完全睇唔清 | 任何疊喺背景圖上面嘅文字都要自己嘅暗色底條 |
 
 ---
 

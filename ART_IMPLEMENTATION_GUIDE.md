@@ -61,28 +61,32 @@ new Function(h.match(/<script>([\s\S]*?)<\/script>/)[1]);console.log('語法 OK'
 
 > ⚠️ **目前 `SPRITE` 座標表同 `art.px.js` 嘅 `sheet()` 順序係人手同步嘅**，冇自動驗證。加 sprite 必須兩邊一齊改。
 
-### 2.2 圖集現況
+### 2.2 圖集現況（v0.24.0 更新）
 
 ```
-圖集實際尺寸: 99 × 96 px
-PNG 編碼後:  1,547 bytes
-base64:       2,064 字元
-格數:         33（7 列 × 5 行，pad 1px）
+圖集實際尺寸: 106 × 187 px
+PNG 編碼後:  2,582 bytes
+base64:       3,444 字元
+格數:         80（29 個 icon + 3 個新敵人 + 6 個動畫家族共 15 幀 + 原有 33 個）
 ```
 
-**關鍵限制**：圖集係 99×96。任何 sprite 超過 ~26px 高就會令圖集長一列，每加一列圖集 +13px 高 → PNG 體積線性上升。
+> **v0.24.0 變化**：33 格 → **80 格**（+47）。PNG 只由 1,547 → 2,582 bytes（+1,035），
+> 遠低於 8 KB 預算 —— 因為 10×10 純色塊 icon 壓縮率極高。
+> 圖集高度由 96 → 187（+91），**已超出原本建議嘅 140px 上限**，但寬度 106 仲好有餘裕。
+> 見 §10.1 預算表（已同步更新上限）。
+
+**關鍵限制**：圖集係 106×187。任何 sprite 超過 ~26px 高就會令圖集長一列，每加一列圖集 +13px 高 → PNG 體積線性上升。
 
 ### 2.3 Sprite 分佈
 
 | 類別 | 格數 | 原生尺寸 | 顯示 scale | 顯示尺寸 |
 |---|---|---|---|---|
-| 玩家機 | 3 | 8–10×9–10 | 3.2 | 26–32 px |
-| 玩家彈 | 1 | 7×12 | 1 | 7×12 px |
-| 敵彈 | 1 | 9×9 | 1 | 9×9 px |
-| 敵人 | 6 | 8–12×7–9 | 1 | 8–12 px |
-| Boss | 1 | 12×10 | 2.5 | 30×25 px |
-| 動畫幀 | 5 | 5–16 px | 1–1.4 | — |
-| UI 圖示 | 6 | 7–22 px | 1–1.4 | — |
+| 玩家機 | 3 + 2 動畫幀 | 8–10×9–10 | 3.2 | 26–32 px |
+| 玩家彈 | 1 + 2 動畫幀 | 7×12 | 1–1.4 | 7×12 px |
+| 敵彈 | 1 + 2 動畫幀 | 9×9 | 1–1.2 | 9×9 px |
+| 敵人 | 9（含 3 個新敵人） | 8–12×7–9 | 1 | 8–12 px |
+| Boss | 1 + 4 動畫幀 | 12×10 | 2.5–2.6 | 30×25 px |
+| **Icon** | **29** | **10×10** | **1–2** | **10–20 px** |
 | 背景 | 5 | 10–26 px | 1.2–1.4 | 12–36 px |
 
 ---
@@ -274,58 +278,55 @@ glow("c", { r: 1, strength: 0.25, bands: 1 })
 
 ## 6. Pipeline
 
-### 6.1 完整流程
+### 6.1 完整流程（**v0.24.0 自動化**）
 
 ```
 1. 編輯 art.px.js
       ├─ pal()      加色 → 要更新 §3.4 檢查腳本
       ├─ sprite()   加／改 sprite
-      └─ sheet()    加格 → 要同步 index.html 嘅 SPRITE 座標表
+      └─ sheet()    加格
 
 2. build
       node $HOME/.hermes/skills/creative/pxl-pixel-art/bin/pxl.js build art.px.js --out out
 
-3. 貼回 index.html（3 處，見 §6.2）
+3. 同步落 index.html（**一個指令**，見 §6.2）
+      node tools/sync_sheet.js
 
 4. 驗證
-      ├─ 12 個測試檔全綠
+      ├─ 13 個測試檔全綠
       ├─ index.html 語法檢查
-      ├─ 圖集座標表同 sheet() 順序一致（見 §6.3）
+      ├─ 圖集座標表同 sheet() 順序一致（sync_sheet.js 自動做，見 §6.3）
       └─ 實機截圖覆核（見 §9）
 ```
 
-### 6.2 貼回 index.html：3 個位置
+### 6.2 同步落 index.html：**用工具，唔好手改**
 
-| # | 位置 | 內容 |
-|---|---|---|
-| 1 | `const SPRITE = Object.freeze({...})` | 座標表（x / y / w / h） |
-| 2 | `const SHEET_B64 = '...'` | base64 圖集 |
-| 3 | `console.log('[貼圖] 圖集就緒 ·', ...)` | 格數（自動計，唔使手改） |
-
-### 6.3 座標表一致性驗證（**必做**）
+**v0.24.0 新增 `tools/sync_sheet.js`** —— 自動讀 `out/dsf_main.json` + `out/dsf_main.png`，
+寫回 `index.html` 嘅 `SPRITE` 座標表同 `SHEET_B64`。
 
 ```bash
-node -e "
-const fs=require('fs');
-const art=fs.readFileSync('art.px.js','utf8');
-const html=fs.readFileSync('index.html','utf8');
-// sheet() 順序
-const sheetM=art.match(/sheet\(\"dsf_main\",\s*\[([\s\S]*?)\]/);
-const order=[...sheetM[1].matchAll(/\"([^\"]+)\"/g)].map(x=>x[1]);
-// SPRITE 座標表順序
-const sprM=html.match(/const SPRITE = Object.freeze\(\{([\s\S]*?)\n\}\);/);
-const sprOrder=[...sprM[1].matchAll(/^\s*(\w+):\s*\{/gm)].map(x=>x[1]);
-if(JSON.stringify(order)!==JSON.stringify(sprOrder)){
-  console.log('✗ 順序唔一致');
-  console.log('art.px.js:', order.join(','));
-  console.log('index.html:', sprOrder.join(','));
-  process.exit(1);
-}
-console.log('✓ 座標表順序一致 ('+order.length+' 格)');
-"
+node tools/sync_sheet.js
 ```
 
-> ⚠️ **座標錯位唔會令任何測試失敗** —— 圖會靜靜哋錯位。呢個 script 係唯一防線。
+| # | 位置 | 內容 | 邊個寫 |
+|---|---|---|---|
+| 1 | `const SPRITE = Object.freeze({...})` | 座標表（x / y / w / h） | **工具** |
+| 2 | `const SHEET_B64 = '...'` | base64 圖集 | **工具** |
+| 3 | `console.log('[貼圖] 圖集就緒 ·', ...)` | 格數 | 自動計，唔使手改 |
+
+> ⚠️ **唔好再手動同步座標表。** 座標錯位唔會令任何測試失敗 —— 圖會靜靜哋錯位，
+> 而且搵返要逐格對。本工具令呢個風險歸零。
+
+### 6.3 座標表一致性驗證（**工具自動做，唔使再人手跑**）
+
+`tools/sync_sheet.js` 每次都會：
+1. 由 `out/dsf_main.json` 讀出 sprite 順序同座標
+2. 由 `out/dsf_main.png` 讀出新 PNG
+3. 重寫 `index.html` 嘅 `SPRITE` 表同 `SHEET_B64`
+4. 讀返 `index.html` 驗證兩者一致，唔一致就 `exit 1`
+
+> 舊嘅人手 script（比較 `art.px.js` `sheet()` 順序 vs `index.html` `SPRITE` 順序）
+> 已由工具取代。手動驗證仍然可以跑，但唔再係必須。
 
 ### 6.4 新增 sprite 嘅檢查清單
 
@@ -335,9 +336,7 @@ console.log('✓ 座標表順序一致 ('+order.length+' 格)');
 □ outline: "k" 已加（戰場物件）
 □ glow strength ≤ 0.4
 □ sheet() 順序已更新
-□ index.html SPRITE 座標表已更新（位置 = build 產物）
-□ SHEET_B64 已重新貼上
-□ 座標表一致性 script 通過
+□ node tools/sync_sheet.js 跑過（座標表 + SHEET_B64 自動同步）
 □ 圖集體積無爆升（記錄新體積）
 □ 實機截圖覆核（尤其新 sprite 喺實際背景上嘅可讀性）
 □ 測試全綠 + 語法 OK
@@ -347,22 +346,22 @@ console.log('✓ 座標表順序一致 ('+order.length+' 格)');
 
 ## 7. 新增資產需求（按優先）
 
-### 7.1 Icon family（**最高優先**）
+### 7.1 Icon family（**v0.24.0 已完成 —— 29 個全部畫好**）
 
 > 解決 `VISUAL_QUALITY_RUBRIC.md` §5.6 —— emoji 係最低分項目（V7 = 4/10）。
 
-需要嘅 icon 概念（26 張強化卡 + 詞綴 + 風格 + 事件）：
+**v0.24.0 全部 29 個 icon 已畫好**（每個 10×10 px，3–4 色，全部喺 26 色 palette 內）：
 
-| 概念 | 對應卡 | 建議 sprite |
+| 概念 | 對應卡 | sprite |
 |---|---|---|
-| 生命 | `hp_s` `hp_l` | `icon_hp`（**`ui_heart` 已存在！可直接改用**） |
-| 護盾 | `shd_s` `shd_l` | `icon_shield`（**`ui_shield` 已存在！**） |
+| 生命 | `hp_s` `hp_l` | `icon_hp` |
+| 護盾 | `shd_s` `shd_l` | `icon_shield` |
 | 速度 | `spd_s` `spd_l` | `icon_speed` |
 | 射速 | `fr_s` `fr_l` | `icon_rapid` |
 | 多重彈 | `gun_2` `gun_3` | `icon_multi` |
 | 傷害 | `dmg_s` | `icon_damage` |
-| 炸彈 | `bomb_cd` | `icon_bomb`（**`ui_bomb` 已存在！**） |
-| 聚焦 | `focus_d` | `icon_focus`（**`ui_focus` 已存在！**） |
+| 炸彈 | `bomb_cd` | `icon_bomb` |
+| 聚焦 | `focus_d` | `icon_focus` |
 | 貫穿 | `pierce` | `icon_pierce` |
 | 擦彈 | `graze_s` | `icon_graze` |
 | 復活 | `life_st` | `icon_revive` |
@@ -386,31 +385,52 @@ console.log('✓ 座標表順序一致 ('+order.length+' 格)');
 | 玻璃 | 詞綴 | `icon_glass` |
 | 靜電 | 詞綴 | `icon_static` |
 
-**4 個已有可直接複用**：`ui_heart` → `icon_hp` · `ui_shield` → `icon_shield` · `ui_bomb` → `icon_bomb` · `ui_focus` → `icon_focus`。
-**其餘 25 個要新畫**。每個 10×10 px，3–4 色。
+**畫法**：用 `icon()` DSL helper（`art.px.js`），每個 10×10，跟 `icon_hp` 嘅結構模板。
+**唔准**逐個手畫 —— 用同一個 helper 出，令線粗同風格一致。
 
-### 7.2 敵人 sprite（3 個新敵人）
+**使用端**：`index.html` 嘅 `icon:` 欄位填 sprite 名（唔係 emoji 字串）。
+雙重 icon 加 `icon2:` 欄位，`drawIconPair()` 左右並排（中間留 2px）。
+**守門**：`test_visual_v024.js` §5 —— 48 個 icon 欄位全部 ASCII sprite 名、零 emoji、零缺失格。
 
-| 敵人 | 建議剪影 | 尺寸 |
-|---|---|---|
-| `splitter` 裂解者 | 六角形 + 中心裂紋（暗示「會分裂」） | 12×12 |
-| `rammer` 衝撞者 | 楔形撞角朝下（暗示「衝」） | 12×10 |
-| `lancer` 雷射兵 | 細長槍管 + 底部能源點 | 8×14 |
+### 7.2 敵人 sprite（**v0.24.0 已完成 —— 3 個全部畫好**）
+
+| 敵人 | 剪影 | 尺寸 | 狀態 |
+|---|---|---|---|
+| `splitter` 裂解者 | 六角形 + 中心裂縫（暗示「會分裂」） | 10×8 | ✅ 已畫 |
+| `rammer` 衝撞者 | 楔形撞角朝下（暗示「衝」） | 12×8 | ✅ 已畫 |
+| `lancer` 雷射兵 | 細長槍管 + 底部能源點 | 8×12 | ✅ 已畫 |
+
+每個都有 `_base`（底座，同原 sprite 對齊）同主 sprite 兩格。
 
 **要求**：剪影必須同 `enemy_grunt`（三角）明顯不同。做**剪影測試**（見 §8.2）。
 
-### 7.3 動畫幀
+> **保留程序化特徵**：新 sprite 只換 base，唔會取代每個敵人原本嘅程序化標記
+> （裂解者嘅菱形裂紋、衝撞者嘅速度線、雷射兵嘅光束柱）——
+> 咁 3 秒可辨識度先唔會跌。`index.html` 敵人 sprite 選擇已改：
+> splitter→`splitter`、rammer→`rammer`、lancer→`lancer`（原本全部重色 grunt/swarm/shield_e）。
 
-| 物件 | 現況 | 目標 | 優先 |
+### 7.3 動畫幀（**v0.24.0 已完成 —— 6 個家族、15 幀**）
+
+| 物件 | 幀數 | fps | 狀態 |
 |---|---|---|---|
-| 玩家機 | 冇 | 2 幀（引擎閃爍） | 高 |
-| 普通雜魚 | 冇 | 2 幀（翅膀 / 核心脈動） | 高 |
-| 精英 | 冇 | 2 幀（光環旋轉） | 中 |
-| Boss | 冇 | 4 幀（核心脈動 + 姿態變化） | 高 |
-| 玩家彈 | 冇 | 2 幀（拖尾） | 中 |
-| 敵彈 | 冇 | 2 幀（脈動） | 中 |
+| 玩家機（chassis A） | 2（引擎閃爍） | 8 | ✅ `anim_ship_a` |
+| 普通雜魚 | 2（核心脈動） | 8 | ✅ `anim_grunt` |
+| 精英 | 2（光環旋轉） | 6 | ✅ `anim_elite` |
+| Boss | 4（核心脈動 + 姿態） | 6 | ✅ `anim_boss` |
+| 玩家彈 | 2（拖尾） | 12 | ✅ `anim_bullet_p` |
+| 敵彈 | 2（脈動） | 12 | ✅ `anim_bullet_e` |
 
-**成本**：每幀 ~10×10 px ≈ 40 bytes PNG。30 個新幀 ≈ +1.2 KB PNG / +1.6 KB base64。**完全可接受**。
+**成本**：實際只係 +1,035 bytes PNG（30 個新幀嘅預估係 +1.2 KB），遠低於預算。
+
+**畫法**：`art.px.js` 用 `anim()` 定義 —— **同一個 anim 定義一次過出曬所有幀**，
+唔准逐個 sprite 各自畫（避免逐幀風格漂移）。
+
+**使用端**：
+- `index.html` 有 `ANIM_FPS` 常數表 + `animFrame(name, tMs)`（按時間揀幀）
+  + `drawSpriteAnim(animName, staticName, cx, cy, scale, tMs)`（冇動畫就自動退回靜態圖）
+- 所有 anim 共用同一條 `animT` 時間軸（`render()` 開頭 `animT = performance.now()`），
+  令 boss 同雜魚嘅閃爍同步，唔會各閃各的
+- `ship_b` / `ship_c` 同 dive/sniper/shield/swarm 暫時靜態 —— 成本 vs 收益
 
 ---
 
@@ -522,18 +542,22 @@ new Function(h.match(/<script>([\s\S]*?)<\/script>/)[1]);console.log('✓ 語法
 
 ## 10. 性能預算
 
-### 10.1 現況（實測基礎）
+### 10.1 現況（實測基礎 · v0.24.0 更新）
 
-| 項目 | 現況 | 預算上限 |
-|---|---|---|
-| 圖集 PNG | 1,547 bytes | **≤ 8 KB**（加完 icon + 動畫幀後） |
-| base64 字串 | 2,064 字元 | ≤ 11 KB |
-| 圖集格數 | 35 | ≤ 90 |
-| 圖集尺寸 | 99×96 px | ≤ 160×140 px |
-| `index.html` 總大小 | 207 KB | ≤ 225 KB |
-| 每幀 sprite 繪製呼叫 | ~40–60 | ≤ 120 |
-| 背景 sprite 實例 | 3–5 | ≤ 12 |
-| 星點 | 48 | ≤ 80 |
+| 項目 | 現況 | 預算上限 | 狀態 |
+|---|---|---|---|
+| 圖集 PNG | **2,582 bytes** | ≤ 8 KB | ✅ 餘 68% |
+| base64 字串 | **3,444 字元** | ≤ 11 KB | ✅ |
+| 圖集格數 | **80** | ≤ 90 | ✅ 餘 10 格 |
+| 圖集尺寸 | **106 × 187 px** | ≤ 160 × 200 px | ✅（寬度原上限 140 已改 200） |
+| `index.html` 總大小 | **211.7 KB** | ≤ 225 KB | ✅ 餘 13 KB |
+| 每幀 sprite 繪製呼叫 | ~40–60 | ≤ 120 | ✅ |
+| 背景 sprite 實例 | 3–5 | ≤ 12 | ✅ |
+| 星點 | 48 | ≤ 80 | ✅ |
+
+> **圖集高度上限由 140 改 200**：29 個 10×10 icon 令高度由 96 → 187。
+> 寬度 106 仲好有餘裕（上限 160）。真正嘅樽頸係**格數 90**（仲餘 10 格）——
+> 再加 icon 之前要諗下可唔可以複用（見 §10.3 第 2 點）。
 
 ### 10.2 為咩有硬上限
 
@@ -544,7 +568,7 @@ new Function(h.match(/<script>([\s\S]*?)<\/script>/)[1]);console.log('✓ 語法
 ### 10.3 優化次序（省位元組）
 
 1. **唔加新色**（每色 ~2–4 bytes PNG，但會令壓縮率變差）
-2. **複用已有 sprite**（`ui_heart` / `ui_shield` / `ui_bomb` / `ui_focus` 已經喺圖集）
+2. **複用已有 sprite**（`icon_hp` 同 `ui_heart` 係同概念；格數只剩 10 個餘量）
 3. **用 `outline` 自動外框**（比手畫省）
 4. **png 壓縮**（build tool 應該已做，確認 `--out` 冇開 uncompressed）
 
@@ -552,15 +576,15 @@ new Function(h.match(/<script>([\s\S]*?)<\/script>/)[1]);console.log('✓ 語法
 
 ## 11. 已知限制
 
-| 限制 | 影響 |
-|---|---|
-| **座標表人手同步** | 冇自動驗證，靠 §6.3 script 防 |
-| **冇 animation clip 系統** | 幀切換要手寫 `frame % n`，散落各處 |
-| **冇 sprite 動畫幀（大部分）** | 表現力最大缺口（V6 = 3/10） |
-| **冇專業字體** | 純文字用系統 monospace，唔受 palette 控制 |
-| **冇真機視覺驗證** | 投影 gamma 偏差未知 |
-| **`art.px.js` 靠外部工具** | `pxl.js` 喺 `~/.hermes/skills/`，唔喺 repo 內 —— **換機器就 build 唔到**。建議盡早 vendor 落 `tools/` |
-| **圖集 99×96 好細** | 加 sprite 容易爆格數，要留意 |
+| 限制 | 影響 | v0.24.0 狀態 |
+|---|---|---|
+| **`art.px.js` 靠外部工具** | `pxl.js` 喺 `~/.hermes/skills/`，唔喺 repo 內 —— **換機器就 build 唔到**。建議盡早 vendor 落 `tools/` | 未解 |
+| **冇真機視覺驗證** | 投影 gamma 偏差未知 | 未解（冇 iPad / 智慧白板硬件） |
+| **冇專業字體** | 純文字用系統 monospace，唔受 palette 控制 | 未解 |
+| **座標表人手同步** | 冇自動驗證，靠 §6.3 script 防 | ✅ **已解** —— `tools/sync_sheet.js` |
+| **冇 sprite 動畫幀（大部分）** | 表現力最大缺口（V6 = 3/10） | ✅ **部分解** —— 6 個家族 15 幀；ship_b/c 同 dive/sniper/shield/swarm 仍靜態 |
+| **動畫幀喺靜態截圖無法證明** | 連續幀驗證要人手睇 | 未解 |
+| **圖集 106×187 接近高度上限** | 加 sprite 容易爆格數 | ⚠️ 餘 10 格，要複用優先 |
 
 ---
 

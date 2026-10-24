@@ -18,12 +18,30 @@
 
 | 文件 | 負責範圍 | 邊啲嘢唔應該寫入去 |
 |---|---|---|
-| `PLAN.md` | **遊戲設計**唯一真實來源。參考表（#1–#78）凍結所有規格歧義 · 鎖定項目 · 關卡數據 · 改動紀錄 | 交付層實作細節、音訊架構細節 |
-| `AUDIO_VIDEO_OPTIMIZATION.md` | **音訊／視訊交付層**唯一真實來源。現況架構 · 缺陷 · 音效地圖 · 音樂地圖 · 方案 · baseline 量度 | 遊戲設計決策（關卡數值、强化池） |
+| `PLAN.md` | **遊戲設計**唯一真實來源。參考表（#1–#81）凍結所有規格歧義 · 鎖定項目 · 關卡數據 · 改動紀錄 | 交付層實作細節、音訊架構細節 |
+| `AUDIO_VIDEO_OPTIMIZATION.md` | **音訊／視訊交付層**唯一真實來源。現況架構 · 缺陷 · 音效地圖 · 音樂地圖 · 方案 · baseline 量度 | 遊戲設計決策（關卡數值、強化池） |
+| `VISUAL_QUALITY_RUBRIC.md` | **視覺呈現標準**唯一真實來源。12 維度 rubric · 現況評分 · AAA 對照 · 視覺狀態矩陣 · 改進優先級 | 美術製作步驟、介面規則細節 |
+| `ART_IMPLEMENTATION_GUIDE.md` | **美術製作規則**。palette · 命名 · pipeline · 尺寸比例 · 性能預算 · review 程序 | 評分、介面規格 |
+| `UI_STYLE_GUIDE.md` | **介面規範**。字級 · 圖示語言 · 卡片／按鈕狀態表 · 版面分區 · 反例 · 檢查清單 | 美術繪製步驟、遊戲設計決策 |
 | `AI_INSTRUCTIONS.md`（本檔） | 工作流 · 命名規則 · 驗證指令 · 架構邊界 · 常見陷阱 | 任何規格內容 |
+| `art.px.js` | **sprite 定義唯一真實來源**（palette / sprite / sheet） | 唔好直接改 `index.html` 入面嘅 base64 |
 | `test_*.js` | 測試。**測試係規格嘅可執行版本** | — |
 
-**唔好開第二個真實來源。** 新議題：設計 → 改 `PLAN.md`；音訊／視訊 → 改 `AUDIO_VIDEO_OPTIMIZATION.md`；工作流 → 改本檔。
+**唔好開第二個真實來源。** 新議題：設計 → 改 `PLAN.md`；音訊／視訊 → 改 `AUDIO_VIDEO_OPTIMIZATION.md`；視覺標準 → 改 `VISUAL_QUALITY_RUBRIC.md`；美術製作 → 改 `ART_IMPLEMENTATION_GUIDE.md`；介面 → 改 `UI_STYLE_GUIDE.md`；工作流 → 改本檔。
+
+### 2.1 美術層關鍵事實（唔使重新 recon）
+
+| 事實 | 值 |
+|---|---|
+| sprite 定義源 | `art.px.js`（`pal()` 26 色 · `sheet("dsf_main", [...])` 35 格） |
+| 圖集 | 99×96 px PNG，1,547 bytes，base64 2,064 字元 |
+| build 指令 | `node $HOME/.hermes/skills/creative/pxl-pixel-art/bin/pxl.js build art.px.js --out out` |
+| 內部座標 | 320×480 邏輯 px · DPR backing store |
+| palette | 26 色，命名 `k n N m c C d w y Y o p P g G r R b B s S h H t` |
+| 角色語言 | 青 = 玩家 · 粉紅 = 敵 · 橙 = 環境危害 · 綠 = 增益 · 紅 = 生命／危險 · 紫 = 特殊 |
+
+> ⚠️ **`SPRITE` 座標表喺 `index.html`，同 `art.px.js` 嘅 `sheet()` 順序要人手同步。**
+> 座標錯位**唔會令任何測試失敗** —— 圖會靜靜哋錯位。改 sprite 必須跑 `ART_IMPLEMENTATION_GUIDE.md` §8.6 嘅一致性 script。
 
 ---
 
@@ -123,6 +141,51 @@ console.log('index.html script block 語法 OK');
 | `?god=1` | 無敵 |
 | `?seed=N` | 鎖本局 seed（可複現） |
 
+### 5.3.1 美術層驗證（改 sprite / 改介面後必跑）
+
+```bash
+cd ~/workspace/doomsday-save-future
+
+# 1. 圖集座標表一致性（⚠️ 座標錯位唔會令任何測試失敗 —— 呢個 script 係唯一防線）
+node -e "
+const fs=require('fs');
+const order=[...fs.readFileSync('art.px.js','utf8').match(/sheet\(\"dsf_main\",\s*\[([\s\S]*?)\]/)[1].matchAll(/\"([^\"]+)\"/g)].map(x=>x[1]);
+const spr=[...fs.readFileSync('index.html','utf8').match(/const SPRITE = Object.freeze\(\{([\s\S]*?)\n\}\);/)[1].matchAll(/^\s*(\w+):\s*\{/gm)].map(x=>x[1]);
+console.log(JSON.stringify(order)===JSON.stringify(spr)?'✓ 座標表一致 ('+order.length+' 格)':'✗ 座標表唔一致');
+"
+
+# 2. palette 合規（sprite 只准用 26 色）
+node -e "
+const pal=new Set(['#000000','#070b18','#121a30','#1c2744','#00f6ff','#00a0c8','#006888','#f8ffff','#ffe566','#ff9a18','#ff6a20','#ff6ad5','#ff1a6a','#3dff8a','#12a855','#ff4d5e','#a01028','#4d8cff','#1a4aaa','#8aa0c8','#3a4868','#2a3548','#5a6a88','#c8d8ff']);
+const bad=[...new Set([...require('fs').readFileSync('art.px.js','utf8').matchAll(/#[0-9a-fA-F]{3,6}\b/g)].map(x=>x[0].toLowerCase()))].filter(c=>!pal.has(c));
+console.log(bad.length?'✗ palette 外: '+bad.join(' '):'✓ palette 合規');
+"
+
+# 3. 圖集體積（預算 ≤ 8 KB PNG）
+node -e "const h=require('fs').readFileSync('index.html','utf8');
+console.log('圖集 PNG:', Buffer.from(h.match(/SHEET_B64 = '([^']+)'/)[1],'base64').length, 'bytes');"
+```
+
+### 5.3.2 介面層驗證
+
+```bash
+cd ~/workspace/doomsday-save-future
+
+# 1. 字級收斂（應該 ≤ 6 級，最細 9px）
+node -e "
+const sizes=[...new Set([...require('fs').readFileSync('index.html','utf8').matchAll(/font = '[^']*?(\d+)px/g)].map(x=>+x[1]))].sort((a,b)=>a-b);
+console.log('字級:', sizes.join(', '));
+console.log(sizes.length<=6?'✓ 6 級以內':'✗ 超過 6 級');
+console.log(sizes[0]<9?'✗ 有 9px 以下':'✓ 最細 9px+');
+"
+
+# 2. emoji icon 掃描（規則要求 0 命中）
+grep -n "fillText(up.icon\|fillText(ev.icon\|fillText(st.icon\|fillText(sf.icon" index.html
+
+# 3. 觸控目標尺寸（全部 ≥ 64）
+grep -n "const w = \|const cardW = \|const cardH = \|w = 88\|w = 96" index.html | head
+```
+
 ### 5.4 交付前檢查清單
 
 ```
@@ -133,6 +196,19 @@ console.log('index.html script block 語法 OK');
 □ PLAN.md 改動紀錄已加一條
 □ 冇改動 player-facing 文案而冇同步 PLAN.md
 □ git diff --cached --name-only 同手動 staged 清單一致
+```
+
+### 5.4.1 美術／介面改動額外檢查
+
+```
+□ 圖集座標表一致性 script 通過（§5.3.1）
+□ palette 合規 script 通過（§5.3.1）
+□ 圖集 PNG ≤ 8 KB
+□ 字級 ≤ 6 級、最細 9px（§5.3.2）
+□ 卡面 icon 零 emoji（§5.3.2）
+□ 灰度剪影測試通過（新敵人／新 icon）
+□ 三秒可讀測試通過（每個改動嘅畫面）
+□ 實機截圖覆核（至少桌面 Chromium；真機未驗證要標明）
 ```
 
 ---
@@ -179,6 +255,12 @@ console.log('index.html script block 語法 OK');
 | **同類音效 60ms 去重** | 一發打中兩隻 → 第二隻完全無聲（已記錄 `PLAN.md` #77） | 實作修正方案時見 `AUDIO_VIDEO_OPTIMIZATION.md` §13 批次 A1 |
 | **BGM 單一 7.5 秒 loop** | 一局播 23–37 次，長時間機械化 | 修正方案見審計 §13 批次 B1（改 gain 參數，零新資產） |
 | **`rm` / `mv` 被權限閘擋** | 刪唔到磁盤殘留檔（例如 `.t_wave_test.js`） | 用 `cp` 覆寫做廢；真刪要人手喺 terminal 做 |
+| **emoji 做卡面 icon** | 脫離像素風 + 跨平台唔一致 + 文字溢出 | 用圖集 sprite（`ART_IMPLEMENTATION_GUIDE.md` §7.1 完整清單） |
+| **中文靠字元數斷行** | 卡面文字溢出框（88px 卡面 9 字 = 90px > 可用 74px） | 用 `ctx.measureText()` 逐字累加斷行 |
+| **圖集座標表 drift** | 圖靜靜哋錯位，**測試全部照過** | 跑 §5.3.1 座標表一致性 script |
+| **加咗 sprite 但唔更新 `SPRITE`** | 圖錯位 / 空白格 | `art.px.js` `sheet()` 同 `index.html` `SPRITE` 兩邊一齊改 |
+| **palette 外加色** | 成個畫面唔 coherent | 26 色唯一色源；改形狀先於改色 |
+| **卡面兩個掣同權重** | 玩家唔知揀邊個 | 主行動實心填充 + 次行動描邊 |
 
 ---
 

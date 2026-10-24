@@ -793,6 +793,207 @@ sprite("turret", { base: "turret_base" },
   px(6, 9, "c"), px(7, 9, "c"),
   glow("bC", { r: 2, strength: 0.35, bands: 2 }))
 
+/* ========== v0.27.0 元素層 sprite（火／冰／雷／光／暗）==========
+   尺寸約定（加 SPRITE 座標之前一定要睇清楚）：
+     · art.px.js 入面嘅 { w, h } = 純 art 畫布，唔包 outline
+     · outline: "k" 會喺四邊各加 1px 純黑外框 → 圖集格 = art + 2
+     · bullet_p 就係咁：5×10 art → 7×12 格。所以新彈藥用同一套 5×10 art
+       → 7×12 格，同 bullet_p 100% 對齊（顯示 scale 唔使另外調）
+     · 命中爆 10×10 art → 12×12 格
+     · 粒子唔用 outline（似 spark 咁只係細碎光點）→ 格 = art 大小
+   彈藥 7×12 格 · 命中爆 12×12 格 · 粒子 4×5 / 4×4 / 6×3 格。
+   全部只用 pal() 嘅 24 色，冇 emoji、冇 Unicode 符號。*/
+
+/* 火彈：中央豎條橙 o 為芯、上下兩端漸窄，頂部白熱點 w，尾端 3 粒橙黃散點 */
+sprite("bullet_fire", { w: 5, h: 10, outline: "k" },
+  px(2, 0, "w"),
+  px(1, 1, "y"), px(2, 1, "Y"), px(3, 1, "o"),
+  px(1, 2, "o"), px(2, 2, "Y"), px(3, 2, "o"),
+  rect(0, 3, 5, 1, "o"), px(1, 3, "Y"), px(3, 3, "Y"),
+  rect(0, 4, 5, 1, "o"), px(2, 4, "Y"),
+  rect(0, 5, 5, 1, "o"),
+  px(1, 6, "o"), px(2, 6, "Y"), px(3, 6, "o"),
+  px(1, 7, "o"), px(2, 7, "o"), px(3, 7, "o"),
+  px(1, 8, "Y"), px(2, 8, "o"), px(3, 8, "Y"),
+  px(0, 9, "Y"), px(2, 9, "o"), px(4, 9, "Y"),
+  glow("o", { r: 1, strength: 0.3, bands: 1 }))
+
+/* 冰晶彈：白亮菱形（中央寬兩端尖），芯 w、邊 t，最上／最下各 1 粒青 c 碎點 */
+sprite("bullet_ice", { w: 5, h: 10, outline: "k" },
+  px(2, 0, "c"),
+  px(1, 1, "t"), px(2, 1, "w"), px(3, 1, "t"),
+  px(1, 2, "t"), px(2, 2, "w"), px(3, 2, "t"),
+  rect(0, 3, 5, 1, "t"), px(1, 3, "w"), px(2, 3, "w"), px(3, 3, "w"),
+  rect(0, 4, 5, 1, "t"), px(1, 4, "w"), px(2, 4, "w"), px(3, 4, "w"),
+  rect(0, 5, 5, 1, "t"), px(1, 5, "w"), px(2, 5, "w"), px(3, 5, "w"),
+  rect(0, 6, 5, 1, "t"), px(1, 6, "w"), px(2, 6, "w"), px(3, 6, "w"),
+  px(1, 7, "t"), px(2, 7, "w"), px(3, 7, "t"),
+  px(2, 8, "t"),
+  px(2, 9, "c"),
+  glow("c", { r: 1, strength: 0.25, bands: 1 }))
+
+/* 電弧彈：鋸齒形（左右交替突出 1px），黃 y 主體、白 w 芯，底部 1 粒橙 Y 尾端 */
+sprite("bullet_bolt", { w: 5, h: 10, outline: "k" },
+  px(2, 0, "y"), px(3, 0, "y"),
+  px(1, 1, "y"), px(2, 1, "w"),
+  px(2, 2, "y"), px(3, 2, "w"),
+  px(1, 3, "y"), px(2, 3, "w"),
+  px(2, 4, "y"), px(3, 4, "w"),
+  px(1, 5, "y"), px(2, 5, "w"),
+  px(2, 6, "y"), px(3, 6, "w"),
+  px(1, 7, "y"), px(2, 7, "w"),
+  px(2, 8, "y"), px(3, 8, "w"),
+  px(2, 9, "Y"),
+  glow("y", { r: 1, strength: 0.3, bands: 1 }))
+
+/* 光彈：橢圓光球，白 w 為芯、t 為邊、c 最外圈薄邊 */
+sprite("bullet_light", { w: 5, h: 10, outline: "k" },
+  px(2, 0, "c"),
+  px(1, 1, "c"), px(2, 1, "t"), px(3, 1, "c"),
+  rect(0, 2, 5, 1, "c"), px(1, 2, "t"), px(2, 2, "w"), px(3, 2, "t"),
+  rect(0, 3, 5, 1, "c"), px(1, 3, "t"), px(2, 3, "w"), px(3, 3, "t"),
+  rect(0, 4, 5, 1, "c"), px(1, 4, "t"), px(2, 4, "w"), px(3, 4, "t"),
+  rect(0, 5, 5, 1, "c"), px(1, 5, "t"), px(2, 5, "w"), px(3, 5, "t"),
+  rect(0, 6, 5, 1, "c"), px(1, 6, "t"), px(2, 6, "w"), px(3, 6, "t"),
+  rect(0, 7, 5, 1, "c"), px(1, 7, "t"), px(2, 7, "w"), px(3, 7, "t"),
+  px(1, 8, "c"), px(2, 8, "t"), px(3, 8, "c"),
+  px(2, 9, "c"),
+  glow("c", { r: 1, strength: 0.3, bands: 1 }))
+
+/* 暗彈：暗紫橢圓，粉紫 p 為邊、深粉 P 為芯。
+   ⚠️ 唔用白芯：敵彈 bullet_e 係粉紅 p + 白芯，會撞樣。 */
+sprite("bullet_dark", { w: 5, h: 10, outline: "k" },
+  px(2, 0, "m"),
+  px(1, 1, "m"), px(2, 1, "p"), px(3, 1, "m"),
+  rect(0, 2, 5, 1, "m"), px(1, 2, "p"), px(2, 2, "P"), px(3, 2, "p"),
+  rect(0, 3, 5, 1, "m"), px(1, 3, "p"), px(2, 3, "P"), px(3, 3, "p"),
+  rect(0, 4, 5, 1, "m"), px(1, 4, "p"), px(2, 4, "P"), px(3, 4, "p"),
+  rect(0, 5, 5, 1, "m"), px(1, 5, "p"), px(2, 5, "P"), px(3, 5, "p"),
+  rect(0, 6, 5, 1, "m"), px(1, 6, "p"), px(2, 6, "P"), px(3, 6, "p"),
+  rect(0, 7, 5, 1, "m"), px(1, 7, "p"), px(2, 7, "P"), px(3, 7, "p"),
+  px(1, 8, "m"), px(2, 8, "p"), px(3, 8, "m"),
+  px(2, 9, "m"),
+  glow("p", { r: 1, strength: 0.25, bands: 1 }))
+
+/* 火焰爆：不規則火團，外圈橙 o、內 Y、心 y、中心 1 粒白 w */
+sprite("hit_fire", { w: 10, h: 10, outline: "k" },
+  rect(3, 0, 3, 1, "o"),
+  rect(2, 1, 5, 1, "o"),
+  rect(1, 2, 7, 1, "o"),
+  rect(0, 3, 9, 1, "o"),
+  rect(0, 4, 10, 1, "o"),
+  rect(0, 5, 10, 1, "o"),
+  rect(0, 6, 10, 1, "o"),
+  rect(1, 7, 8, 1, "o"),
+  rect(2, 8, 5, 1, "o"),
+  px(4, 9, "o"),
+  rect(3, 1, 3, 1, "Y"),
+  rect(2, 2, 5, 1, "Y"),
+  rect(1, 3, 7, 1, "Y"),
+  rect(1, 4, 8, 1, "Y"),
+  rect(1, 5, 8, 1, "Y"),
+  rect(1, 6, 8, 1, "Y"),
+  rect(2, 7, 5, 1, "Y"),
+  rect(3, 8, 3, 1, "Y"),
+  rect(4, 4, 3, 3, "y"),
+  px(5, 5, "w"),
+  glow("o", { r: 2, strength: 0.35, bands: 2 }))
+
+/* 冰晶爆：六角碎片感，白 w 碎片 + t 底 + 3 粒青 c 亮點 */
+sprite("hit_ice", { w: 10, h: 10, outline: "k" },
+  rect(4, 1, 2, 1, "t"),
+  rect(3, 2, 4, 1, "t"),
+  rect(3, 3, 4, 1, "t"),
+  rect(3, 4, 4, 1, "t"),
+  rect(3, 5, 4, 1, "t"),
+  rect(3, 6, 4, 1, "t"),
+  rect(3, 7, 4, 1, "t"),
+  rect(4, 8, 2, 1, "t"),
+  rect(4, 0, 2, 1, "w"),
+  px(3, 1, "w"), px(6, 1, "w"),
+  px(2, 2, "w"), px(7, 2, "w"),
+  px(1, 3, "w"), px(8, 3, "w"),
+  px(0, 4, "w"), px(9, 4, "w"),
+  px(0, 5, "w"), px(9, 5, "w"),
+  px(1, 6, "w"), px(8, 6, "w"),
+  px(2, 7, "w"), px(7, 7, "w"),
+  px(3, 8, "w"), px(6, 8, "w"),
+  rect(4, 9, 2, 1, "w"),
+  px(4, 0, "c"), px(9, 4, "c"), px(5, 9, "c"),
+  glow("c", { r: 2, strength: 0.3, bands: 1 }))
+
+/* 電弧爆：放射狀 6 條短電弧（px 逐點畫），主黃 y、端點白 w */
+sprite("hit_bolt", { w: 10, h: 10, outline: "k" },
+  px(4, 1, "w"), px(4, 2, "y"),
+  px(2, 2, "w"), px(3, 3, "y"),
+  px(1, 5, "w"), px(2, 5, "y"),
+  px(7, 4, "y"), px(8, 4, "w"),
+  px(6, 6, "y"), px(7, 7, "w"),
+  px(5, 7, "y"), px(5, 8, "w"),
+  px(4, 4, "y"), px(5, 4, "y"), px(4, 5, "y"), px(5, 5, "y"),
+  glow("y", { r: 2, strength: 0.35, bands: 2 }))
+
+/* 光爆：同心圓，核心 w、中圈 t、外圈 c 薄環 */
+sprite("hit_light", { w: 10, h: 10, outline: "k" },
+  rect(4, 0, 2, 1, "c"),
+  px(2, 1, "c"), px(7, 1, "c"),
+  px(1, 2, "c"), px(8, 2, "c"),
+  rect(4, 2, 2, 1, "t"),
+  px(3, 3, "t"), px(6, 3, "t"),
+  px(0, 4, "c"), px(9, 4, "c"),
+  px(2, 4, "t"), px(7, 4, "t"),
+  rect(4, 4, 2, 1, "w"),
+  px(0, 5, "c"), px(9, 5, "c"),
+  px(2, 5, "t"), px(7, 5, "t"),
+  rect(4, 5, 2, 1, "w"),
+  px(3, 6, "t"), px(6, 6, "t"),
+  px(1, 7, "c"), px(8, 7, "c"),
+  rect(4, 7, 2, 1, "t"),
+  px(2, 8, "c"), px(7, 8, "c"),
+  rect(4, 9, 2, 1, "c"),
+  glow("c", { r: 2, strength: 0.3, bands: 1 }))
+
+/* 暗影爆：向外吸嘅暗紫渦旋，p 弧（180° 對稱 = 旋轉感）+ P 暗塊 + m 外圈 */
+sprite("hit_dark", { w: 10, h: 10, outline: "k" },
+  rect(4, 0, 2, 1, "m"),
+  rect(2, 1, 2, 1, "m"), rect(6, 1, 2, 1, "m"),
+  px(1, 2, "m"), px(8, 2, "m"),
+  px(3, 2, "p"), px(4, 2, "p"),
+  px(0, 3, "m"), px(9, 3, "m"),
+  px(2, 3, "p"), px(8, 3, "p"),
+  px(0, 4, "m"), px(9, 4, "m"),
+  px(3, 4, "P"), px(6, 4, "P"),
+  px(0, 5, "m"), px(9, 5, "m"),
+  px(3, 5, "P"), px(6, 5, "P"),
+  px(0, 6, "m"), px(9, 6, "m"),
+  px(2, 6, "p"), px(8, 6, "p"),
+  px(1, 7, "m"), px(8, 7, "m"),
+  px(5, 7, "p"), px(6, 7, "p"),
+  rect(2, 8, 2, 1, "m"), rect(6, 8, 2, 1, "m"),
+  rect(4, 9, 2, 1, "m"),
+  glow("p", { r: 2, strength: 0.3, bands: 1 }))
+
+/* 火焰小粒子：上黃 y、下橙 Y 漸變 */
+sprite("p_ember", { w: 4, h: 5 },
+  rect(1, 0, 2, 1, "y"),
+  rect(1, 1, 2, 1, "y"),
+  rect(1, 2, 2, 1, "Y"),
+  rect(1, 3, 2, 1, "Y"),
+  px(2, 4, "Y"))
+
+/* 冰晶碎片：白 w 十字形小碎片 + 1 粒 t */
+sprite("p_frost", { w: 4, h: 4 },
+  px(1, 0, "w"),
+  rect(0, 1, 3, 1, "w"),
+  px(1, 2, "w"),
+  px(2, 3, "t"))
+
+/* 電弧片段：橫向鋸齒，y 主體 + w 端 */
+sprite("p_arc", { w: 6, h: 3 },
+  px(2, 0, "y"), px(4, 0, "y"),
+  px(1, 1, "y"), px(3, 1, "y"), px(5, 1, "w"),
+  px(0, 2, "w"))
+
 /* ========== 動畫幀（anim）==========
    v3.13：之前圖集只有 5 格動畫（thrust / boom），全部機體靜態
    → VISUAL_QUALITY_RUBRIC.md §5.9 判 V6 動畫 3/10。
@@ -856,4 +1057,8 @@ sheet("dsf_main", [
   "icon_recall", "icon_converge",
   "icon_magnet", "icon_recover", "icon_overload",
   "medic", "chaser", "bomber", "turret",
+  /* v0.27.0 元素層（放喺最尾：唔會推走任何舊格嘅 index） */
+  "bullet_fire", "bullet_ice", "bullet_bolt", "bullet_light", "bullet_dark",
+  "hit_fire", "hit_ice", "hit_bolt", "hit_light", "hit_dark",
+  "p_ember", "p_frost", "p_arc",
 ], { pad: 1, cols: 7 })

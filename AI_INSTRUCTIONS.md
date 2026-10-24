@@ -33,8 +33,8 @@
 
 | 事實 | 值 |
 |---|---|
-| sprite 定義源 | `art.px.js`（`pal()` 24 色 · `sheet("dsf_main", [...])` **94 格**） |
-| 圖集 | **106×204 px PNG，3,140 bytes，base64 4,188 字元** |
+| sprite 定義源 | `art.px.js`（`pal()` 24 色 · `sheet("dsf_main", [...])` **107 格**） |
+| 圖集 | **106×223 px PNG，3,559 bytes，base64 4,748 字元**（上限 120 格 / 260 px / 8 KB） |
 | build 指令 | `node $HOME/.hermes/skills/creative/pxl-pixel-art/bin/pxl.js build art.px.js --out out` |
 | **同步指令** | `node tools/sync_sheet.js`（寫回 `SPRITE` 座標表 + `SHEET_B64`） |
 | 內部座標 | 320×480 邏輯 px · DPR backing store |
@@ -42,6 +42,7 @@
 | 角色語言 | 青 = 玩家 · 粉紅 = 敵 · 橙 = 環境危害 · 綠 = 增益 · 紅 = 生命／危險 · 紫 = 特殊 |
 | icon | **29 個 `icon_*` sprite（10×10）**，取代原本嘅 emoji |
 | 動畫 | **6 個家族、15 幀**（`anim_ship_a` `anim_grunt` `anim_elite` `anim_boss` `anim_bullet_p` `anim_bullet_e`） |
+| 元素層（v0.27.0） | **5 元素 × 3 級**（火／冰／雷／光／暗）· 基底 + 副**雙元素疊加** · 13 個元素 sprite（`bullet_*` 5 / `hit_*` 5 / `p_*` 3） |
 
 > ✅ **v0.24.0：座標表唔再要人手同步。** `tools/sync_sheet.js` 自動由 `out/dsf_main.json`
 > + `out/dsf_main.png` 寫回 `index.html`，並讀返驗證一致。
@@ -80,6 +81,26 @@ index.html（單檔）
 ```
 
 **唔好**喺 `tick()` 內加 `new OscillatorNode()` / `new AudioBufferSourceNode()`。
+
+### 3.3 元素層邊界（v0.27.0 新增）
+
+元素層疊喺形態層**之上**，兩層**完全正交**：形態決定「彈點樣飛」，元素決定「命中之後發生咩事」。
+
+```
+形態層（5 種 + 基礎彈）        元素層（5 元素 × 3 級）
+  ├─ 決定彈道 / 武器            ├─ 決定命中效果
+  └─ 強化池 5 張形態卡 + 4 tag   └─ 基底 1 個 + 副 1 個，效果疊加
+```
+
+| 規則 | 內容 |
+|---|---|
+| **唯一掛鈎點** | 元素效果全部掛喺 `onPlayerBulletHit` → `applyElementEffects(target, bullet)`，基底 A 先、副 B 後 |
+| **零配對特判** | 5 形態 × 5 元素 = 25 種配對**唔准**寫任何 `if (form === 'x' && elem === 'y')` |
+| **唔准改操控層** | 元素只加效果，唔加掣、唔改移動、唔改射速 —— 白板學生唔使重新學操作 |
+| **元素效果唔打 boss** | 灼燒／連鎖／爆發／光爆全部 skip `kind:'spiral'`（避免 boss HP 變負但永遠唔死）。boss 只會被玩家子彈直接打死；狀態類效果（緩速／凍結／麻痺／標記）boss 仍然食 |
+| **元素唔取代形態** | 形態卡 5 張同 tag 4 個維持不變（延續「形態無關」原則） |
+| **強化池不變** | 元素抉擇**獨立成 screen**，唔混入強化三選一 —— 26 張強化卡嘅出現率唔可以改 |
+| **爆發深度守衛** | `elementBurstDepth > 3` —— 連鎖／爆發互相觸發唔可以無限遞歸 |
 
 ---
 
@@ -127,7 +148,7 @@ cd ~/workspace/doomsday-save-future
 for f in test_*.js; do node "$f" >/dev/null 2>&1 && echo "PASS $f" || echo "FAIL $f"; done
 ```
 
-**15 個測試檔**，全部用 Node 直接跑（**冇測試框架，冇 npm install**）。每個檔案自己 `console.log` 逐項結果，最尾印 `✓ 全部通過`。
+**16 個測試檔**，全部用 Node 直接跑（**冇測試框架，冇 npm install**）。每個檔案自己 `console.log` 逐項結果，最尾印 `✓ 全部通過`。
 
 > **`test_visual_v024.js` 係 v0.24.0 視覺優化嘅守門測試**，覆蓋：
 > 鍵盤選單唔會連跳兩級（行為測試，真係抽出 handler 跑）、em dash 零殘留、
@@ -139,6 +160,12 @@ for f in test_*.js; do node "$f" >/dev/null 2>&1 && echo "PASS $f" || echo "FAIL
 > （行為測試，抽出 `applyGroupBonus` / `applySatelliteBonus` / `applyTurretShield` 實際執行）、
 > 通用技能 3 個同磁力場係數、三掣位幾何（x = 8/128/248）、2×3 揀機網格逐格對應 A→E、
 > 4 種新敵人同波次投放範圍、13 個新欄位零死碼。
+>
+> **`test_elements_v027.js` 係 v0.27.0 元素層嘅守門測試**（15 節），覆蓋：
+> 5 元素 × 3 級每級行為、基底 + 副元素效果疊加、元素效果**唔打 boss**、
+> 「專精」+40% 實際加到傷害（行為測試，比較開／關專精嘅傷害數值）、
+> 已攞咗專精就唔再出基底卡（零死卡）、2×3 揀元素網格幾何、元素欄位零死碼、
+> 強化池仍然 26 張 + 形態卡 5 張 + tag 4 個（元素層零影響舊系統）。
 
 ### 5.2 語法檢查
 
@@ -223,7 +250,7 @@ console.log(t.length?'✗ em dash 殘留: '+t.join(' | '):'✓ 零 em dash');
 ### 5.4 交付前檢查清單
 
 ```
-□ 全套 15 個測試檔 PASS
+□ 全套 16 個測試檔 PASS
 □ index.html 語法檢查 OK
 □ 版號已 bump（兩處：標題畫面 + 啟動日誌）
 □ PLAN.md 參考表已更新（如有設計改動）
@@ -238,13 +265,16 @@ console.log(t.length?'✗ em dash 殘留: '+t.join(' | '):'✓ 零 em dash');
 □ node tools/sync_sheet.js 跑過（改咗 art.px.js 就必須）
 □ 圖集座標表一致性 script 通過（§5.3.1）
 □ palette 合規 script 通過（§5.3.1）
-□ 圖集 PNG ≤ 8 KB · 格數 ≤ 90
+□ 圖集 PNG ≤ 8 KB · 格數 ≤ 120 · 圖集高度 ≤ 260
+□ index.html ≤ 290 KB（按 h.length 字元數計，唔係 byte 數）
 □ 字級 ≤ 7 級、最細 9px（§5.3.2）
 □ 卡面 icon 零 emoji + 全部係 sprite 名（§5.3.2）
 □ 玩家可見文字零 em dash（§5.3.2）
 □ 灰度剪影測試通過（新敵人／新 icon）
 □ 三秒可讀測試通過（每個改動嘅畫面）
 □ 實機截圖覆核（至少桌面 Chromium；真機未驗證要標明）
+□ **新增嘅效果／欄位全部有 game logic 讀**（零死卡）——
+  ⚠️ 只檢查「欄位出現次數」捉唔到死卡，必須用行為測試比較實際數值
 ```
 
 ---
@@ -306,6 +336,9 @@ console.log(t.length?'✗ em dash 殘留: '+t.join(' | '):'✓ 零 em dash');
 | **底部中央加咗掣，唔記得搬走原本擺喺底部中央嘅 HUD** | 節奏 chip 被新掣蓋住（v0.25.0 已經撞過一次「暫停」掣） | 加底部掣之前，先畫低畫面分區圖（`UI_STYLE_GUIDE.md` §2.1）同現有 HUD 位置對一次 |
 | **新狀態唔喺 `onStateEnter` 加分支** | 揀完卡之後直接入關，`skillOffer` 未初始化 → 揀唔到 / 畫面空白 | 每個新 `STATE` 都要喺 `onStateEnter` 有對應分支（清場 / 候選初始化 / tip 文案） |
 | **`spdMul` 只乘咗 `formSpd` 冇乘 `vx/vy`** | bolt 形態（預設）速度唔變 → 「收束」變成淨係加傷唔加速 | 速度係數要同時乘入子彈初速同形態派生速度 |
+| **效果層欄位只寫唔讀（死卡）** | 卡面寫住「+40%」但實際傷害冇加 —— 玩家見到嘅承諾同實際效果唔一致 | 每個效果欄位都要有 game logic 讀。⚠️ **只檢查「欄位出現次數」捉唔到**（v0.27.0 嘅 `elementMaster` 就係咁漏咗）—— 必須用**行為測試比較實際數值**（開／關效果兩次嘅傷害差） |
+| **屏幕效果每幀觸發** | 連鎖／灼燒每幀都閃 → 畫面一直跳，低 FPS 裝置更卡 | 每種屏幕效果**獨立冷卻**（`screenFxCd`），同一時間只有一個 screenFx；粒子總量有上限（`PARTICLE_CAP = 260`） |
+| **`ctx.filter` 做染色** | 低 FPS 智慧白板裝置會慢到拖死 | 用 offscreen canvas + `source-atop` + Map 快取（`getTintedSprite`） |
 
 ---
 

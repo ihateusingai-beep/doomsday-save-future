@@ -176,6 +176,27 @@ console.log('\n=== 4. 玩家可見文字：唔用 em dash（v0.24.0 修正）===
   check('HUD 提示行（textContent）冇 em dash', tipDash.length === 0, tipDash.join(' | '));
   const tipTemplate = [...h.matchAll(/\?\s*'([^']*—[^']*)'/g)].map(x => x[1]);
   check('三元運算子入面嘅提示行冇 em dash', tipTemplate.length === 0, tipTemplate.join(' | '));
+  /* v0.27.0 加固：上面 3 條斷言只查「第一個字串常值」/「單引號賦值」，
+     漏咗 (a) fillText() 入面三元運算子嘅字串 (b) template literal 賦值。
+     ⚠️ 結果畫面「最佳：1234（—）」同 debug HUD 嘅「tag —」就係咁漏咗網。
+     ⚠️ em dash 喺 monospace fallback 會渲染成似「一」嘅水平線，玩家會以為係錯字。 */
+  const litRe = /'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)"|`([^`]*)`/g;
+  const dashLeaks = [];
+  let lm;
+  while ((lm = litRe.exec(h)) !== null) {
+    const s = lm[1] || lm[2] || lm[3] || '';
+    if (s.indexOf('—') < 0) continue;
+    /* 睇返呢個字串喺邊一行：console.log 日誌唔係玩家可見文字，可以豁免 */
+    const lineStart = h.lastIndexOf('\n', lm.index) + 1;
+    const lineEnd = h.indexOf('\n', lm.index);
+    const line = h.slice(lineStart, lineEnd < 0 ? h.length : lineEnd);
+    if (/console\.(log|warn|error)/.test(line)) continue;
+    dashLeaks.push(s.slice(0, 60));
+  }
+  check('所有玩家可見字串零 em dash（含三元運算子同 template literal）',
+        dashLeaks.length === 0, dashLeaks.join(' | '));
+  check('結果畫面「最佳」括號用「無」而唔係 em dash',
+        /bestTime > 0 \? bestTime\.toFixed\(1\) \+ ' 秒' : '無'/.test(h));
   check('事件提示行用全形冒號', /textContent = '中斷事件：揀一個/.test(h));
   check('逆轉提示行用全形冒號', /textContent = '單次逆轉：揀一件升級/.test(h));
   check('暫停提示行用全形冒號', /'已暫停：撳畫面/.test(h));
@@ -194,7 +215,7 @@ console.log('\n=== 5. 圖集 icon 取代 emoji（Q1）===');
   /* v0.26.0 #98：83 格 → 94 格（+2 機體 +2 機技能 icon +3 通用技能 icon +4 新敵人）。
      ⚠️ 唔可以硬寫死格數 —— 每加內容都會令呢個測試誤報。
      改成「格數 >= 83」+「每個 icon 欄位喺圖集都有對應格」（下面 §5 已經查）。 */
-  check('SPRITE 座標表格數 >= 83（v0.26.0 加新 sprite）', set.size >= 83, '→ ' + set.size);
+  check('SPRITE 座標表格數 >= 107（v0.27.0 加 13 個元素 sprite）', set.size >= 107, '→ ' + set.size);
   const missing = [...new Set(iconVals)].filter(v => !set.has(v));
   check('每個 icon 名喺圖集都有對應格（零缺失）', missing.length === 0, missing.join(', '));
   check('drawIcon helper 存在', /function drawIcon\(/.test(h));
@@ -317,7 +338,7 @@ console.log('\n=== 14. 圖集預算（ART_IMPLEMENTATION_GUIDE §11）===');
   const keys = spr ? [...spr[1].matchAll(/^\s*([A-Za-z0-9_]+)\s*:\s*\{([^}]*)\}/gm)] : [];
   /* v0.26.0 #98：83 → 94 格（加 2 機體 + 2 機技能 icon + 3 通用技能 icon + 4 新敵人）。
      格數上限由 90 上調到 96（90 已經唔夠用）。 */
-  check('SPRITE 格數 ≤ 96', keys.length <= 96, '→ ' + keys.length);
+  check('SPRITE 格數 ≤ 120', keys.length <= 120, '→ ' + keys.length);
   let maxX = 0, maxY = 0;
   for (const m of keys) {
     const g = m[2].match(/x:\s*(\d+),\s*y:\s*(\d+),\s*w:\s*(\d+),\s*h:\s*(\d+)/);
@@ -328,8 +349,8 @@ console.log('\n=== 14. 圖集預算（ART_IMPLEMENTATION_GUIDE §11）===');
   check('圖集寬度 ≤ 160', maxX <= 160, '→ ' + maxX);
   /* v0.26.0 #98：圖集由 106×179 變 106×204（多咗 2 排新 sprite）。
      高度上限由 200 上調到 210；寬度 106 遠低於 160。 */
-  check('圖集高度 ≤ 210', maxY <= 210, '→ ' + maxY);
-  check('index.html ≤ 225 KB', h.length <= 225 * 1024, '→ ' + Math.round(h.length / 1024) + ' KB');
+  check('圖集高度 ≤ 260', maxY <= 260, '→ ' + maxY);
+  check('index.html ≤ 290 KB', h.length <= 290 * 1024, '→ ' + Math.round(h.length / 1024) + ' KB');
 }
 
 console.log('\n=== 15. 三張選擇畫面共用同一套 icon / 斷行規則（Q1/Q2 一致性）===');

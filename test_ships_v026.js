@@ -360,10 +360,13 @@ console.log('\n=== 4. 群傷 / 衛星齊射 / 炮台護盾（行為測試）==='
   S.bonus({}, plain);
   check('普通子彈唔會觸發衛星齊射', plain.hp === 10);
 
-  /* --- 炮台護盾 --- */
+  /* --- 炮台護盾 ---
+     v0.27.0：applyTurretShield 改用 elementHitDamage()（光 L2 破盾 ×2），
+     所以 stub 環境要提供呢個依賴。 */
   const tSrc = extractFunction('applyTurretShield');
-  const tFn = new Function('spawnSparks', 'sfx', tSrc + '\nreturn applyTurretShield;');
-  const tShield = tFn(() => {}, () => {});
+  const tFn = new Function('spawnSparks', 'sfx', 'elementHitDamage',
+    tSrc + '\nreturn applyTurretShield;');
+  const tShield = tFn(() => {}, () => {}, (b) => (b && b.dmg) || 1);
   const turret = { turret: true, turretShield: 5, hp: 30, maxHp: 30, x: 0, y: 0 };
   const absorbed = tShield({ dmg: 2 }, turret);
   check('炮台護盾食傷害（回傳 true = 彈唔入肉）', absorbed === true);

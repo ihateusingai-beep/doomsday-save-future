@@ -110,6 +110,10 @@ const STATE = Object.freeze({
   DIFF_SELECT: 'DIFF_SELECT',
   SHIP_SELECT: 'SHIP_SELECT',
   SKILL_PICK:  'SKILL_PICK',
+  /* v0.27.0 #102：揀機之後揀基底元素（5 選 1） */
+  ELEMENT_PICK: 'ELEMENT_PICK',
+  /* v0.27.0 #103：boss 之後元素抉擇（3 選 1：升級基底 / 加副元素） */
+  ELEM_CHOICE: 'ELEM_CHOICE',
   STAGE_1:     'STAGE_1',
   STAGE_2:     'STAGE_2',
   STAGE_3:     'STAGE_3',
@@ -129,6 +133,8 @@ const STATE_LABEL = Object.freeze({
   DIFF_SELECT: '選擇難度',
   SHIP_SELECT: '選擇機體',
   SKILL_PICK:  '選擇通用技能',
+  ELEMENT_PICK: '選擇元素',
+  ELEM_CHOICE: '元素抉擇',
   STAGE_1:     '第一關',
   STAGE_2:     '第二關',
   STAGE_3:     '第三關',
@@ -211,6 +217,52 @@ const UNIVERSAL_SKILLS = Object.freeze({
   },
 });
 const UNIVERSAL_IDS = Object.freeze(['magnet', 'recover', 'overload']);
+
+/* ---------- 元素層（v0.27.0 · PLAN #100–#101）----------
+   元素決定「命中之後發生咩事」，形態決定「彈點樣飛」—— 兩層完全正交。
+   ⚠️ 所以 5 形態 × 5 元素 = 25 種配對 **唔使任何配對特判**。
+   ⚠️ 每個元素每級都係一句話講得清（延續 #90 可讀性規則）。
+   ⚠️ 顏色全部喺 pal() 24 色內；sprite 名對應 v0.27.0 新增嘅 13 個圖。 */
+const ELEMENTS = Object.freeze({
+  fire: {
+    id:'fire', name:'火', tag:'打中會燒起',
+    color:'#ff6a20', tint:'#ff9a18', sprite:'bullet_fire', hit:'hit_fire',
+    lv:['灼燒：命中後目標 2 秒內持續受傷',
+        '灼燒更痛：傷害 +50%，蔓延到相鄰敵人',
+        '燒死嘅敵會炸開一大片'],
+  },
+  ice: {
+    id:'ice', name:'冰', tag:'打中會結冰',
+    color:'#00f6ff', tint:'#c8d8ff', sprite:'bullet_ice', hit:'hit_ice',
+    lv:['緩速：目標慢一半，持續 2 秒',
+        '凍得更實：慢到 0.4 倍，目標受傷 +25%',
+        '結冰：目標完全停住 1 秒'],
+  },
+  lightning: {
+    id:'lightning', name:'雷', tag:'會彈到附近敵人',
+    color:'#ffe566', tint:'#f8ffff', sprite:'bullet_bolt', hit:'hit_bolt',
+    lv:['連鎖 1 個：電弧彈到附近另一個敵人',
+        '連鎖 2 個：電弧可以連住彈',
+        '連鎖 3 個 + 令目標 1.5 秒唔能夠射擊'],
+  },
+  light: {
+    id:'light', name:'光', tag:'光會穿透',
+    color:'#c8d8ff', tint:'#f8ffff', sprite:'bullet_light', hit:'hit_light',
+    lv:['穿透 +1：光束可以打穿多一個目標',
+        '破盾：對有護罩嘅敵人傷害 ×2',
+        '光爆：命中時全場敵人都受到少量傷害'],
+  },
+  dark: {
+    id:'dark', name:'暗', tag:'暗會吞噬',
+    color:'#ff1a6a', tint:'#ff6ad5', sprite:'bullet_dark', hit:'hit_dark',
+    lv:['吞噬標記：目標被標記住',
+        '吞噬加深：被標記嘅目標受傷 +25%',
+        '吞噬爆發：標記目標死時大爆炸，玩家回血 1'],
+  },
+});
+/* 元素順序 = 揀元素畫面網格順序（2 行 × 3 列，第 6 格留空） */
+const ELEMENT_IDS = Object.freeze(['fire', 'ice', 'lightning', 'light', 'dark']);
+const ELEMENT_MAX_LV = 3;   /* 每個元素最高 3 級 */
 
 const isStage = (s) => s && s.indexOf('STAGE_') === 0;
 const STAGES = [STATE.STAGE_1, STATE.STAGE_2, STATE.STAGE_3, STATE.STAGE_4, STATE.STAGE_5];
@@ -327,8 +379,21 @@ const SPRITE = Object.freeze({
   chaser: { x:0, y:193, w:10, h:10 },
   bomber: { x:11, y:193, w:11, h:11 },
   turret: { x:23, y:193, w:14, h:11 },
+  bullet_fire: { x:38, y:193, w:7, h:12 },
+  bullet_ice: { x:46, y:193, w:7, h:12 },
+  bullet_bolt: { x:54, y:193, w:7, h:12 },
+  bullet_light: { x:62, y:193, w:7, h:12 },
+  bullet_dark: { x:0, y:206, w:7, h:12 },
+  hit_fire: { x:8, y:206, w:12, h:12 },
+  hit_ice: { x:21, y:206, w:12, h:12 },
+  hit_bolt: { x:34, y:206, w:12, h:12 },
+  hit_light: { x:47, y:206, w:12, h:12 },
+  hit_dark: { x:60, y:206, w:12, h:12 },
+  p_ember: { x:73, y:206, w:4, h:5 },
+  p_frost: { x:0, y:219, w:4, h:4 },
+  p_arc: { x:5, y:219, w:6, h:3 },
 });
-const SHEET_B64 = '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';
+const SHEET_B64 = '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';
 const sheetImg = new Image();
 let sheetReady = false;
 sheetImg.onload = () => { sheetReady = true; console.log('[貼圖] 圖集就緒 ·', Object.keys(SPRITE).length, '格'); };
@@ -385,6 +450,55 @@ function drawIcon(name, cx, cy, scale) {
     ctx.lineWidth = 1;
     ctx.strokeRect(Math.round(cx - 6 * s), Math.round(cy - 6 * s), 12 * s, 12 * s);
   }
+}
+/* ---------- v0.27.0 #105：彈藥染色 + 拖尾 ----------
+   原本 5 種形態全部用同一批彈藥 sprite，玩家 3 秒認唔出自己喺度用緊咩。
+   而家形態仍然決定彈道，但**元素色**疊上去，令每局有清晰嘅視覺身份。
+   ⚠️ 染色用 offscreen canvas + `source-atop`，**唔用 ctx.filter**
+      （低 FPS 智慧白板裝置 filter 好慢，會拖死畫面）。
+   ⚠️ 結果按 `spriteName|tint` 快取 —— 唔會每幀重建 canvas。 */
+const tintCache = new Map();
+function getTintedSprite(name, tint) {
+  const key = name + '|' + tint;
+  if (tintCache.has(key)) return tintCache.get(key);
+  const f = SPRITE[name];
+  if (!f || !sheetReady) return null;
+  const c = document.createElement('canvas');
+  c.width = f.w; c.height = f.h;
+  const g = c.getContext('2d');
+  g.imageSmoothingEnabled = false;
+  g.drawImage(sheetImg, f.x, f.y, f.w, f.h, 0, 0, f.w, f.h);
+  g.globalCompositeOperation = 'source-atop';
+  g.globalAlpha = 0.62;          /* 保留原本明暗，唔好變成一塊死色 */
+  g.fillStyle = tint;
+  g.fillRect(0, 0, f.w, f.h);
+  tintCache.set(key, c);
+  return c;
+}
+function drawTintedSprite(name, cx, cy, scale, tint) {
+  const c = getTintedSprite(name, tint);
+  if (!c) return false;
+  const s = scale == null ? 2 : scale;
+  const prev = ctx.imageSmoothingEnabled;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(c, Math.round(cx - c.width * s / 2), Math.round(cy - c.height * s / 2),
+                c.width * s, c.height * s);
+  ctx.imageSmoothingEnabled = prev;
+  return true;
+}
+/* 本局基底元素（冇就 null） */
+function currentElement() {
+  if (!ship || !ship.elementA) return null;
+  return ELEMENTS[ship.elementA] || null;
+}
+/* 玩家子彈繪製：有元素就染色版本，冇就原本動畫版本 */
+function drawPlayerBulletSprite(animName, staticName, cx, cy, scale) {
+  const el = currentElement();
+  if (el) {
+    const frame = animFrame(animName, animT) || staticName;
+    if (drawTintedSprite(frame, cx, cy, scale, el.tint)) return true;
+  }
+  return drawSpriteAnim(animName, staticName, cx, cy, scale, animT);
 }
 function drawIconPair(name, name2, cx, cy, scale) {
   if (!name) return;
@@ -451,6 +565,95 @@ function spawnBoom(x, y) {
   particles.push({ x, y, vx: 0, vy: 0, life: 420, max: 420, kind: 'boom', frame: 0 });
   spawnSparks(x, y, 10, 0.18);
   screenFlash = Math.max(screenFlash, 0.55);
+}
+
+/* ---------- v0.27.0 #105：元素粒子 + 屏幕效果 ----------
+   原本所有武器／所有敵人共用 spark + boom 兩種特效，所以畫面「唔華麗」。
+   而家每種元素有自己嘅命中特效：火焰上升、冰晶碎裂、電弧閃、光點擴散、暗影收縮。
+   ⚠️ **粒子總量有上限** —— 智慧白板低 FPS 裝置唔可以被粒子拖死。
+   ⚠️ 每種粒子都有程序化 fallback（sprite 未就緒 / 名錯都唔會靜靜咩都冇）。 */
+const PARTICLE_CAP = 260;
+function pushParticle(p) {
+  if (particles.length >= PARTICLE_CAP) return false;
+  particles.push(p);
+  return true;
+}
+function spawnEmber(x, y) {
+  for (let i = 0; i < 5; i++) {
+    pushParticle({
+      x: x + (Math.random() - 0.5) * 8, y: y + (Math.random() - 0.5) * 8,
+      vx: (Math.random() - 0.5) * 0.05, vy: -0.04 - Math.random() * 0.05,
+      life: 380 + Math.random() * 260, max: 640, kind: 'ember', size: 1.5,
+    });
+  }
+}
+function spawnFrost(x, y) {
+  for (let i = 0; i < 5; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const v = 0.05 + Math.random() * 0.06;
+    pushParticle({
+      x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.6 + 0.02,
+      life: 420 + Math.random() * 240, max: 660, kind: 'frost', size: 1.2,
+    });
+  }
+}
+function spawnArc(x, y) {
+  for (let i = 0; i < 3; i++) {
+    pushParticle({
+      x: x + (Math.random() - 0.5) * 10, y: y + (Math.random() - 0.5) * 10,
+      vx: 0, vy: 0, life: 90 + Math.random() * 70, max: 160, kind: 'arc', size: 1,
+    });
+  }
+}
+function spawnGlow(x, y) {
+  pushParticle({ x, y, vx: 0, vy: 0, life: 340, max: 340, kind: 'glow', size: 3 });
+}
+function spawnShade(x, y) {
+  pushParticle({ x, y, vx: 0, vy: 0, life: 420, max: 420, kind: 'shade', size: 6 });
+}
+/* 屏幕效果：同一時間只有一個（新嘅會頂替舊嘅），唔會堆叠到洗白畫面 */
+let screenFx = null;   /* { kind, t, dur } */
+const screenFxCd = Object.create(null);
+function triggerScreenFx(kind, dur, cdMs) {
+  const now = performance.now();
+  /* ⚠️ 每種效果有獨立冷卻 —— 否則連鎖 / 灼燒每幀觸發會令畫面一直閃 */
+  if (cdMs) {
+    if ((screenFxCd[kind] || 0) > now) return;
+    screenFxCd[kind] = now + cdMs;
+  }
+  screenFx = { kind: kind, t: dur || 260, dur: dur || 260 };
+}
+function drawScreenFx() {
+  if (!screenFx) return;
+  const a = Math.max(0, screenFx.t / screenFx.dur);
+  ctx.save();
+  if (screenFx.kind === 'fire') {
+    ctx.globalAlpha = a * 0.30;
+    ctx.fillStyle = '#ff6a20';
+    ctx.fillRect(0, 0, VIEW_W, 36);
+    ctx.fillRect(0, VIEW_H - 36, VIEW_W, 36);
+    ctx.fillRect(0, 36, 24, VIEW_H - 72);
+    ctx.fillRect(VIEW_W - 24, 36, 24, VIEW_H - 72);
+  } else if (screenFx.kind === 'ice') {
+    ctx.globalAlpha = a * 0.26;
+    ctx.fillStyle = '#c8d8ff';
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+  } else if (screenFx.kind === 'bolt') {
+    ctx.globalAlpha = a * 0.50;
+    ctx.fillStyle = '#f8ffff';
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+  } else if (screenFx.kind === 'light') {
+    ctx.globalAlpha = a * 0.42;
+    ctx.fillStyle = '#ffe566';
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+  } else if (screenFx.kind === 'dark') {
+    ctx.globalAlpha = a * 0.38;
+    ctx.fillStyle = '#ff1a6a';
+    const g = 26 + (1 - a) * 56;
+    ctx.fillRect(0, 0, VIEW_W, g);
+    ctx.fillRect(0, VIEW_H - g, VIEW_W, g);
+  }
+  ctx.restore();
 }
 
 /* ---------- 音訊（PLAN v3.9 #50–#56）---------- */
@@ -728,10 +931,26 @@ function tickVfx(dtMs) {
     p.y += p.vy * dtMs;
     if (p.kind === 'boom') {
       p.frame = p.life > 280 ? 0 : (p.life > 140 ? 1 : 2);
+    } else if (p.kind === 'ember') {
+      /* 火焰向上飄，愈飄愈細 */
+      p.vy -= 0.00004 * dtMs;
+      p.size = Math.max(0.3, p.size - 0.002 * dtMs);
+    } else if (p.kind === 'frost') {
+      /* 冰晶受重力下墜 */
+      p.vy += 0.00012 * dtMs;
+    } else if (p.kind === 'arc' || p.kind === 'glow' || p.kind === 'shade' || p.kind === 'trail') {
+      /* 原地型：位置唔變，只係尺寸變化 */
+      p.vx = 0; p.vy = 0;
+      if (p.kind === 'glow') p.size += 0.02 * dtMs;
+      if (p.kind === 'shade') p.size = Math.max(0.5, p.size - 0.012 * dtMs);
     } else {
       p.vy += 0.00015 * dtMs;
     }
     if (p.life <= 0) particles.splice(i, 1);
+  }
+  if (screenFx) {
+    screenFx.t -= dtMs;
+    if (screenFx.t <= 0) screenFx = null;
   }
   for (const s of stars) {
     s.y += s.z * dtMs * 0.04;
@@ -793,6 +1012,34 @@ function drawParticles() {
         ctx.fillStyle = '#ff6';
         ctx.beginPath(); ctx.arc(p.x, p.y, 8 * a, 0, Math.PI*2); ctx.fill();
       }
+    } else if (p.kind === 'ember') {
+      if (!drawSprite('p_ember', p.x, p.y, p.size)) {
+        ctx.fillStyle = '#ff9a18';
+        ctx.fillRect(p.x - 1, p.y - 1, 2, 2);
+      }
+    } else if (p.kind === 'frost') {
+      if (!drawSprite('p_frost', p.x, p.y, p.size)) {
+        ctx.fillStyle = '#c8d8ff';
+        ctx.fillRect(p.x - 1, p.y - 1, 2, 2);
+      }
+    } else if (p.kind === 'arc') {
+      if (!drawSprite('p_arc', p.x, p.y, 1)) {
+        ctx.fillStyle = '#ffe566';
+        ctx.fillRect(p.x - 2, p.y, 4, 1);
+      }
+    } else if (p.kind === 'glow') {
+      ctx.fillStyle = '#f8ffff';
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#c8d8ff';
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.size * 0.6, 0, Math.PI*2); ctx.fill();
+    } else if (p.kind === 'shade') {
+      ctx.fillStyle = '#ff1a6a';
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#ff6ad5';
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.size * 0.5, 0, Math.PI*2); ctx.fill();
+    } else if (p.kind === 'trail') {
+      ctx.fillStyle = p.col || '#0ff';
+      ctx.fillRect(p.x - 1, p.y - 1, 2, 2);
     } else if (!drawSprite('spark', p.x, p.y, 1)) {
       ctx.fillStyle = '#ff6';
       ctx.fillRect(p.x - 1, p.y - 1, 2, 2);
@@ -870,17 +1117,54 @@ function drawHudChips() {
     ctx.fillText(txt, VIEW_W / 2, 36);
     ctx.textAlign = 'left';
   }
+  /* v0.27.0 #100：元素 chip（**左上角**，血心／裝備 icon 之下）——
+     玩家要一眼見到自己嘅 build 身份（基底 + 副元素同等級）。
+     ⚠️ 位置避開：右上 x 256–314 俾「暫停掣 + 喇叭」完全霸咗，
+        頂部中央 x 100–220 俾關卡名 chip／節奏 chip／擦彈條霸咗，
+        底部 y 408+ 俾三個能力掣霸咗 —— 淨係左上 y 50–64 係空嘅。
+     ⚠️ 所以「裝備掉落橫幅」由 y 56 下移到 y 82，唔好同元素 chip 撞。 */
+  if (ship.elementA) {
+    const ea = ELEMENTS[ship.elementA];
+    const eb = ship.elementB ? ELEMENTS[ship.elementB] : null;
+    /* ⚠️ 9px + 精簡格式（「火LV3」唔加空格）—— 10px 版本闊到 116px，
+       會同頂部中央嘅「擦彈 X　Y 次回充」重疊（擦彈由 x 122 開始）。 */
+    ctx.font = '9px monospace';
+    const l1 = ea ? ea.name + 'LV' + (ship.elementALv || 1) + (ship.elementMaster ? '+' : '') : '';
+    const l2 = eb ? eb.name + 'LV' + (ship.elementBLv || 1) : '';
+    const w1 = l1 ? ctx.measureText(l1).width : 0;
+    const w2 = l2 ? ctx.measureText(l2).width : 0;
+    const boxW = (ea ? 11 : 0) + w1 + (eb ? 17 : 0) + w2 + 6;
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(12, 48, boxW, 14);
+    ctx.textAlign = 'left';
+    let ex = 15;
+    if (ea) {
+      drawSprite(ea.sprite, ex + 3, 55, 0.7);
+      ex += 10;
+      ctx.fillStyle = ea.color;
+      ctx.fillText(l1, ex, 58);
+      ex += w1 + 3;
+    }
+    if (eb) {
+      drawSprite(eb.sprite, ex + 3, 55, 0.7);
+      ex += 10;
+      ctx.fillStyle = eb.color;
+      ctx.fillText(l2, ex, 58);
+    }
+    ctx.textAlign = 'left';
+  }
   /* 裝備掉落橫幅（2.6 秒，同詞綴橫幅節奏一致） */
   if (lootShownAt && performance.now() - lootShownAt < 2600 && isStage(fsm.cur)) {
     const last = LOOT_DEFS.find(x => x.id === Object.keys(loots).slice(-1)[0]);
     const a = Math.min(1, (performance.now() - lootShownAt) / 300);
     ctx.globalAlpha = a;
+    /* ⚠️ v0.27.0：由 y 56 下移到 y 82 —— 原本會同新嘅元素 chip（y 48–63）重疊 */
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
-    ctx.fillRect(0, 56, VIEW_W, 22);
+    ctx.fillRect(0, 82, VIEW_W, 22);
     ctx.font = 'bold 12px monospace';
     ctx.fillStyle = '#fd6';
     ctx.textAlign = 'center';
-    ctx.fillText('裝備 ' + (last ? last.icon + ' ' + last.name + ' · ' + last.desc : ''), VIEW_W / 2, 71);
+    ctx.fillText('裝備 ' + (last ? last.icon + ' ' + last.name + ' · ' + last.desc : ''), VIEW_W / 2, 97);
     ctx.globalAlpha = 1;
   }
 }
@@ -1042,7 +1326,8 @@ function onStateEnter(s, from) {
     /* stage clock always resets; run clock only on fresh run start (PLAN: 全程 count-up) */
     endFreezeClocks();                 /* absorb CHOICE/PAUSED gap before anchors */
     stageStartMs = performance.now();
-    if (s === STATE.STAGE_1 && (from === STATE.SHIP_SELECT || from === STATE.SKILL_PICK || runStartMs === null)) {
+    if (s === STATE.STAGE_1 && (from === STATE.SHIP_SELECT || from === STATE.SKILL_PICK
+        || from === STATE.ELEMENT_PICK || runStartMs === null)) {
       runStartMs = stageStartMs;
     }
     if (from !== STATE.STAGE_1) {
@@ -1057,6 +1342,19 @@ function onStateEnter(s, from) {
     choicePicked = -1;
     sfx('offer');
     hudEl.tip.textContent = '選擇強化 · 點擊卡牌或按 1/2/3';
+  } else if (s === STATE.ELEMENT_PICK) {
+    /* v0.27.0 #102：揀完機再揀基底元素（5 選 1）。每局一次，揀完鎖死成局。
+       5 個候選全部提供（唔洗牌）——玩家應該見到全部選項。 */
+    elementOffer = ELEMENT_IDS.slice();
+    sfx('offer');
+    hudEl.tip.textContent = '選擇元素 · 點擊卡牌或按 1 至 5';
+  } else if (s === STATE.ELEM_CHOICE) {
+    /* v0.27.0 #103：boss 擊破後嘅元素抉擇（3 選 1）：
+       ① 基底升級 ② 副元素 X ③ 副元素 Y */
+    elemChoiceOffer = buildElemChoiceOffer();
+    elemChoicePicked = -1;
+    sfx('offer');
+    hudEl.tip.textContent = '元素抉擇 · 點擊卡牌或按 1/2/3';
   } else if (s === STATE.SKILL_PICK) {
     /* v0.26.0 #94：揀完機再揀通用技能。每局一次，揀完鎖死成局。
        3 個候選全部提供（唔洗牌）——玩家應該見到全部選項。 */
@@ -1264,6 +1562,14 @@ function pickShip(id) {
     /* v0.26.0 #94：通用技能 id。揀機之後喺 SKILL_PICK 畫面填入，
        揀完鎖死成局（唔會喺局內變）。null = 未揀（只喺 debug / fallback 出現）。 */
     universalId: null,
+    /* v0.27.0 #102：元素層。基底元素 A（揀機後揀）同副元素 B（boss 後加），
+       各自等級 1–3，兩個效果疊加生效。
+       ⚠️ elementMaster = 基底元素滿 L3 兼且再升級（專精，傷害 +40%）。 */
+    elementA: null,
+    elementALv: 1,
+    elementB: null,
+    elementBLv: 1,
+    elementMaster: false,
     /* v0.26.0 #93 D 機衛星：兩粒跟機衛星，自動開火 */
     _sats: [
       { x: 0, y: 0, fireCD: 0 },
@@ -2493,6 +2799,24 @@ function handleMenuTap(clientX, clientY) {
     }
     return true;
   }
+  /* v0.27.0 #102：揀基底元素（5 選 1） */
+  if (fsm.cur === STATE.ELEMENT_PICK) {
+    const idx = hitElementCard(px, py);
+    if (idx >= 0) {
+      console.log('[元素] 撳卡', idx);
+      applyPickedElement(idx);
+    }
+    return true;
+  }
+  /* v0.27.0 #103：boss 後元素抉擇（3 選 1） */
+  if (fsm.cur === STATE.ELEM_CHOICE) {
+    const idx = hitElemChoiceCard(px, py);
+    if (idx >= 0) {
+      console.log('[元素抉擇] 撳卡', idx);
+      applyPickedElemChoice(idx);
+    }
+    return true;
+  }
   return false;
 }
 
@@ -2732,6 +3056,24 @@ window.addEventListener('keydown', (e) => {
     }
     return;
   }
+  /* v0.27.0 #102：揀基底元素（5 選 1）。1–5 對應五個元素。 */
+  if (fsm.cur === STATE.ELEMENT_PICK) {
+    if (k >= '1' && k <= '5') {
+      applyPickedElement(parseInt(k, 10) - 1);
+    } else if (k === 'enter' || k === ' ' || k === 'escape') {
+      applyPickedElement(0);   /* 跳過 = 揀第一張，保證唔會卡死 */
+    }
+    return;
+  }
+  /* v0.27.0 #103：boss 後元素抉擇（3 選 1）。1/2/3 對應三張卡。 */
+  if (fsm.cur === STATE.ELEM_CHOICE) {
+    if (k === '1' || k === '2' || k === '3') {
+      applyPickedElemChoice(parseInt(k, 10) - 1);
+    } else if (k === 'enter' || k === ' ' || k === 'escape') {
+      applyPickedElemChoice(0);   /* 跳過 = 揀第一張，保證唔會卡死 */
+    }
+    return;
+  }
   if (fsm.cur === STATE.CHOICE) {
     /* 按 1/2/3 揀卡（PLAN v2 #3 可重複） */
     if (k === '1') { applyPickedUpgrade(0); advanceStage(); }
@@ -2800,8 +3142,8 @@ function pickShipAndStart(id) {
     pickShip(id);
     if (!ship) throw new Error('pickShip 後 ship 仍係 null');
     console.log('[選機] OK', id, 'seed', runSeed, 'form', ship.shotForm);
-    /* v0.26.0 #94：揀機之後先去揀通用技能（SKILL_PICK），再入關。 */
-    fsm.set(STATE.SKILL_PICK);
+    /* v0.27.0 #102：揀機 → 揀元素 → 揀通用技能 → 開打（三段式）。 */
+    fsm.set(STATE.ELEMENT_PICK);
   } catch (err) {
     console.error('[選機] 失敗', err);
     /* 最後手段：仍嘗試入關，避免卡死選機畫面 */
@@ -2810,6 +3152,8 @@ function pickShipAndStart(id) {
       /* ⚠️ 明確指定預設通用技能（唔係靜靜哋 null 落去）——
          冇通用技能就冇中下掣功能，屬於 silent default data loss。 */
       if (ship && !ship.universalId) ship.universalId = 'magnet';
+      /* ⚠️ 同樣明確指定預設元素 —— 冇元素就完全冇命中效果（silent default data loss）。 */
+      if (ship && !ship.elementA) { ship.elementA = 'fire'; ship.elementALv = 1; }
       fsm.set(STATE.STAGE_1);
     } catch (err2) {
       console.error('[選機] 二次失敗', err2);
@@ -3140,6 +3484,17 @@ function advanceStage() {
     const next = lastStage + 1;
     if (next > STAGES.length) {
       fsm.set(STATE.VICTORY);
+    } else {
+      /* v0.27.0 #103：先做元素抉擇（build 成長），再入下一關。 */
+      fsm.set(STATE.ELEM_CHOICE);
+    }
+    return;
+  }
+  /* v0.27.0 #103：由元素抉擇觸發 —— 揀完先入下一關 */
+  if (fsm.cur === STATE.ELEM_CHOICE) {
+    const next = lastStage + 1;
+    if (next > STAGES.length) {
+      fsm.set(STATE.VICTORY);
     } else if (STYLE_STAGES.has(next)) {
       /* #41 + #47：S2 / S4 先經風格選擇，其餘直接入關 */
       fsm.set(STATE.STYLE);
@@ -3379,6 +3734,121 @@ function hitUniversalCard(px, py) {
   }
   return -1;
 }
+/* ---------- v0.27.0 #102 / #103：元素選擇畫面 ---------- */
+let elementOffer = [];      /* 揀基底元素時嘅候選（5 個全部提供） */
+let elemChoiceOffer = [];   /* boss 後元素抉擇：3 張卡 */
+let elemChoicePicked = -1;
+
+function elementCardsLayout() {
+  /* 2 行 × 3 列，同揀機畫面同一種大卡網格（5 張 + 第 6 格留空）。
+     卡比機體卡高 12px —— 要擺得下「名 + 一句話 + LV1 效果」。 */
+  const w = 96, h = 108, gap = 10;
+  const total = w * 3 + gap * 2;
+  const startX = (VIEW_W - total) / 2;
+  const rowH = h + gap;
+  const topY = 80;
+  return {
+    w, h, gap, startX, topY, cols: 3,
+    rect: (i) => ({ x: startX + (i % 3) * (w + gap), y: topY + Math.floor(i / 3) * rowH, w, h }),
+  };
+}
+function hitElementCard(px, py) {
+  const L = elementCardsLayout();
+  for (let i = 0; i < elementOffer.length; i++) {
+    const r = L.rect(i);
+    if (px >= r.x - 8 && px <= r.x + r.w + 8 && py >= r.y - 8 && py <= r.y + r.h + 8) return i;
+  }
+  return -1;
+}
+function applyPickedElement(idx) {
+  if (idx < 0 || idx >= elementOffer.length) return;
+  const id = elementOffer[idx];
+  if (!ship || !ELEMENTS[id]) return;
+  ship.elementA = id;
+  ship.elementALv = 1;
+  ship.elementB = null;
+  ship.elementBLv = 1;
+  ship.elementMaster = false;
+  sfx('pick');
+  console.log('[元素] 揀「' + ELEMENTS[id].name + '」· ' + ELEMENTS[id].tag);
+  fsm.set(STATE.SKILL_PICK);
+}
+
+/* boss 後元素抉擇：3 張卡 = 基底升級 + 兩個副元素選項 */
+function elemChoiceCardsLayout() {
+  const w = 96, h = 132, gap = 12;
+  const startX = (VIEW_W - (w * 3 + gap * 2)) / 2;
+  const y = VIEW_H / 2 - 40;
+  return { w, h, gap, startX, y, rect: (i) => ({ x: startX + i * (w + gap), y, w, h }) };
+}
+function hitElemChoiceCard(px, py) {
+  const L = elemChoiceCardsLayout();
+  for (let i = 0; i < elemChoiceOffer.length; i++) {
+    const r = L.rect(i);
+    if (px >= r.x - 8 && px <= r.x + r.w + 8 && py >= r.y - 8 && py <= r.y + r.h + 8) return i;
+  }
+  return -1;
+}
+function buildElemChoiceOffer() {
+  if (!ship) return [];
+  const out = [];
+  const base = ship.elementA;
+  const baseLv = ship.elementALv || 1;
+  const baseMaxed = baseLv >= ELEMENT_MAX_LV;
+  /* 卡 1：基底升級（滿 L3 就變「專精」）。
+     ⚠️ 已經攞咗「專精」就唔好再出基底卡 —— 嗰張卡揀咗都冇任何效果（死卡）。
+        改成出 3 張副元素卡，所以每次都係 3 張有得揀嘅卡。 */
+  const wantBase = !(ship.elementMaster && baseMaxed);
+  if (wantBase) {
+    out.push({ kind:'base', elemId:base, lv:baseLv + 1, master: baseMaxed });
+  }
+  /* 副元素卡：基底卡在場就出 2 張，基底卡唔在場（已專精）就出 3 張 */
+  const wantSub = wantBase ? 2 : 3;
+  const pool = ELEMENT_IDS.filter(id => id !== base);
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const t = pool[i]; pool[i] = pool[j]; pool[j] = t;
+  }
+  for (let i = 0; i < wantSub && i < pool.length; i++) {
+    const id = pool[i];
+    const isCur = ship.elementB === id;
+    out.push({
+      kind:'sub', elemId:id,
+      lv: isCur ? Math.min(ELEMENT_MAX_LV, (ship.elementBLv || 1) + 1) : 1,
+      upgrade: isCur,
+      switcher: !!ship.elementB && !isCur,   /* 已有副元素而且唔同 = 轉職 */
+    });
+  }
+  return out;
+}
+function applyPickedElemChoice(idx) {
+  if (idx < 0 || idx >= elemChoiceOffer.length) return;
+  const c = elemChoiceOffer[idx];
+  if (!ship || !c || !ELEMENTS[c.elemId]) return;
+  if (c.kind === 'base') {
+    if ((ship.elementALv || 1) >= ELEMENT_MAX_LV) {
+      ship.elementMaster = true;              /* 專精：該元素傷害 +40% */
+      console.log('[元素] 基底「' + ELEMENTS[c.elemId].name + '」→ 專精');
+    } else {
+      ship.elementALv = c.lv;
+      console.log('[元素] 基底「' + ELEMENTS[c.elemId].name + '」→ LV' + c.lv);
+    }
+  } else {
+    const oldB = ship.elementB;
+    if (oldB === c.elemId) {
+      ship.elementBLv = Math.min(ELEMENT_MAX_LV, c.lv);
+      console.log('[元素] 副「' + ELEMENTS[c.elemId].name + '」→ LV' + ship.elementBLv);
+    } else {
+      ship.elementB = c.elemId;
+      ship.elementBLv = 1;
+      console.log('[元素] 副元素 → 「' + ELEMENTS[c.elemId].name + '」LV1' +
+                  (oldB ? '（轉職：' + ELEMENTS[oldB].name + ' → ' + ELEMENTS[c.elemId].name + '）' : ''));
+    }
+  }
+  sfx('pick');
+  advanceStage();
+}
+
 function tryBomb() {
   if (!isStage(fsm.cur) || !ship) return false;
   const now = performance.now();
@@ -3795,7 +4265,9 @@ function applyGroupBonus(b, e) {
    回傳 true = 呢一擊被護盾食咗（子彈唔入肉）。 */
 function applyTurretShield(b, e) {
   if (!e || !e.turret || !(e.turretShield > 0)) return false;
-  e.turretShield -= (b.dmg || 1);
+  /* ⚠️ 用 elementHitDamage() 而唔係 b.dmg —— 光 L2「破盾」要令護盾同埋入肉
+     都食 ×2 傷害（元素效果對炮台護盾一樣生效）。 */
+  e.turretShield -= elementHitDamage(b, e);
   spawnSparks(b.x, b.y, 3, 0.08);
   sfx('hit');
   if (e.turretShield <= 0) {
@@ -3989,6 +4461,18 @@ function tickPlayerBullets(dtMs) {
 
     b.t = (b.t || 0) + dtMs;
 
+    /* v0.27.0 #105 拖尾：玩家子彈按元素色留殘影。
+       ⚠️ 每 45ms 先留一粒（唔係每幀）—— 粒子上限 260，唔可以濺到拖慢低 FPS 裝置。 */
+    const elNow = currentElement();
+    if (elNow) {
+      b._trailT = (b._trailT || 0) - dtMs;
+      if (b._trailT <= 0) {
+        b._trailT = 45;
+        pushParticle({ x: b.x, y: b.y, vx: 0, vy: 0, life: 230, max: 230,
+                       kind: 'trail', size: 1, col: elNow.color });
+      }
+    }
+
     /* homing tag 或 missile 微追 */
     const homeLv = (b.tags && b.tags.homing) || 0;
     const wantHome = homeLv > 0 || b.form === 'missile';
@@ -4114,7 +4598,231 @@ function spawnMissileBurst(src) {
 }
 
 /* 命中後 tag 效果；回傳是否應刪彈（true=刪） */
+/* ---------- 元素效果（v0.27.0 · PLAN #100 / #104）----------
+   元素層決定「命中之後發生咩事」，形態層決定「彈點樣飛」—— 兩層完全正交，
+   所以 5 形態 × 5 元素 = 25 種配對 **唔使任何配對特判**。
+   ⚠️ 副元素同基底元素走同一條 applyOneElement()，純粹疊加效果。 */
+const ELEM_BURN_MS        = 2000;   /* 灼燒持續 */
+const ELEM_BURN_DPS       = 1;      /* 灼燒每秒傷害 */
+const ELEM_BURN_DPS_L2    = 1.5;    /* L2 灼燒傷害 */
+const ELEM_BURN_SPREAD_R  = 60;     /* L2 蔓延半徑 */
+const ELEM_BURN_BOOM_R    = 55;     /* L3 燒死爆炸半徑 */
+const ELEM_BURN_BOOM_DMG  = 3;      /* L3 燒死爆炸傷害 */
+const ELEM_SLOW_MS        = 2000;   /* 緩速持續 */
+const ELEM_SLOW_MUL       = 0.6;    /* L1 緩速倍數 */
+const ELEM_SLOW_MUL_L2    = 0.4;    /* L2 緩速倍數 */
+const ELEM_SHATTER_MUL    = 1.25;   /* L2 易碎：受傷 +25% */
+const ELEM_FREEZE_MS      = 1000;   /* L3 凍結 */
+const ELEM_CHAIN_DMG      = 0.6;    /* 連鎖傷害比例 */
+const ELEM_CHAIN_R        = 90;     /* 連鎖搜尋半徑 */
+const ELEM_STUN_MS        = 1500;   /* L3 麻痺 */
+const ELEM_LIGHT_BURST    = 1;      /* L3 光爆對全場雜魚嘅傷害 */
+const ELEM_MARK_MS        = 6000;   /* 吞噬標記持續 */
+const ELEM_MARK_MUL       = 1.25;   /* L2 吞噬加深 */
+const ELEM_DARK_BOOM_R    = 70;     /* L3 吞噬爆發半徑 */
+const ELEM_DARK_BOOM_DMG  = 3;      /* L3 吞噬爆發傷害 */
+const ELEM_MASTER_MUL     = 1.4;    /* 專精：基底元素傷害 +40% */
+
+/* 專精倍率：基底元素滿 L3 之后再升級 → 該元素所有傷害 ×1.4。
+   ⚠️ 專精只可以落喺「基底元素」（副元素冇專精呢條路），
+      所以呢度只睇 elementA，唔睇 elementB。
+   ⚠️ 每個元素傷害出口都要經過呢度 —— 否則卡面寫住「+40%」但實際冇加 = 死卡。 */
+function elementMasterMul(elemId) {
+  if (!ship || !ship.elementMaster) return 1;
+  if (ship.elementA !== elemId) return 1;
+  return ELEM_MASTER_MUL;
+}
+
+/* 元素爆發深度守衛 —— 連鎖 / 爆發互相觸發時唔可以無限遞歸 */
+let elementBurstDepth = 0;
+
+/* 呢個局有冇某元素達到某等級？（基底 A 同副 B 兩邊都計） */
+function hasElementLevel(id, lv) {
+  if (!ship) return false;
+  if (ship.elementA === id && (ship.elementALv || 0) >= lv) return true;
+  if (ship.elementB === id && (ship.elementBLv || 0) >= lv) return true;
+  return false;
+}
+/* 元素傷害倍率：光 L2 破盾 · 暗 L2 吞噬加深 · 冰 L2 易碎 */
+function elementHitDamage(b, e) {
+  let dmg = (b && b.dmg) || 1;
+  if (!e) return dmg;
+  if (e.turret && e.turretShield > 0 && hasElementLevel('light', 2)) dmg *= 2 * elementMasterMul('light');
+  if (e.markT > 0 && hasElementLevel('dark', 2)) dmg *= ELEM_MARK_MUL * elementMasterMul('dark');
+  if (e.shatter && hasElementLevel('ice', 2)) dmg *= ELEM_SHATTER_MUL * elementMasterMul('ice');
+  return dmg;
+}
+/* 連鎖：電弧彈到附近另一個敵人（只打雜魚，唔會打 boss） */
+function chainLightning(from, depth, dmg) {
+  if (depth <= 0) return;
+  let best = null, bestD = 1e12;
+  for (const o of enemies) {
+    if (o === from || o._dead) continue;
+    if (o.kind !== 'grunt') continue;          /* ⚠️ 元素傷害唔打 boss */
+    const dx = o.x - from.x, dy = o.y - from.y;
+    const d = dx * dx + dy * dy;
+    if (d > ELEM_CHAIN_R * ELEM_CHAIN_R) continue;
+    if (d < bestD) { bestD = d; best = o; }
+  }
+  if (!best) return;
+  best.hp -= dmg;
+  spawnArc(best.x, best.y);
+  screenFlash = Math.max(screenFlash, 0.16);
+  triggerScreenFx('bolt', 200, 700);   /* v0.27.0 電弧全屏閃（節流） */
+  if (best.hp <= 0) killEnemy(best);
+  chainLightning(best, depth - 1, dmg);
+}
+/* 光爆：命中時全場雜魚受到少量傷害（唔套用元素效果，唔會無限遞歸） */
+function lightBurst() {
+  triggerScreenFx('light', 320, 400);   /* v0.27.0 光爆全屏白閃 */
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const o = enemies[i];
+    if (o._dead || o.kind !== 'grunt') continue;
+    o.hp -= ELEM_LIGHT_BURST * elementMasterMul('light');
+    spawnGlow(o.x, o.y);
+    if (o.hp <= 0) killEnemy(o);
+  }
+}
+/* 元素爆發（燒死 / 吞噬標記死）—— 範圍傷害，唔套用元素效果 */
+function elementBoom(x, y, radius, dmg, kind) {
+  if (elementBurstDepth > 3) return;
+  elementBurstDepth++;
+  spawnBoom(x, y);
+  screenFlash = Math.max(screenFlash, 0.28);
+  triggerScreenFx(kind === 'dark' ? 'dark' : 'fire', 360, 400);
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const o = enemies[i];
+    if (o._dead || o.kind !== 'grunt') continue;
+    const dx = o.x - x, dy = o.y - y;
+    if (dx * dx + dy * dy > radius * radius) continue;
+    o.hp -= dmg;
+    if (kind === 'fire') spawnEmber(o.x, o.y);
+    else if (kind === 'dark') spawnShade(o.x, o.y);
+    if (o.hp <= 0) killEnemy(o);
+  }
+  elementBurstDepth--;
+}
+/* 單一元素效果（lv = 1..3）。基底同副都叫呢個，所以 25 種配對零特判。 */
+function applyOneElement(elemId, lv, target, bullet) {
+  if (!target || !elemId || lv < 1) return;
+  const b = bullet || { x: target.x, y: target.y, dmg: 1, pierceLeft: 0 };
+  switch (elemId) {
+    case 'fire': {
+      target.burnT = Math.max(target.burnT || 0, ELEM_BURN_MS);
+      target.burnDmg = Math.max(target.burnDmg || 0,
+        (lv >= 2 ? ELEM_BURN_DPS_L2 : ELEM_BURN_DPS) * elementMasterMul('fire'));
+      if (lv >= 2) {                       /* 蔓延到相鄰敵人 */
+        for (const o of enemies) {
+          if (o === target || o._dead || o.kind !== 'grunt') continue;
+          const dx = o.x - target.x, dy = o.y - target.y;
+          if (dx * dx + dy * dy > ELEM_BURN_SPREAD_R * ELEM_BURN_SPREAD_R) continue;
+          o.burnT = Math.max(o.burnT || 0, ELEM_BURN_MS);
+          o.burnDmg = Math.max(o.burnDmg || 0, ELEM_BURN_DPS * elementMasterMul('fire'));
+          spawnEmber(o.x, o.y);
+        }
+      }
+      if (lv >= 3) target.burnBoom = true;  /* 燒死時爆炸 */
+      spawnEmber(target.x, target.y);
+      break;
+    }
+    case 'ice': {
+      target.slowT = Math.max(target.slowT || 0, ELEM_SLOW_MS);
+      target.slowMul = Math.min(target.slowMul == null ? 1 : target.slowMul,
+                                lv >= 2 ? ELEM_SLOW_MUL_L2 : ELEM_SLOW_MUL);
+      if (lv >= 2) target.shatter = true;   /* 易碎：受傷 +25% */
+      if (lv >= 3) {
+        target.freezeT = Math.max(target.freezeT || 0, ELEM_FREEZE_MS);
+        triggerScreenFx('ice', 260, 500);   /* v0.27.0 結冰畫面覆蓋 */
+      }
+      spawnFrost(target.x, target.y);
+      break;
+    }
+    case 'lightning': {
+      if (lv >= 1) chainLightning(target, lv, (b.dmg || 1) * ELEM_CHAIN_DMG * elementMasterMul('lightning'));
+      if (lv >= 3) target.stunT = Math.max(target.stunT || 0, ELEM_STUN_MS);
+      spawnArc(target.x, target.y);
+      break;
+    }
+    case 'light': {
+      if (lv >= 1) b.pierceLeft = (b.pierceLeft || 0) + 1;   /* 穿透 +1 */
+      if (lv >= 3) lightBurst();
+      spawnGlow(target.x, target.y);
+      break;
+    }
+    case 'dark': {
+      target.markT = Math.max(target.markT || 0, ELEM_MARK_MS);
+      if (lv >= 3) target.darkBoom = true;
+      spawnShade(target.x, target.y);
+      break;
+    }
+  }
+}
+/* 統一入口：基底元素 A 先行，之後副元素 B（兩個效果疊加生效） */
+function applyElementEffects(target, bullet) {
+  if (!ship || !target) return;
+  if (ship.elementA) applyOneElement(ship.elementA, ship.elementALv || 1, target, bullet);
+  if (ship.elementB) applyOneElement(ship.elementB, ship.elementBLv || 1, target, bullet);
+}
+/* 每幀：灼燒 DoT + 凍結 / 麻痺 / 標記倒數 */
+function elementTick(dtMs) {
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const e = enemies[i];
+    if (e._dead) continue;
+    if (e.freezeT > 0) e.freezeT -= dtMs;
+    if (e.stunT > 0) e.stunT -= dtMs;
+    if (e.markT > 0) e.markT -= dtMs;
+    if (e.burnT > 0) {
+      e.burnT -= dtMs;
+      e._burnAcc = (e._burnAcc || 0) + dtMs;
+      while (e._burnAcc >= 1000) {
+        e._burnAcc -= 1000;
+        /* ⚠️ 灼燒唔打 boss —— 避免 boss HP 變負但永遠唔死嘅卡死情況 */
+        if (e.kind === 'grunt') {
+          e.hp -= (e.burnDmg || ELEM_BURN_DPS);
+          spawnEmber(e.x, e.y);
+          if (e.hp <= 0) { killEnemy(e); break; }
+        }
+      }
+    }
+  }
+}
+
+/* 敵人死亡處理（v0.27.0 抽出嚟俾元素效果重用 —— 灼燒 / 連鎖 / 爆發都經過呢度）。
+   回傳 'boss' = 死咗 boss（caller 要即刻叫 onBossDown 並停低）；'grunt' = 雜魚。 */
+function killEnemy(e) {
+  if (!e || e._dead || e.hp > 0) return null;
+  spawnBoom(e.x, e.y);
+  if (e.kind === 'spiral') return 'boss';   /* boss 死亡流程特別，caller 處理 */
+  runScore += (e.score || GRUNT_SCORE) * affScore * styScore;
+  runKills++;
+  runGrunts++;
+  /* v0.25.0 C 機被動：每次擊殺回充 5% 炸彈冷卻 */
+  if (ship && ship.chassis === 'C' && bombCDUntil > 0) {
+    bombCDUntil = Math.max(0, bombCDUntil - (ship.bombCD || 12000) * 0.05);
+  }
+  /* v0.26.0 #94 通用技能「迴氣」：擊殺敵人後 3 秒內射速 ×1.8 */
+  if (ship && ship.universalId === 'recover') {
+    ship._recoverUntil = gameClockMs + RECOVER_MS;
+  }
+  e._dead = true;
+  sfx(e.elite ? 'kill' : 'hit');
+  /* v0.27.0 元素爆發：燒死 / 吞噬標記死時爆發（專精元素傷害 +40%） */
+  if (e.burnBoom) elementBoom(e.x, e.y, ELEM_BURN_BOOM_R, ELEM_BURN_BOOM_DMG * elementMasterMul('fire'), 'fire');
+  if (e.markT > 0 && e.darkBoom) elementBoom(e.x, e.y, ELEM_DARK_BOOM_R, ELEM_DARK_BOOM_DMG * elementMasterMul('dark'), 'dark');
+  /* 分裂蟲 → mini；護盾機死 → 裂彈；v3.11 裂解者 → 散射小彈 */
+  if (e.swarm || e.splitOnDeath) spawnSwarmChildren(e.x, e.y);
+  if (e.splitter) spawnSplitterChildren(e.x, e.y);
+  if (e.shield) spawnSplitBurst(e.x, e.y);
+  if (e.elite) console.log('[擊破] 精英「' + e.affix + '」· +' + (e.score || ELITE_SCORE));
+  else if (e.sniper) console.log('[擊破] 狙擊 · +' + (e.score || SNIPER_SCORE));
+  else if (e.shield) console.log('[擊破] 護盾機 · +' + (e.score || SHIELD_SCORE));
+  else if (e.swarm) console.log('[擊破] 分裂 · +' + (e.score || SWARM_SCORE));
+  return 'grunt';
+}
+
 function onPlayerBulletHit(b, e) {
+  /* v0.27.0 #104：元素效果統一喺「命中」事件觸發（喺任何 return 之前） */
+  applyElementEffects(e, b);
   if (b.tags && b.tags.slow > 0) {
     const ms = 600 + Math.max(0, (b.tags.slow - 1) * 300);
     e.slowT = Math.max(e.slowT || 0, ms);
@@ -4318,6 +5026,9 @@ function tick(dtMs) {
        清彈喺觸發當下處理，無敵時段喺碰撞時判斷。 ---- */
 
   /* ---- 敵機更新（boss 招式各自不同） ---- */
+  /* v0.27.0 #104：元素狀態（灼燒 DoT / 凍結 / 麻痺 / 標記）先行更新，
+     咁新加嘅灼燒傷害即刻生效，唔會慢一幀。 */
+  elementTick(dtMs);
   for (const e of enemies) {
     if (e._dead) continue;        /* 屍體唔再郁，正式移除交由 cull */
     /* v3.10 tag_slow：敵短暫減速 */
@@ -4328,8 +5039,12 @@ function tick(dtMs) {
     } else {
       e._slowMul = 1;
     }
+    /* v0.27.0 #100 冰 L3「結冰」：目標完全停住 1 秒（移動係 0，唔係唔郁）。
+       ⚠️ 用 _moveMul 乘數而唔係直接 return —— boss 路徑同雜魚路徑都會經過呢度。 */
+    e._moveMul = (e.freezeT > 0) ? 0 : 1;
     if (e.kind === 'spiral') {
-      e.t += dtMs;
+      /* v0.27.0：凍結時時間軸唔向前行 → boss 停喺原位 */
+      e.t += dtMs * e._moveMul;
       /* 8 字形路徑（預設） */
       e.x = VIEW_W/2 + Math.cos(e.t / 600) * 80;
       e.y = 80       + Math.sin(e.t / 400) * 30;
@@ -4354,7 +5069,9 @@ function tick(dtMs) {
       fireEvery *= d.fireIntervalMul * styBossFire;
       bulletSpd *= affBulletSpd;
 
-      e.spiralCD = (e.spiralCD || 0) + dtMs;
+      /* v0.27.0 雷 L3「麻痺」：被麻痺嘅目標 1.5 秒內唔射擊 */
+      if (e.stunT > 0) e.spiralCD = 0;
+      else e.spiralCD = (e.spiralCD || 0) + dtMs;
       if (e.spiralCD >= fireEvery) {
         e.spiralCD -= fireEvery;
         for (let i = 0; i < nWay; i++) {
@@ -4385,8 +5102,8 @@ function tick(dtMs) {
     } else if (e.kind === 'laser') {
       /* 聚焦令敵方彈幕減速（PLAN v2 #6；係數由戰機決定） */
       const slow = skillTimeScaleNow();
-      e.x += e.vx * dtMs * (e._slowMul == null ? 1 : e._slowMul) * slow;
-      e.y += e.vy * dtMs * (e._slowMul == null ? 1 : e._slowMul) * slow;
+      e.x += e.vx * dtMs * (e._slowMul == null ? 1 : e._slowMul) * slow * e._moveMul;
+      e.y += e.vy * dtMs * (e._slowMul == null ? 1 : e._slowMul) * slow * e._moveMul;
       e.lifeMs -= dtMs;
       if (e.lifeMs <= 0) {
         e._dead = true;
@@ -4449,7 +5166,7 @@ function tick(dtMs) {
         if (e.y < 10) { e.y = 10; e.ky = 0; }
       }
       e.x = clamp(e.x, 12, VIEW_W - 12);
-      e.y += e.vy * dtMs * (e._slowMul == null ? 1 : e._slowMul);
+      e.y += e.vy * dtMs * (e._slowMul == null ? 1 : e._slowMul) * e._moveMul;
 
       /* v3.11 #71 rammer 衝撞者：起步慢 → 預警鎖定 → 加速直線撞。
        預警期唔郁，玩家見到先走位 —— 公平可躲。 */
@@ -4494,7 +5211,8 @@ function tick(dtMs) {
             if (damageShip(1)) return;
           }
         } else {
-          e.fireCD -= dtMs;
+          /* v0.27.0 雷 L3 麻痺：麻痺期間唔會射擊（fireCD 唔會倒數） */
+          if (e.stunT <= 0) e.fireCD -= dtMs;
           if (e.fireCD <= 0) {
             e.fireCD = 2600 * D().fireIntervalMul;
             e.beamWarnMs = LANCER_WARN_MS;
@@ -4558,7 +5276,8 @@ function tick(dtMs) {
       /* 護罩炮台：落到 y=82 就定住，瞄準射擊。護盾先食傷害（見命中迴圈）。 */
       if (e.turret) {
         if (e.y >= TURRET_HOLD_Y) e.vy = 0;
-        e.fireCD -= dtMs;
+        /* v0.27.0 雷 L3 麻痺：麻痺期間唔會射擊（fireCD 唔會倒數） */
+        if (e.stunT <= 0) e.fireCD -= dtMs;
         if (e.fireCD <= 0 && e.y > 24) {
           e.fireCD = 2400 * D().fireIntervalMul;
           const sx = ship ? ship.x : VIEW_W / 2;
@@ -4589,7 +5308,8 @@ function tick(dtMs) {
             e.fireCD = 2600 * d.fireIntervalMul;
           }
         } else {
-          e.fireCD -= dtMs;
+          /* v0.27.0 雷 L3 麻痺：麻痺期間唔會射擊（fireCD 唔會倒數） */
+          if (e.stunT <= 0) e.fireCD -= dtMs;
           if (e.fireCD <= 0 && e.y > 20 && e.y < VIEW_H - 140) {
             e.warnMs = SNIPER_WARN_MS;
             e.warnTx = ship ? ship.x : VIEW_W / 2;
@@ -4598,7 +5318,8 @@ function tick(dtMs) {
           }
         }
       } else {
-        e.fireCD -= dtMs;
+        /* v0.27.0 雷 L3 麻痺：麻痺期間唔會射擊（fireCD 唔會倒數） */
+        if (e.stunT <= 0) e.fireCD -= dtMs;
         /* v0.26.0 #97：醫護（唔攻擊）同炮台（自己一套射擊邏輯）唔行通用射擊 */
         if (e.fireCD <= 0 && e.y > 24 && e.y < VIEW_H - 120 && !e.medic && !e.turret) {
           const d = D();
@@ -4663,7 +5384,7 @@ function tick(dtMs) {
                 if (b._hitSet) b._hitSet.push(e);
                 continue;
               }
-              e.hp -= (b.dmg || 1);
+              e.hp -= elementHitDamage(b, e);
               applySatelliteBonus(b, e);
               applyGroupBonus(b, e);
               /* v0.25.0 #87 C 機重炮：命中會將雜魚打飛（boss 唔受擊退）。
@@ -4677,35 +5398,8 @@ function tick(dtMs) {
               if (b._hitSet) b._hitSet.push(e);   /* #69：記低打過，返程唔重複 */
               if (remove) bullets.splice(i, 1);
               if (e.hp <= 0) {
-                spawnBoom(e.x, e.y);
-                if (e.kind === 'spiral') {
-                  onBossDown(e);
-                  return;
-                }
-                runScore += (e.score || GRUNT_SCORE) * affScore * styScore;
-                runKills++;
-                runGrunts++;
-                /* v0.25.0 C 機被動：每次擊殺回充 5% 炸彈冷卻
-                   （打得越多，炸彈越快回來——鼓勵主動出擊） */
-                if (ship.chassis === 'C' && bombCDUntil > 0) {
-                  bombCDUntil = Math.max(0, bombCDUntil - (ship.bombCD || 12000) * 0.05);
-                }
-                /* v0.26.0 #94 通用技能「迴氣」：擊殺敵人後 3 秒內射速 ×1.8。
-                   ⚠️ 用**遊戲時間**（gameClockMs）—— 同 A 機連射加速同一個時間基準，
-                      低 FPS 裝置唔會因為掉幀而誤判窗口結束。 */
-                if (ship.universalId === 'recover') {
-                  ship._recoverUntil = gameClockMs + RECOVER_MS;
-                }
-                e._dead = true;
-                sfx(e.elite ? 'kill' : 'hit');
-                /* 分裂蟲 → mini；護盾機死 → 裂彈；v3.11 裂解者 → 散射小彈 */
-                if (e.swarm || e.splitOnDeath) spawnSwarmChildren(e.x, e.y);
-                if (e.splitter) spawnSplitterChildren(e.x, e.y);
-                if (e.shield) spawnSplitBurst(e.x, e.y);
-                if (e.elite) console.log('[擊破] 精英「' + e.affix + '」· +' + (e.score || ELITE_SCORE));
-                else if (e.sniper) console.log('[擊破] 狙擊 · +' + (e.score || SNIPER_SCORE));
-                else if (e.shield) console.log('[擊破] 護盾機 · +' + (e.score || SHIELD_SCORE));
-                else if (e.swarm) console.log('[擊破] 分裂 · +' + (e.score || SWARM_SCORE));
+                /* v0.27.0：死亡處理統一行 killEnemy()（元素效果都經過同一條路徑）。 */
+                if (killEnemy(e) === 'boss') { onBossDown(e); return; }
                 break;
               }
               break;
@@ -4793,7 +5487,7 @@ function tick(dtMs) {
     hudEl.tip.textContent =
       `種子 ${runSeed}　詞綴 ${stageAffix ? stageAffix.name + '(×' + affScore.toFixed(2) + ')' : '無'}　` +
       `風格 ${stageStyle ? stageStyle.name : '無'}　` +
-      `形態 ${ship.shotForm || 'bolt'}${ship.shotTags ? '　tag ' + Object.entries(ship.shotTags).filter(([k,v])=>v>0).map(([k,v])=>k+v).join(',') || '—' : ''}　` +
+      `形態 ${ship.shotForm || 'bolt'}${ship.shotTags ? '　tag ' + Object.entries(ship.shotTags).filter(([k,v])=>v>0).map(([k,v])=>k+v).join(',') || '無' : ''}　` +
       `彈 ${bullets.filter(b=>b.owner==='player').length}　` +
       `擊殺 ${runKills}（雜魚 ${runGrunts} · boss ${runKills - runGrunts}）　擦彈 ${grazeCount}（能量 ${grazeEnergy}/${GRAZE_ENERGY_NEED}）　` +
       hudEl.tip.textContent;
@@ -5017,7 +5711,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.26.0 · 新機種 · 通用技能 · 新敵人', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.27.0 · 元素層 · 五種元素 · 全新特效', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -5029,7 +5723,7 @@ function render() {
     if (bestScore > 0 || bestTime > 0) {
       ctx.fillStyle = '#ff6';
       ctx.font = 'bold 12px monospace';
-      ctx.fillText(diffName() + ' 最佳：' + Math.floor(bestScore) + '（' + (bestTime > 0 ? bestTime.toFixed(1) + ' 秒' : '—') + '）', VIEW_W/2, VIEW_H/2 + 18);
+      ctx.fillText(diffName() + ' 最佳：' + Math.floor(bestScore) + '（' + (bestTime > 0 ? bestTime.toFixed(1) + ' 秒' : '無') + '）', VIEW_W/2, VIEW_H/2 + 18);
     } else {
       ctx.fillStyle = '#889';
       ctx.font = '12px monospace';
@@ -5087,6 +5781,121 @@ function render() {
     ctx.fillStyle = '#ff6';
     ctx.font = '12px monospace';
     ctx.fillText('按 1 / 2 / 3 或點擊卡牌', VIEW_W/2, VIEW_H - 40);
+    renderTail();
+    return;
+  }
+
+  if (fsm.cur === STATE.ELEMENT_PICK) {
+    /* v0.27.0 #102：揀基底元素（5 選 1，2 行 × 3 列同揀機畫面同一種網格） */
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.fillRect(0, 0, VIEW_W, 70);
+    ctx.fillStyle = '#0ff';
+    ctx.font = 'bold 16px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('揀元素', VIEW_W/2, 40);
+    ctx.font = '10px monospace';
+    ctx.fillStyle = '#9ab';
+    ctx.fillText('決定你嘅攻擊風格 · 五種元素唔同打法', VIEW_W/2, 56);
+    const EL = elementCardsLayout();
+    elementOffer.forEach((id, i) => {
+      const r = EL.rect(i);
+      const x = r.x + r.w / 2;
+      const e = ELEMENTS[id];
+      if (!e) return;
+      ctx.fillStyle = 'rgba(0,30,50,0.75)';
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.strokeStyle = e.color;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(r.x, r.y, r.w, r.h);
+      ctx.strokeStyle = 'rgba(0,255,255,0.25)';
+      ctx.strokeRect(r.x + 4, r.y + 4, r.w - 8, r.h - 8);
+      /* 元素彈藥 sprite（圖集，零 emoji / 零 Unicode 符號） */
+      if (!drawSprite(e.sprite, x, r.y + 22, 2)) {
+        ctx.fillStyle = e.color;
+        ctx.font = 'bold 24px monospace';
+        ctx.fillText(e.name, x, r.y + 28);
+      }
+      ctx.fillStyle = e.color;
+      ctx.font = 'bold 14px monospace';
+      ctx.fillText(e.name, x, r.y + 48);
+      ctx.font = '10px monospace';
+      ctx.fillStyle = '#fd6';
+      ctx.fillText(e.tag, x, r.y + 63);
+      ctx.font = '9px monospace';
+      ctx.fillStyle = '#cde';
+      const lines = wrapText(ctx, e.lv[0], r.w - 14);
+      for (let li = 0; li < Math.min(lines.length, 3); li++) {
+        ctx.fillText(lines[li], x, r.y + 78 + li * 10);
+      }
+    });
+    ctx.fillStyle = '#ff6';
+    ctx.font = '12px monospace';
+    ctx.fillText('點卡 或 按 1 2 3 4 5', VIEW_W/2, VIEW_H - 48);
+    ctx.fillStyle = '#9ab';
+    ctx.font = '10px monospace';
+    ctx.fillText('揀完元素仲會再揀一個通用技能', VIEW_W/2, VIEW_H - 30);
+    renderTail();
+    return;
+  }
+
+  if (fsm.cur === STATE.ELEM_CHOICE) {
+    /* v0.27.0 #103：boss 後元素抉擇（3 選 1） */
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(0, 0, VIEW_W, 70);
+    ctx.fillStyle = '#0ff';
+    ctx.font = 'bold 16px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('元素抉擇', VIEW_W/2, 40);
+    ctx.font = '10px monospace';
+    ctx.fillStyle = '#9ab';
+    ctx.fillText('打贏 boss 就有一次升級機會', VIEW_W/2, 56);
+    const CL = elemChoiceCardsLayout();
+    elemChoiceOffer.forEach((c, i) => {
+      const r = CL.rect(i);
+      const x = r.x + r.w / 2;
+      const e = ELEMENTS[c.elemId];
+      if (!e) return;
+      ctx.fillStyle = 'rgba(0,30,50,0.75)';
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.strokeStyle = c.kind === 'base' ? '#0ff' : e.color;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(r.x, r.y, r.w, r.h);
+      ctx.strokeStyle = 'rgba(0,255,255,0.25)';
+      ctx.strokeRect(r.x + 4, r.y + 4, r.w - 8, r.h - 8);
+      if (!drawSprite(e.sprite, x, r.y + 20, 1.8)) {
+        ctx.fillStyle = e.color;
+        ctx.font = 'bold 24px monospace';
+        ctx.fillText(e.name, x, r.y + 26);
+      }
+      ctx.fillStyle = e.color;
+      ctx.font = 'bold 14px monospace';
+      /* ⚠️ 專精唔係 LV4 —— 顯示真實等級（LV3），「專精」由下面嘅標籤講 */
+      ctx.fillText(e.name + ' LV' + Math.min(c.lv, ELEMENT_MAX_LV), x, r.y + 44);
+      /* 卡種標籤：一講清楚呢張卡做咩 */
+      let kindText, kindCol, desc;
+      if (c.kind === 'base') {
+        if (c.master) { kindText = '專精'; kindCol = '#ff6'; desc = '基底元素傷害 +40%'; }
+        else { kindText = '基底升級'; kindCol = '#0ff'; desc = e.lv[Math.min(c.lv, ELEMENT_MAX_LV) - 1]; }
+      } else if (c.upgrade) {
+        kindText = '副元素升級'; kindCol = '#6f6'; desc = e.lv[Math.min(c.lv, ELEMENT_MAX_LV) - 1];
+      } else if (c.switcher) {
+        kindText = '轉職'; kindCol = '#f96'; desc = '改成「' + e.name + '」，舊副元素冇咗';
+      } else {
+        kindText = '加副元素'; kindCol = '#6f6'; desc = e.lv[0];
+      }
+      ctx.font = '10px monospace';
+      ctx.fillStyle = kindCol;
+      ctx.fillText(kindText, x, r.y + 60);
+      ctx.font = '9px monospace';
+      ctx.fillStyle = '#cde';
+      const lines = wrapText(ctx, desc, r.w - 14);
+      for (let li = 0; li < Math.min(lines.length, 4); li++) {
+        ctx.fillText(lines[li], x, r.y + 76 + li * 10);
+      }
+    });
+    ctx.fillStyle = '#ff6';
+    ctx.font = '12px monospace';
+    ctx.fillText('點左/中/右 或 按 1 2 3', VIEW_W/2, VIEW_H - 48);
     renderTail();
     return;
   }
@@ -5555,7 +6364,7 @@ function render() {
            令學生一眼認出「呢架機嘅彈好粗」（零新 sprite、零新配色）。
            ⚠️ 用 save/restore 包住，避免白色描邊漏去後面其他圖層。 */
         ctx.save();
-        const ok = drawSpriteAnim('anim_bullet_p', 'bullet_p', b.x, b.y, HEAVY_SCALE, animT);
+        const ok = drawPlayerBulletSprite('anim_bullet_p', 'bullet_p', b.x, b.y, HEAVY_SCALE);
         ctx.strokeStyle = '#fff';
         ctx.lineWidth = 1.5;
         ctx.strokeRect(b.x - 3.5 * HEAVY_SCALE, b.y - 6 * HEAVY_SCALE, 7 * HEAVY_SCALE, 12 * HEAVY_SCALE);
@@ -5564,7 +6373,7 @@ function render() {
           ctx.fillRect(b.x - 3 * HEAVY_SCALE, b.y - 6 * HEAVY_SCALE, 6 * HEAVY_SCALE, 12 * HEAVY_SCALE);
         }
         ctx.restore();
-      } else if (!drawSpriteAnim('anim_bullet_p', 'bullet_p', b.x, b.y, 1.4, animT)) {
+      } else if (!drawPlayerBulletSprite('anim_bullet_p', 'bullet_p', b.x, b.y, 1.4)) {
         ctx.fillStyle = '#0ff';
         ctx.fillRect(b.x - 1, b.y - 4, 2, 8);
       }
@@ -5962,6 +6771,9 @@ function drawGrazeMeter() {
     ctx.fillText('S' + lastStage + ' · ' + th.name, VIEW_W/2, 17);
   }
   drawStageAffixFx();       /* v3.8 #43：詞綴橫幅 + 停電暗幕 */
+  /* v0.27.0 #105：元素屏幕效果（火焰 vignette / 結冰覆蓋 / 雷閃 / 光爆 / 暗幕）。
+     ⚠️ 畫喺遊戲層之上、HUD 之下 —— 玩家要見到效果，但唔可以蓋住讀數。 */
+  drawScreenFx();
   renderTail();
 }
 
@@ -5989,7 +6801,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.26.0 已載入');
+console.log('[啟動] 末日救未來 v0.27.0 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */
@@ -6004,6 +6816,12 @@ window.__dsf = {
   sheetReady: () => sheetReady, drawSprite, enterPause, resumePause,
   pauseReason: () => pauseReason, D, diffId: () => diffId, setDifficulty,
   pickShipAndStart, hitShipCard, handleMenuTap,
+  /* v0.27.0 元素層（冒煙測試用） */
+  elementS: ELEMENTS, elementIds: ELEMENT_IDS,
+  applyPickedElement, buildElemChoiceOffer, applyPickedElemChoice,
+  elementCardsLayout, hitElementCard, currentElement, applyElementEffects,
+  elemOffer: () => elementOffer, elemChoiceOffer: () => elemChoiceOffer,
+  applyPickedUniversal,
 };
 </script>
 </body>

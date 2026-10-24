@@ -1131,6 +1131,9 @@ function applyPickedUpgrade(idx) {
     for (const id of Object.keys(playerStacks)) {
       if (id.indexOf('form_') === 0 && id !== up.id) delete playerStacks[id];
     }
+    /* v3.11 #68：切換形態時清 laser 命中記錄，
+       否則新光束會以為啱啱打過嗰啲敵（唔再觸發傷害）。 */
+    resetLaserHit();
   }
   playerStacks[up.id] = (playerStacks[up.id] || 0) + 1;
   sfx('pick');
@@ -2943,22 +2946,23 @@ function pushPlayerBullet(b) {
   cullPlayerBullets();
 }
 
-/* v3.11 #68：laser 持續光束 —— 機身跟隨嘅光柱，每次射擊判定一次線上傷害。
-   跟其它形態「放出去就唔理」相反：玩家要主動用走位掃射。
-   ⚠️ 唔做蓄力（智慧白板學生唔應該要讀蓄力條）；寬度固定。
-   唯一實體，一條（唔跟 bulletCount 扇）—— 扇形對光束冇意義。 */
+/* v3.11 #68：laser 持續光束 —— 機身跟隨嘅光柱。
+   ⚠️ **真正持續**：只要 shotForm 係 laser，光柱就一直喺度（唔靠射速維持），
+      每幀做線上判定；同一敵人只計一次（_laserHitSet）。
+      原本設計係「開火時光束亮 120ms」——但發射間隔 A 機 71ms / C 機 200ms，
+      C 機光束熄咗 80ms 先再亮，閃爍到根本睇唔到，唔符合「持續光束」。
+      而家改成：光束常駐 + 每幀判定（用 tick 內嘅 laserTick()）。 */
 const LASER_W = 8;                 /* 光束半寬 */
 const LASER_LEN = 460;             /* 光束長度（畫面高 480，由機身向上） */
-let laserUntil = 0;                /* 光束持續到邊個時間戳 */
+const LASER_DMG_TICK_MS = 90;      /* 同一敵人最少隔幾多 ms 先可以再被打 */
 let laserHitSet = [];              /* 本次光束已打中過嘅敵（避免每幀重複計分） */
+let laserHitAt = null;             /* 敵 → 上次命中時間戳 */
 
-/* 開火：即刻做一次線上判定 + 延長光束 */
+/* 開火：立即做一次線上判定（唔等下一幀，確保第一下就打中） */
 function fireLaser(ship) {
-  const now = performance.now();
   const dmg = ((ship.bulletDmg || 1) + lootBulletDmg()) * 0.35;
   const x = ship.x, y = ship.y - 8;
-  laserUntil = now + 120;          /* 光束持續 120ms（射速高時會連成一條） */
-  laserHitSet = [];                /* 每次開火重新計 */
+  const now = performance.now();
   for (const e of enemies) {
     if (e.kind !== 'spiral' && e.kind !== 'grunt') continue;
     if (e._dead) continue;
@@ -2967,6 +2971,8 @@ function fireLaser(ship) {
     if (Math.abs(e.x - x) < halfW + LASER_W && e.y < y && e.y > y - LASER_LEN) {
       if (laserHitSet.indexOf(e) >= 0) continue;
       laserHitSet.push(e);
+      if (!laserHitAt) laserHitAt = new Map();
+      laserHitAt.set(e, now);
       e.hp -= dmg;
       spawnSparks(e.x, e.y, 3, 0.08);
       sfx('hit');
@@ -2980,9 +2986,43 @@ function fireLaser(ship) {
     }
   }
 }
-/* 光束仲喺畫面上？（供 render 查） */
+
+/* 每幀：光束持續判定（同一敵人 LASER_DMG_TICK_MS 內只計一次） */
+function laserTick(ship, dtMs) {
+  if (!ship || ship.shotForm !== 'laser') return;
+  const dmg = ((ship.bulletDmg || 1) + lootBulletDmg()) * 0.35;
+  const x = ship.x, y = ship.y - 8;
+  const now = performance.now();
+  for (const e of enemies) {
+    if (e.kind !== 'spiral' && e.kind !== 'grunt') continue;
+    if (e._dead) continue;
+    const halfW = (e.kind === 'spiral') ? 12 : 8;
+    if (Math.abs(e.x - x) < halfW + LASER_W && e.y < y && e.y > y - LASER_LEN) {
+      const last = laserHitAt && laserHitAt.get(e);
+      if (last != null && now - last < LASER_DMG_TICK_MS) continue;
+      if (!laserHitAt) laserHitAt = new Map();
+      laserHitAt.set(e, now);
+      e.hp -= dmg;
+      spawnSparks(e.x, e.y, 2, 0.06);
+      if (e.kind === 'spiral') {
+        runScore += BOSS_SCORE * 0.05 * affScore * styScore;
+        if (e.hp <= 0) onBossDown(e);
+      } else {
+        runScore += (e.score || GRUNT_SCORE) * 0.5 * affScore * styScore;
+        if (e.hp <= 0) { runKills++; runGrunts++; e._dead = true; sfx('kill'); }
+      }
+    }
+  }
+}
+
+/* 光束仲喺畫面上？（供 render 查）—— 形態係 laser 就一直喺度 */
 function laserActive() {
-  return ship && ship.shotForm === 'laser' && performance.now() < laserUntil;
+  return !!(ship && ship.shotForm === 'laser');
+}
+/* 切換形態 / 重開時清光束狀態 */
+function resetLaserHit() {
+  laserHitSet = [];
+  laserHitAt = null;
 }
 
 /* v3.11 #71 splitter 死後裂 3 枚散射小彈（唔同 swarm 嘅 mini ——
@@ -3144,11 +3184,20 @@ function tickPlayerBullets(dtMs) {
            ① 鎖定期（發射後 MISSILE_LOCK_MS）慢速微追——逼玩家觀察彈道
            ② 巡航期加速 + 轉角 ×2——真正嘅追擊武器 */
         const lockAge = b.t || 0;
-        let turn, boost = 1;
+        let turn;
         if (b.form === 'missile') {
           const locked = lockAge < MISSILE_LOCK_MS;
           turn = locked ? 0.0018 : 0.0070;
-          boost = locked ? 0.45 : 1.0;
+          /* ⚠️ 鎖定期減速**只做一次**（記錄原始速度）——
+             原本每幀乘 0.45，400ms = 24 幀 → 速度變 0.45^24 ≈ 0，
+             導彈完全停晒，所以「有時唔識追蹤」。改為一次性降到 45%。 */
+          if (locked && b._lockSpd == null) {
+            b._lockSpd = Math.hypot(b.vx, b.vy);
+            const s2 = b._lockSpd * 0.45;
+            const cur = Math.hypot(b.vx, b.vy) || 1;
+            b.vx = (b.vx / cur) * s2;
+            b.vy = (b.vy / cur) * s2;
+          }
         } else {
           turn = 0.0022 * Math.min(3, homeLv || 1);
         }
@@ -3158,13 +3207,6 @@ function tickPlayerBullets(dtMs) {
         const k = Math.min(1, turn * dtMs);
         b.vx += (desiredVx - b.vx) * k;
         b.vy += (desiredVy - b.vy) * k;
-        if (boost !== 1) {
-          /* 鎖定期減速（只減不放，唔會令彈突然加速） */
-          const cur = Math.hypot(b.vx, b.vy) || 1;
-          const tgtSp = cur * boost;
-          b.vx = (b.vx / cur) * tgtSp;
-          b.vy = (b.vy / cur) * tgtSp;
-        }
       }
     }
 
@@ -3407,6 +3449,10 @@ function tick(dtMs) {
     spawnPlayerShot();
     ship.fireCD = 1000 / Math.max(0.5, ship.fireRate || 1);
   }
+
+  /* v3.11 #68：laser 係**持續**光束，每幀判定（唔靠開火維持）。
+     形態唔係 laser 就唔行（開支為零）。 */
+  laserTick(ship, dtMs);
 
   /* ---- 玩家子彈移動／形態路徑 ---- */
   tickPlayerBullets(dtMs);
@@ -3758,6 +3804,8 @@ function tick(dtMs) {
     hudEl.tip.textContent =
       `種子 ${runSeed}　詞綴 ${stageAffix ? stageAffix.name + '(×' + affScore.toFixed(2) + ')' : '無'}　` +
       `風格 ${stageStyle ? stageStyle.name : '無'}　` +
+      `形態 ${ship.shotForm || 'bolt'}${ship.shotTags ? '　tag ' + Object.entries(ship.shotTags).filter(([k,v])=>v>0).map(([k,v])=>k+v).join(',') || '—' : ''}　` +
+      `彈 ${bullets.filter(b=>b.owner==='player').length}　` +
       `擊殺 ${runKills}（雜魚 ${runGrunts} · boss ${runKills - runGrunts}）　擦彈 ${grazeCount}（能量 ${grazeEnergy}/${GRAZE_ENERGY_NEED}）　` +
       hudEl.tip.textContent;
   }

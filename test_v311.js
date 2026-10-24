@@ -34,7 +34,20 @@ check('爆散常數齊（數目 / 傷害比 / 上限）',
   /MISSILE_BURST_N/.test(h) && /MISSILE_BURST_DMG/.test(h) && /MISSILE_BURST_CAP/.test(h));
 check('鎖定期轉角細、巡航期轉角大（兩階段）',
   /locked \? 0\.0018 : 0\.0070/.test(strip(h)));
-check('鎖定期減速、巡航期全速', /boost = locked \? 0\.45 : 1\.0/.test(strip(h)));
+check('鎖定期一次性減速（_lockSpd 記錄，唔係每幀重複乘）',
+  /if \(locked && b\._lockSpd == null\)[\s\S]{0,300}b\._lockSpd \* 0\.45/.test(strip(h)));
+check('減速只做一次（唔會 0.45^N 指數崩壞）',
+  !/boost !== 1/.test(strip(h)) && !/cur \* boost/.test(strip(h)));
+check('laser 改成常駐光束（laserTick 每幀判定，唔靠射速）',
+  /function laserTick\(ship, dtMs\)/.test(h) && /laserTick\(ship, dtMs\);/.test(h));
+check('laserActive() 唔再靠時間戳（形態就係 laser 就一直喺度）',
+  /function laserActive\(\)[\s\S]{0,120}ship\.shotForm === 'laser'/.test(strip(h)) &&
+  !/laserUntil/.test(strip(h)));
+check('同一敵人光束傷害有間隔（LASER_DMG_TICK_MS）', /const LASER_DMG_TICK_MS = \d+;/.test(h));
+check('切換形態時清 laser 命中記錄', /resetLaserHit\(\);/.test(h));
+check('debug HUD 顯示形態 + tag + 場上彈數',
+  /形態 \$\{ship\.shotForm/.test(h) && /Object\.entries\(ship\.shotTags\)/.test(h) &&
+  /bullets\.filter\(b=>b\.owner==='player'\)/.test(h));
 check('spawnMissileBurst() 存在', /function spawnMissileBurst\(src\)/.test(h));
 check('命中時觸發爆散（_burstDone 防重複）', /if \(b\.form === 'missile' && b\._burstDone !== true\)/.test(h));
 check('爆散有 cap（唔爆版）', /if \(existing >= MISSILE_BURST_CAP\) return;/.test(h));

@@ -148,7 +148,7 @@ cd ~/workspace/doomsday-save-future
 for f in test_*.js; do node "$f" >/dev/null 2>&1 && echo "PASS $f" || echo "FAIL $f"; done
 ```
 
-**16 個測試檔**，全部用 Node 直接跑（**冇測試框架，冇 npm install**）。每個檔案自己 `console.log` 逐項結果，最尾印 `✓ 全部通過`。
+**17 個測試檔**，全部用 Node 直接跑（**冇測試框架，冇 npm install**）。每個檔案自己 `console.log` 逐項結果，最尾印 `✓ 全部通過`。
 
 > **`test_visual_v024.js` 係 v0.24.0 視覺優化嘅守門測試**，覆蓋：
 > 鍵盤選單唔會連跳兩級（行為測試，真係抽出 handler 跑）、em dash 零殘留、
@@ -166,6 +166,31 @@ for f in test_*.js; do node "$f" >/dev/null 2>&1 && echo "PASS $f" || echo "FAIL
 > 「專精」+40% 實際加到傷害（行為測試，比較開／關專精嘅傷害數值）、
 > 已攞咗專精就唔再出基底卡（零死卡）、2×3 揀元素網格幾何、元素欄位零死碼、
 > 強化池仍然 26 張 + 形態卡 5 張 + tag 4 個（元素層零影響舊系統）。
+>
+> **`test_touch_v0271.js` 係 v0.27.1 觸控去重嘅守門測試**（4 節），覆蓋：
+> 一次實體觸控只推一個 state（標題／難度／揀機／揀元素 4 個畫面）、
+> 隔 300ms 嘅兩次獨立撳都要處理、**戰鬥中唔去重**（玩家要連續撳嚟移位）、
+> `touchstart` 唔准再手寫 state 清單（必須用 `isMenuState()`）。
+> ⚠️ **呢類 bug 唔會被桌面 mouse 測試捉到** —— mouse 測試唔會派發 `touchstart`，
+> 必須用 Playwright WebKit + `hasTouch: true` + `touchscreen.tap()` 先重現到。
+>
+> ### 5.1.1 抽出函數做行為測試（**兩個陷阱，2026-10-25 踩過**）
+>
+> 本 repo 嘅測試用 `makeFn(name, deps, consts)` 把函數抽出嚟喺 stub 環境實際執行。
+> **注入依賴嗰陣有兩個必踩嘅坑**：
+>
+> | 陷阱 | 症狀 | 正確做法 |
+> |---|---|---|
+> | **注入 `makeFn` 嘅 wrapper** | wrapper 用 rest args 實作，注入後被內層 function 用 `dep(x)` 叫（冇帶依賴值）時，佢把 `x` 當成依賴值 → **own-arity 錯**（`isMenuState(s)` 收到 0 個 arg → 永遠 false） | 注入用 **`eval` 返個函數到測試檔 scope** —— scope 有同名 const 就自然解析到，own arity 保持原樣 |
+> | **`new Function('dep', body)` 按位置綁定** | 「own args + dep args」嘅傳遞方式令自由變數（dep）撞到 own arg 嘅位置 | 同上 —— 用 `eval` + scope 閉包，唔好靠參數位置 |
+>
+> ```js
+> const STATE = eval('(' + extractBlock('STATE') + ')');
+> const realIsMenuState = eval('(' + extractFunction('isMenuState') + ')');
+> ```
+>
+> ⚠️ **可變狀態要用 object 容器**（`const menuTapState = { ms: -1e9, x: 0, y: 0 }`）——
+> 3 個 module 層 `let` 注入落去係 by-value，mutations 唔會寫返。
 
 ### 5.2 語法檢查
 
@@ -250,7 +275,7 @@ console.log(t.length?'✗ em dash 殘留: '+t.join(' | '):'✓ 零 em dash');
 ### 5.4 交付前檢查清單
 
 ```
-□ 全套 16 個測試檔 PASS
+□ 全套 17 個測試檔 PASS
 □ index.html 語法檢查 OK
 □ 版號已 bump（兩處：標題畫面 + 啟動日誌）
 □ PLAN.md 參考表已更新（如有設計改動）
@@ -339,6 +364,8 @@ console.log(t.length?'✗ em dash 殘留: '+t.join(' | '):'✓ 零 em dash');
 | **效果層欄位只寫唔讀（死卡）** | 卡面寫住「+40%」但實際傷害冇加 —— 玩家見到嘅承諾同實際效果唔一致 | 每個效果欄位都要有 game logic 讀。⚠️ **只檢查「欄位出現次數」捉唔到**（v0.27.0 嘅 `elementMaster` 就係咁漏咗）—— 必須用**行為測試比較實際數值**（開／關效果兩次嘅傷害差） |
 | **屏幕效果每幀觸發** | 連鎖／灼燒每幀都閃 → 畫面一直跳，低 FPS 裝置更卡 | 每種屏幕效果**獨立冷卻**（`screenFxCd`），同一時間只有一個 screenFx；粒子總量有上限（`PARTICLE_CAP = 260`） |
 | **`ctx.filter` 做染色** | 低 FPS 智慧白板裝置會慢到拖死 | 用 offscreen canvas + `source-atop` + Map 快取（`getTintedSprite`） |
+| **一次實體觸控被處理兩次** | 選單一次撳**連跳兩級**（撳難度卡直接入關、撳機卡跳過揀元素）—— 玩家見到「冇主頁、冇揀機，一入去就係戰鬥」 | 喺支援 Pointer Events 嘅裝置，一次撳會派發 **`pointerdown` + `touchstart`** 兩個事件，**兩個 handler 都叫 `handleMenuTap()`**。修正 = `handleMenuTap` 入口加 `isDuplicateMenuTap()` 去重（120ms + 32px 容差），**而且只喺 `isMenuState(fsm.cur)` 時生效**（戰鬥中玩家要連續撳嚟移位，一齊去重就移唔到）。⚠️ **桌面 mouse 測試唔會派發 `touchstart`，所以捉唔到** —— 必須用 Playwright WebKit + `hasTouch: true` + `touchscreen.tap()` |
+| **多份 state 清單各自維護** | 加新 state 時漏改其中一份 → 某啲畫面喺觸控裝置唔 `preventDefault`、或者處理唔到 | 抽 `isMenuState(s)` 做**唯一真實來源**，所有 handler 引用佢（v0.21.2 起 `touchstart` 手寫一份白名單、`handleMenuTap` 又按分支寫另一份，v0.26.0 / v0.27.0 加 state 時就開始漂移） |
 
 ---
 

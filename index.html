@@ -2767,10 +2767,48 @@ function emitWaveType(s, stageId, chunkId) {
 }
 
 /* ---------- 7. 輸入 —— Pointer Events + 鍵盤 ---------- */
+/* 選單／非戰鬥畫面（v0.27.1）：touchstart 白名單同 handleMenuTap 去重共用同一份清單，
+   ⚠️ 唔好手寫兩份 state 清單 —— v0.26.0 加咗 SKILL_PICK、v0.27.0 加咗
+   ELEMENT_PICK / ELEM_CHOICE，三處 state 各自維護就一定會漏。 */
+function isMenuState(s) {
+  return s === STATE.TITLE || s === STATE.DIFF_SELECT || s === STATE.SHIP_SELECT
+      || s === STATE.SKILL_PICK || s === STATE.ELEMENT_PICK || s === STATE.ELEM_CHOICE
+      || s === STATE.CHOICE || s === STATE.STYLE || s === STATE.EVENT
+      || s === STATE.REVERSE || s === STATE.GAMEOVER || s === STATE.VICTORY
+      || s === STATE.PAUSED;
+}
+
+/* ---------- 觸控去重（v0.27.1 修正）----------
+   ⚠️ 喺支援 Pointer Events 嘅瀏覽器（iPad Safari 13+ / Android Chrome / 桌面 Chrome），
+   一次實體觸控會派發 **pointerdown** 同 **touchstart** 兩個事件，
+   而下面兩個 handler 都會叫 handleMenuTap() → 一次撳被處理兩次
+   → 選單一次撳連跳兩級（撳難度卡直接入關、撳機卡直接入戰鬥、撳元素卡跳過通用技能）。
+   ⚠️ 呢個 bug 由 v0.21.2 引入 touchstart handler 嗰陣就存在，
+   一直冇人喺真實觸控裝置測試（桌面 mouse 測試唔會派發 touchstart）。
+   ⚠️ 唔可以喺任何情況都去重 —— 戰鬥中玩家會連續撳嚟移位，吞咗就移唔到。
+   所以去重**只喺選單畫面生效**（戰鬥中唔記錄、唔去重）。 */
+const MENU_TAP_DEDUP_MS = 120;   /* 同一個物理觸控嘅兩個事件相隔 < 10ms；人手連撳 > 150ms */
+const MENU_TAP_DEDUP_PX = 32;    /* 座標容差：同一個掣嘅兩次事件座標幾乎一樣 */
+/* ⚠️ 狀態用 object 容器（唔係 3 個 module 層 let）——
+   咁測試抽出函數時注入同一個 object，mutations 會生效（by-value 注入唔會）。 */
+const menuTapState = { ms: -1e9, x: 0, y: 0 };
+/* 抽成獨立函數方便做行為測試（唔好只靠 regex 檢查） */
+function isDuplicateMenuTap(now, x, y) {
+  if (now - menuTapState.ms < MENU_TAP_DEDUP_MS
+      && Math.abs(x - menuTapState.x) < MENU_TAP_DEDUP_PX
+      && Math.abs(y - menuTapState.y) < MENU_TAP_DEDUP_PX) return true;
+  menuTapState.ms = now; menuTapState.x = x; menuTapState.y = y;
+  return false;
+}
+
 /* 選單／非戰鬥點擊：pointer + touch 共用（舊 iPad 可能只有 touch） */
 function handleMenuTap(clientX, clientY) {
   const rect = canvas.getBoundingClientRect();
   if (rect.width < 1 || rect.height < 1) return false;
+  /* v0.27.1：同一個物理觸控只處理第一個事件（pointerdown 先到，touchstart 被吞） */
+  if (isMenuState(fsm.cur)) {
+    if (isDuplicateMenuTap(performance.now(), clientX, clientY)) return true;
+  }
   const px = (clientX - rect.left) * VIEW_W / rect.width;
   const py = (clientY - rect.top)  * VIEW_H / rect.height;
   if (handleAudioPanelTap(px, py)) return true;
@@ -2972,11 +3010,10 @@ canvas.addEventListener('pointercancel', endDrag);
 canvas.addEventListener('touchstart', (e) => {
   if (!e.touches || !e.touches[0]) return;
   const t = e.touches[0];
-  /* 只處理選單；戰鬥拖曳仍走 pointer */
-  if (fsm.cur === STATE.TITLE || fsm.cur === STATE.DIFF_SELECT || fsm.cur === STATE.SHIP_SELECT
-      || fsm.cur === STATE.CHOICE || fsm.cur === STATE.STYLE || fsm.cur === STATE.EVENT
-      || fsm.cur === STATE.REVERSE || fsm.cur === STATE.GAMEOVER || fsm.cur === STATE.VICTORY
-      || fsm.cur === STATE.PAUSED) {
+  /* 只處理選單；戰鬥拖曳仍走 pointer。
+     ⚠️ v0.27.1：用 isMenuState() 取代手寫 state 清單（原本漏咗 SKILL_PICK /
+        ELEMENT_PICK / ELEM_CHOICE，令呢啲畫面喺觸控裝置唔 preventDefault）。 */
+  if (isMenuState(fsm.cur)) {
     if (handleMenuTap(t.clientX, t.clientY)) {
       e.preventDefault();
     }
@@ -5711,7 +5748,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.27.0 · 元素層 · 五種元素 · 全新特效', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.27.1 · 元素層 · 五種元素 · 全新特效', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -6801,7 +6838,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.27.0 已載入');
+console.log('[啟動] 末日救未來 v0.27.1 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */

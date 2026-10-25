@@ -521,6 +521,22 @@ function wrapText(ctx, text, maxWidth) {
 ⚠️ **專精卡效果一定要寫「基底元素傷害 +40%」** —— 同時**後端真係要加到 40%**，
 否則就係「卡面呃玩家」（v0.27.0 實作期揭出嘅真死卡）。
 
+### 7.5 觸控輸入規格（**v0.27.1**）
+
+智慧白板 / iPad 係主要場景，所以**一次撳必須只做一件事**。
+
+| 規則 | 內容 |
+|---|---|
+| **一次撳 = 一個操作** | 支援 Pointer Events 嘅裝置，一次實體觸控會派發 **`pointerdown` + `touchstart`** 兩個事件。兩個 handler 都叫 `handleMenuTap()` 就會**連跳兩級**（撳難度卡直接入關、撳機卡跳過揀元素） |
+| **去重規則** | `handleMenuTap()` 入口用 `isDuplicateMenuTap(now, x, y)`：**120ms 窗口 + 32px 座標容差**。同一個物理觸控嘅兩個事件相隔 < 10ms；人手最快連撳 > 150ms，所以兩者唔會撞 |
+| **只喺選單畫面去重** | `if (isMenuState(fsm.cur))` 守衛。**戰鬥中唔可以去重** —— 玩家要連續撳嚟移位，被吞就移唔到 |
+| **state 清單單一來源** | 全部用 `isMenuState(s)`。⚠️ **唔准手寫第二份**（原本 `touchstart` 一份白名單、`handleMenuTap` 又一份，v0.26.0 加 `SKILL_PICK`、v0.27.0 加 `ELEMENT_PICK` / `ELEM_CHOICE` 就開始漂移 → 呢三個畫面喺觸控裝置唔 `preventDefault`） |
+| **選單 state 清單** | TITLE · DIFF_SELECT · SHIP_SELECT · SKILL_PICK · ELEMENT_PICK · ELEM_CHOICE · CHOICE · STYLE · EVENT · REVERSE · GAMEOVER · VICTORY · PAUSED |
+| **觸控目標** | 所有卡 ≥ 64×64（PLAN #20），實機卡 88–96 闊 |
+
+⚠️ **呢類 bug 桌面 mouse 測試捉唔到** —— mouse 測試唔會派發 `touchstart`。
+守門測試 = `test_touch_v0271.js`；實機重現 = Playwright WebKit + `hasTouch: true` + `touchscreen.tap()`。
+
 ---
 
 ## 8. 動畫與轉場

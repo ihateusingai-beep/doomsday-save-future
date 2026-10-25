@@ -270,8 +270,15 @@ console.log('\n=== 4. 唔准再手寫 state 清單 ===');
         /if \(isMenuState\(fsm\.cur\)\)[\s\S]{0,160}isDuplicateMenuTap/.test(mt));
   check('handleMenuTap 叫咗 isDuplicateMenuTap', /isDuplicateMenuTap\(/.test(mt));
   check('去重狀態用 object 容器（方便注入測試）', /const menuTapState = \{/.test(h));
-  check('標題畫面版本字串 = v0.27.1', /fillText\('v0\.27\.1 ·/.test(h));
-  check('啟動日誌版本 = v0.27.1', /末日救未來 v0\.27\.1 已載入/.test(h));
+  /* ⚠️ 版本斷言用 >= 而唔係 exact-equal（記憶 §3：SemVer 喺 runtime 係單一真實來源，
+     測試只應該守住「唔好退版」，唔應該鎖死死版本號 —— 否則每次 bump 版都會誤報 fail）。 */
+  const ver = (h.match(/末日救未來 v(\d+\.\d+\.\d+) 已載入/) || [])[1] || '0.0.0';
+  const verNum = ver.split('.').map(Number);
+  const atLeast = (a, b) => a[0] > b[0] || (a[0] === b[0] && (a[1] > b[1] || (a[1] === b[1] && a[2] >= b[2])));
+  check('版本 >= v0.27.1', atLeast(verNum, [0, 27, 1]), '→ ' + ver);
+  check('標題畫面版本字串 = 啟動日誌版本',
+    new RegExp("fillText\\('v" + ver.replace(/\./g, '\\.') + " ·").test(h));
+  check('啟動日誌版本一致', new RegExp('末日救未來 v' + ver.replace(/\./g, '\\.') + ' 已載入').test(h));
   check('pointerdown 同 touchstart 兩個 handler 仍然共存（唔係刪一個）',
         /canvas\.addEventListener\('pointerdown'/.test(h) &&
         /canvas\.addEventListener\('touchstart'/.test(h));

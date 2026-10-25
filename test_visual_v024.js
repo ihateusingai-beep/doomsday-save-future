@@ -227,8 +227,10 @@ console.log('\n=== 5. 圖集 icon 取代 emoji（Q1）===');
 console.log('\n=== 6. 文字斷行用 measureText（Q2）===');
 {
   check('wrapText helper 存在', /function wrapText\(ctx, text, maxWidth\)/.test(h));
-  check('wrapText 用 measureText 逐字累加',
-    /for \(const ch of Array\.from\(text\)\)[\s\S]{0,200}ctx\.measureText\(test\)\.width > maxWidth/.test(h));
+  check('wrapText 用 measureText 累加',
+    /ctx\.measureText\(test\)\.width > maxWidth/.test(h));
+  check('wrapText 用「原子」切，唔會喺數字／符號中間斷行（v0.27.2）',
+    /const atoms = text\.match\(/.test(h));
   check('冇 chars.slice 硬斷行殘留', !/chars\.slice\(li/.test(h) && !/\.slice\(li,/.test(h));
   const wrapCalls = (h.match(/wrapText\(/g) || []).length;
   check('wrapText 有 3 處以上實際呼叫', wrapCalls >= 4, '→ ' + wrapCalls);

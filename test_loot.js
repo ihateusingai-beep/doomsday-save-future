@@ -92,7 +92,15 @@ check('armorUsed 每次重開都重置（保險可以再用）', /resetLoots[\s\
 
 console.log('\n=== 7. UI 顯示 ===');
 check('裝備欄繪製（HUD 血心下）', /LOOT_DEFS\.find\(x => x\.id === ids\[i\]\)/.test(h));
-check('掉落橫幅有（2.6 秒）', /lootShownAt && performance\.now\(\) - lootShownAt < 2600/.test(h));
+check('掉落橫幅喺 CHOICE 畫面畫（v0.27.2：boss 死即刻跳 CHOICE，正常節奏一定見到）',
+  /function drawLootBanner\(\)/.test(h) &&
+  /fsm\.cur === STATE\.CHOICE[\s\S]{0,900}?drawLootBanner\(\)/.test(h) &&
+  /lootBanner = def/.test(h));
+check('掉落橫幅唔會同詞綴橫幅撞位（詞綴 y 74–118 vs 掉落 y 28–56）',
+  /drawLootBanner[\s\S]{0,400}?const y = 42/.test(h));
+check('掉落橫幅用圖集 sprite，唔係 sprite key 文字（v0.27.2 P0 修正）',
+  /drawIconWithText\(lootBanner\.icon/.test(h) &&
+  !/fillText\([^)]*last\.icon/.test(h));
 check('裝備欄上限 5 + 顯示 +N', /ids\.length > 5/.test(h));
 check('debug HUD 顯示裝備', /裝備\s/.test(h) || /loot/.test(h));
 

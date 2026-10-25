@@ -512,17 +512,43 @@ function drawIconPair(name, name2, cx, cy, scale) {
   }
 }
 
+/* 圖集 icon + 文字並排，整組水平置中於 cx。
+   ⚠️ v0.27.2 新增：原本有兩處用 fillText(iconKey + ' ' + name)，
+   而 iconKey 係**圖集 sprite key**（'icon_iron' / 'icon_wind' …）——
+   結果玩家喺畫面直接見到內部變數名（實機截圖：「icon_wind 逆風」）。
+   統一行呢個 helper：icon 一律用圖集 sprite 畫，文字淨係得個名。 */
+function drawIconWithText(iconName, text, cx, cy, iconScale, font, color, gap) {
+  const prevFont = ctx.font, prevFill = ctx.fillStyle, prevAlign = ctx.textAlign;
+  ctx.font = font;
+  ctx.fillStyle = color;
+  ctx.textAlign = 'center';
+  const tw = ctx.measureText(text).width;
+  const frame = SPRITE[iconName];
+  const iw = (frame ? frame.w : 12) * (iconScale == null ? 2 : iconScale);
+  const g = gap == null ? 6 : gap;
+  const iconCx = cx - (iw + g + tw) / 2 + iw / 2;
+  drawIcon(iconName, iconCx, cy, iconScale);
+  ctx.fillText(text, iconCx + iw / 2 + g + tw / 2, cy);
+  ctx.font = prevFont; ctx.fillStyle = prevFill; ctx.textAlign = prevAlign;
+}
+
 /* 依實際像素寬度斷行（v3.13）。
    ⚠️ 唔可以用「字元數」硬斷 —— 中文全形 ≈ 1em，而 emoji／全角標點
-   寬度唔同，靠字元數一定會溢出容器。用 measureText 逐字累加先準。 */
+   寬度唔同，靠字元數一定會溢出容器。用 measureText 逐字累加先準。
+   ⚠️ v0.27.2 修正：原本係**逐字**斷行，令「−25%」拆成「−」/「25%」、
+   「+20%」拆成「+2」/「0%」、「+50%」拆成「+」/「50%」——
+   符號同數字分咗兩行，低耐性學生會讀成「減 25」再搵「%」。
+   改成**原子**切法：符號(+ − × ÷) + 數字 + 小數 + 百分比 當成一個原子，
+   原子之間永遠唔會拆開。 */
 function wrapText(ctx, text, maxWidth) {
   const lines = [];
   let line = '';
-  for (const ch of Array.from(text)) {
-    const test = line + ch;
+  const atoms = text.match(/[+\-−×÷]?\d+(?:\.\d+)?%?|[^\s]/g) || [];
+  for (const atom of atoms) {
+    const test = line + atom;
     if (line && ctx.measureText(test).width > maxWidth) {
       lines.push(line);
-      line = ch;
+      line = atom;
     } else {
       line = test;
     }
@@ -1153,20 +1179,13 @@ function drawHudChips() {
     }
     ctx.textAlign = 'left';
   }
-  /* 裝備掉落橫幅（2.6 秒，同詞綴橫幅節奏一致） */
-  if (lootShownAt && performance.now() - lootShownAt < 2600 && isStage(fsm.cur)) {
-    const last = LOOT_DEFS.find(x => x.id === Object.keys(loots).slice(-1)[0]);
-    const a = Math.min(1, (performance.now() - lootShownAt) / 300);
-    ctx.globalAlpha = a;
-    /* ⚠️ v0.27.0：由 y 56 下移到 y 82 —— 原本會同新嘅元素 chip（y 48–63）重疊 */
-    ctx.fillStyle = 'rgba(0,0,0,0.7)';
-    ctx.fillRect(0, 82, VIEW_W, 22);
-    ctx.font = 'bold 12px monospace';
-    ctx.fillStyle = '#fd6';
-    ctx.textAlign = 'center';
-    ctx.fillText('裝備 ' + (last ? last.icon + ' ' + last.name + ' · ' + last.desc : ''), VIEW_W / 2, 97);
-    ctx.globalAlpha = 1;
-  }
+  /* ⚠️ v0.27.2 搬走：裝備掉落橫幅原本喺呢度（戰鬥 HUD）畫，但——
+     ① 掉落發生喺 boss 死嗰刻，而 boss 死即刻跳去 CHOICE 呢個 modal，
+        所以呢個「只喺戰鬥畫面畫 + 2.6 秒」嘅橫幅，正常節奏下玩家**根本睇唔到**
+        （要 2.6 秒內走完 2–3 個選單先返到戰鬥畫面）。
+     ② 就算睇到，佢 y 82–104 同詞綴橫幅 y 74–118 完全重疊，兩段文字互相蓋死。
+     現在改喺 CHOICE 畫面（boss 死之後嗰個 modal）畫 —— 一定見到，唔會撞位。
+     見 drawLootBanner()。 */
 }
 
 /* ---------- 2. 輸入層（PLAN v2 #15、#18-19） ---------- */
@@ -2161,7 +2180,11 @@ const LOOT_DEFS = [
 /* 已持有嘅裝備（id → 件數）。boss 每死一次掉 1 件，所以可以重複持有。
    裝備係純被動，冇上限壓力，所以重複疊加唔設上限（但同 id 只讀一次效果）。 */
 let loots = Object.create(null);
-let lootShownAt = 0;          /* 裝備掉落橫幅時間戳 */
+let lootShownAt = 0;          /* 裝備掉落橫幅時間戳（v0.27.2 起只做記錄，橫幅改喺 CHOICE 畫面畫） */
+/* v0.27.2：最近一件裝備（用嚟畫 CHOICE 畫面嘅掉落提示）。
+   原本橫幅靠 lootShownAt + isStage() 判斷要唔要畫，但 boss 死即刻跳去
+   CHOICE 呢個 modal，所以正常節奏下玩家根本睇唔到（見 drawHudChips 嘅註解）。 */
+let lootBanner = null;
 let armorUsed = false;        /* 「保險」用咗未（一次性） */
 
 /* 裝備加總 → 一個純數值 getter，避免散落四處加總邏輯 */
@@ -2210,6 +2233,7 @@ function rollLoot(stageId) {
   loots[def.id] = (loots[def.id] || 0) + 1;
   lootShownAt = performance.now();
   sfx('pick');
+  lootBanner = def;          /* v0.27.2：CHOICE 畫面會畫呢件裝備嘅提示 */
   console.log('[裝備] boss S' + stageId + ' 掉落 →', def.name, '·', def.desc);
   return def;
 }
@@ -2247,6 +2271,7 @@ function resumeEvent() {
 function resetLoots() {
   loots = Object.create(null);
   lootShownAt = 0;
+  lootBanner = null;   /* v0.27.2：新局清走掉落提示 */
   armorUsed = false;
 }
 /* #46 單次逆轉：boss 出場前暫停 + 恢復（同 resumePause / resumeEvent 同一套路）。
@@ -4103,7 +4128,14 @@ function laserTick(ship, dtMs) {
       spawnSparks(e.x, e.y, 2, 0.06);
       if (e.kind === 'spiral') {
         runScore += BOSS_SCORE * 0.05 * affScore * styScore;
-        if (e.hp <= 0) onBossDown(e);
+        /* ⚠️ v0.27.2：原本直接叫 onBossDown(e)，**唔經 killEnemy()**——
+           結果 ① 冇爆炸特效 ② boss 嘅 _dead 唔會 set
+           ③ 同一幀如果子彈再打中 boss（killEnemy 會回傳 'boss'），
+              就會叫第二次 onBossDown → 掉兩件裝備 + 分數雙計。
+           改用同子彈路徑一致嘅統一路徑：killEnemy() → onBossDown()。 */
+        if (e.hp <= 0) {
+          if (killEnemy(e) === 'boss') { onBossDown(e); return; }
+        }
       } else {
         runScore += (e.score || GRUNT_SCORE) * 0.5 * affScore * styScore;
         if (e.hp <= 0) { runKills++; runGrunts++; e._dead = true; sfx('kill'); }
@@ -4829,6 +4861,14 @@ function elementTick(dtMs) {
 function killEnemy(e) {
   if (!e || e._dead || e.hp > 0) return null;
   spawnBoom(e.x, e.y);
+  /* ⚠️ v0.27.2：boss 都要 set _dead。
+     原本 boss 喺 `return 'boss'` 之前就 return 咗，所以 e._dead 永遠唔會 set
+     —— 死咗嘅 boss 仲留喺 enemies 入面當「仲生存」：
+     ① 同一幀如果第二個傷害源（激光 + 子彈）再打中，就會叫第二次 onBossDown
+        → 掉兩件裝備 + 分數雙計（激光路徑原本完全冇經 killEnemy，最易撞）。
+     ② 渲染同 tick 都會繼續當佢存在。
+     set 咗之後，tick 尾段嘅 cull 迴圈會統一 splice 走。 */
+  e._dead = true;
   if (e.kind === 'spiral') return 'boss';   /* boss 死亡流程特別，caller 處理 */
   runScore += (e.score || GRUNT_SCORE) * affScore * styScore;
   runKills++;
@@ -4841,7 +4881,6 @@ function killEnemy(e) {
   if (ship && ship.universalId === 'recover') {
     ship._recoverUntil = gameClockMs + RECOVER_MS;
   }
-  e._dead = true;
   sfx(e.elite ? 'kill' : 'hit');
   /* v0.27.0 元素爆發：燒死 / 吞噬標記死時爆發（專精元素傷害 +40%） */
   if (e.burnBoom) elementBoom(e.x, e.y, ELEM_BURN_BOOM_R, ELEM_BURN_BOOM_DMG * elementMasterMul('fire'), 'fire');
@@ -5675,12 +5714,40 @@ function drawStageAffixFx() {
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillStyle = '#fff';
   ctx.font = 'bold 16px ui-monospace, monospace';
-  ctx.fillText(stageAffix.icon + ' ' + stageAffix.name, VIEW_W / 2, y - 6);
+  /* ⚠️ v0.27.2 修正：原本係 fillText(stageAffix.icon + ' ' + stageAffix.name)，
+     而 stageAffix.icon 係**圖集 sprite key**（'icon_iron' / 'icon_wind' …）——
+     玩家每關開場都見到內部變數名。改用 drawIconWithText：icon 畫 sprite，淨係得個名。 */
+  drawIconWithText(stageAffix.icon, stageAffix.name, VIEW_W / 2, y - 6, 1.6,
+                   'bold 16px ui-monospace, monospace', '#fff', 6);
   ctx.fillStyle = '#ffd56a';
   ctx.font = '12px ui-monospace, monospace';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText(stageAffix.desc, VIEW_W / 2, y + 12);
   ctx.globalAlpha = 1;
   ctx.textBaseline = 'alphabetic';
+}
+
+/* 裝備掉落提示（v0.27.2 新位置）。
+   喺 CHOICE 畫面畫 —— 因為 boss 死嗰刻即刻跳去 CHOICE，掉落提示放喺度先一定見到。
+   ⚠️ 原本放喺戰鬥 HUD（y 82–104），結果 ① 正常節奏下完全睇唔到
+   （2.6 秒內要行完 2–3 個選單先返到戰鬥畫面）② 同詞綴橫幅 y 74–118 完全重疊。
+   ⚠️ icon 一律用圖集 sprite（唔係 sprite key 文字）。 */
+function drawLootBanner() {
+  if (!lootBanner) return;
+  const y = 42;
+  /* 條唔可以伸到右上角 —— 音效掣喺 x 258–314，會被條蓋住。
+     所以右邊留 70px 空白，整組置中喺剩低嘅範圍。 */
+  const barW = VIEW_W - 70;
+  const prevBase = ctx.textBaseline, prevFont = ctx.font, prevFill = ctx.fillStyle;
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(0,44,22,0.9)';
+  ctx.fillRect(0, y - 14, barW, 28);
+  ctx.strokeStyle = 'rgba(63,255,153,0.55)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(0.5, y - 13.5, barW - 1, 27);
+  drawIconWithText(lootBanner.icon, '裝備 ' + lootBanner.name + ' · ' + lootBanner.desc,
+                   barW / 2, y, 1.25, 'bold 12px monospace', '#fd6', 6);
+  ctx.textBaseline = prevBase; ctx.font = prevFont; ctx.fillStyle = prevFill;
 }
 
 /* ---------- 11. 繪製 ---------- */
@@ -5748,7 +5815,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.27.1 · 元素層 · 五種元素 · 全新特效', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.27.2 · 元素層 · 五種元素 · 全新特效', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -6080,6 +6147,8 @@ function render() {
     const scoreDisplay = Math.floor(finalScore);
     ctx.fillStyle = 'rgba(0,20,10,0.55)';
     ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    /* v0.27.2：S5 boss 掉落嘅裝備喺結算畫面畫（最後一件裝備唔會冇交代）。 */
+    drawLootBanner();
     drawSprite('gate', VIEW_W/2, VIEW_H/2 - 110, 1.6);
     if (isNewBest) {
       ctx.fillStyle = 'rgba(255,255,0,0.18)';
@@ -6119,6 +6188,8 @@ function render() {
     const cardW = L.cardW, cardH = L.cardH, startX = L.startX, cardY = L.cardY;
     ctx.fillStyle = 'rgba(0,0,0,0.72)';
     ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    /* v0.27.2：boss 死掉落嘅裝備提示喺呢度畫（一定見到，唔會撞詞綴橫幅）。 */
+    drawLootBanner();
     ctx.fillStyle = '#ff6';
     ctx.font = 'bold 14px monospace';
     ctx.textAlign = 'center';
@@ -6175,8 +6246,18 @@ function render() {
       ctx.fillStyle = '#ff6';
       ctx.font = 'bold 10px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText('[' + (i+1) + '] 點擊', x + cardW/2, y + cardH - 8);
+      /* ⚠️ v0.27.2：原本寫「[N] 點擊」—— 但「點擊」係動作、「N」係鍵盤碼，
+         兩者溝埋一齊對觸控學生係誤導（以為要撳鍵 1）。而且呢行純浪費一整行。
+         改成淨係留編號 badge，鍵盤提示統一由畫面底部一句講（點左/中/右 或 按 1 2 3）。 */
+      ctx.fillText('[' + (i+1) + ']', x + cardW/2, y + cardH - 8);
     }
+    /* v0.27.2：三卡畫面統一底部提示。
+       原本呢四個畫面完全冇操作提示（靠卡面「[N] 點擊」暗示），
+       而「點擊」對觸控學生係誤導。統一改成同 ELEMENT_PICK / ELEM_CHOICE 一致嘅講法。 */
+    ctx.fillStyle = '#ff6';
+    ctx.font = '12px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('點左/中/右 或 按 1 2 3', VIEW_W/2, VIEW_H - 48);
     renderTail();
     return;
   }
@@ -6221,8 +6302,18 @@ function render() {
       ctx.fillText('→ 效果 ×2', x + cardW/2, y + 76);
       ctx.fillStyle = '#ffd24a';
       ctx.font = 'bold 10px monospace';
-      ctx.fillText('[' + (i+1) + '] 點擊', x + cardW/2, y + cardH - 8);
+      /* ⚠️ v0.27.2：原本寫「[N] 點擊」—— 但「點擊」係動作、「N」係鍵盤碼，
+         兩者溝埋一齊對觸控學生係誤導（以為要撳鍵 1）。而且呢行純浪費一整行。
+         改成淨係留編號 badge，鍵盤提示統一由畫面底部一句講（點左/中/右 或 按 1 2 3）。 */
+      ctx.fillText('[' + (i+1) + ']', x + cardW/2, y + cardH - 8);
     }
+    /* v0.27.2：三卡畫面統一底部提示。
+       原本呢四個畫面完全冇操作提示（靠卡面「[N] 點擊」暗示），
+       而「點擊」對觸控學生係誤導。統一改成同 ELEMENT_PICK / ELEM_CHOICE 一致嘅講法。 */
+    ctx.fillStyle = '#ff6';
+    ctx.font = '12px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('點左/中/右 或 按 1 2 3', VIEW_W/2, VIEW_H - 48);
     renderTail();
     return;
   }
@@ -6269,8 +6360,18 @@ function render() {
       }
       ctx.fillStyle = '#ff6';
       ctx.font = 'bold 10px monospace';
-      ctx.fillText('[' + (i+1) + '] 點擊', x + cardW/2, y + cardH - 8);
+      /* ⚠️ v0.27.2：原本寫「[N] 點擊」—— 但「點擊」係動作、「N」係鍵盤碼，
+         兩者溝埋一齊對觸控學生係誤導（以為要撳鍵 1）。而且呢行純浪費一整行。
+         改成淨係留編號 badge，鍵盤提示統一由畫面底部一句講（點左/中/右 或 按 1 2 3）。 */
+      ctx.fillText('[' + (i+1) + ']', x + cardW/2, y + cardH - 8);
     }
+    /* v0.27.2：三卡畫面統一底部提示。
+       原本呢四個畫面完全冇操作提示（靠卡面「[N] 點擊」暗示），
+       而「點擊」對觸控學生係誤導。統一改成同 ELEMENT_PICK / ELEM_CHOICE 一致嘅講法。 */
+    ctx.fillStyle = '#ff6';
+    ctx.font = '12px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('點左/中/右 或 按 1 2 3', VIEW_W/2, VIEW_H - 48);
     renderTail();
     return;
   }
@@ -6325,8 +6426,18 @@ function render() {
       }
       ctx.fillStyle = '#ff6';
       ctx.font = 'bold 10px monospace';
-      ctx.fillText('[' + (i+1) + '] 點擊', x + cardW/2, y + cardH - 8);
+      /* ⚠️ v0.27.2：原本寫「[N] 點擊」—— 但「點擊」係動作、「N」係鍵盤碼，
+         兩者溝埋一齊對觸控學生係誤導（以為要撳鍵 1）。而且呢行純浪費一整行。
+         改成淨係留編號 badge，鍵盤提示統一由畫面底部一句講（點左/中/右 或 按 1 2 3）。 */
+      ctx.fillText('[' + (i+1) + ']', x + cardW/2, y + cardH - 8);
     }
+    /* v0.27.2：三卡畫面統一底部提示。
+       原本呢四個畫面完全冇操作提示（靠卡面「[N] 點擊」暗示），
+       而「點擊」對觸控學生係誤導。統一改成同 ELEMENT_PICK / ELEM_CHOICE 一致嘅講法。 */
+    ctx.fillStyle = '#ff6';
+    ctx.font = '12px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('點左/中/右 或 按 1 2 3', VIEW_W/2, VIEW_H - 48);
     renderTail();
     return;
   }
@@ -6838,7 +6949,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.27.1 已載入');
+console.log('[啟動] 末日救未來 v0.27.2 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */

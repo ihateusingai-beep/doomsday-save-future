@@ -174,6 +174,15 @@ for f in test_*.js; do node "$f" >/dev/null 2>&1 && echo "PASS $f" || echo "FAIL
 > ⚠️ **呢類 bug 唔會被桌面 mouse 測試捉到** —— mouse 測試唔會派發 `touchstart`，
 > 必須用 Playwright WebKit + `hasTouch: true` + `touchscreen.tap()` 先重現到。
 >
+> **`test_v0272.js` 係 v0.27.2 修 bug 嘅守門測試**（6 節），覆蓋：
+> ① **sprite key 唔可以當文字印**（全檔掃描 `fillText(...icon...)`，剝走註解先掃）；
+> ② **`wrapText` 唔會喺數字／符號中間斷行**（抽出真 `wrapText` 喺 stub canvas 實際執行，
+>    覆蓋 26 張強化卡 + 15 條元素描述全部文案，斷點檢查「符號同數字唔會分家」）；
+> ③ **裝備掉落提示喺 CHOICE 畫面畫**（一定見到 + 唔撞詞綴橫幅 + 新局清走）；
+> ④ **三卡畫面有底部操作提示、冇「[N] 點擊」殘留**；
+> ⑤ **boss 死亡路徑統一**（`laserTick` 經 `killEnemy()`；`killEnemy` 對 boss 都 set `_dead`）；
+> ⑥ 版號 >= v0.27.2。
+>
 > ### 5.1.1 抽出函數做行為測試（**兩個陷阱，2026-10-25 踩過**）
 >
 > 本 repo 嘅測試用 `makeFn(name, deps, consts)` 把函數抽出嚟喺 stub 環境實際執行。
@@ -348,6 +357,10 @@ console.log(t.length?'✗ em dash 殘留: '+t.join(' | '):'✓ 零 em dash');
 | **`rm` / `mv` 被權限閘擋** | 刪唔到磁盤殘留檔（例如 `.t_wave_test.js`） | 用 `cp` 覆寫做廢；真刪要人手喺 terminal 做 |
 | **emoji 做卡面 icon** | 脫離像素風 + 跨平台唔一致 + 文字溢出 | 用圖集 sprite（`ART_IMPLEMENTATION_GUIDE.md` §7.1 完整清單）—— **v0.24.0 已做** |
 | **中文靠字元數斷行** | 卡面文字溢出框（88px 卡面 9 字 = 90px > 可用 74px） | 用 `ctx.measureText()` 逐字累加斷行 —— **v0.24.0 已做**（`wrapText()`） |
+| **逐字斷行會拆走數字** | 「−25%」變成「−」/「25%」、「+20%」變成「+2」/「0%」—— 符號同數字分兩行，低耐性學生讀唔啱 | `wrapText()` 改用**原子**切法（符號 + 數字 + 小數 + 百分比 = 一個原子）—— **v0.27.2 已做** |
+| **sprite key 當文字印出嚟** | 玩家見到「icon_iron 鐵壁」—— 內部變數名洩漏到畫面 | 一律用 `drawIconWithText()`（icon 係圖集 sprite，文字淨係得個名）；掃描守門：**全檔 `fillText(...icon...)` = 0**（掃前先剝註解） |
+| **橫幅只喺「戰鬥畫面」畫，但掉落發生喺 boss 死嗰刻** | boss 死即刻跳 modal，所以正常節奏下橫幅**根本睇唔到**；就算睇到仲會同另一條橫幅撞位 | 提示要喺**玩家真正會停留嘅畫面**畫（掉落 → CHOICE modal）；唔好靠「2.6 秒內要行完幾個選單」呢類假設 |
+| **同一個死亡流程有兩條路** | `laserTick` 直接叫 `onBossDown()` 唔經 `killEnemy()` → 冇爆炸、`_dead` 唔 set、同一幀第二個傷害源會**再觸發一次**（掉兩件裝備 + 分數雙計） | 所有傷害出口一律經 `killEnemy()`；`killEnemy` 對 boss 都要 set `_dead` |
 | **圖集座標表 drift** | 圖靜靜哋錯位，**測試全部照過** | `node tools/sync_sheet.js` —— **v0.24.0 已解** |
 | **加咗 sprite 但唔更新 `SPRITE`** | 圖錯位 / 空白格 | 跑 `node tools/sync_sheet.js`，唔好手改座標表 |
 | **palette 外加色** | 成個畫面唔 coherent | 24 色唯一色源；改形狀先於改色 |

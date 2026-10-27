@@ -189,7 +189,8 @@ section('5. boss 死亡路徑統一（v0.27.2）');
   check('laserTick 冇裸叫 onBossDown(e)',
     !/function laserTick[\s\S]{0,2200}?if \(e\.hp <= 0\) onBossDown\(e\)/.test(h));
   check('killEnemy 對 boss 都 set _dead（防止同一幀雙重結算）',
-    /function killEnemy[\s\S]{0,400}?e\._dead = true;[\s\S]{0,200}?if \(e\.kind === 'spiral'\) return 'boss'/.test(h));
+    /function killEnemy[\s\S]{0,800}?e\._dead = true;[\s\S]{0,200}?if \(isBoss\) return 'boss'/.test(h)
+    || /function killEnemy[\s\S]{0,400}?e\._dead = true;[\s\S]{0,200}?if \(e\.kind === 'spiral'\) return 'boss'/.test(h));
   check('boss 唔會重複掉裝備（killEnemy 見到 _dead 就唔會再觸發）',
     /function killEnemy\(e\)[\s\S]{0,300}?if \(!e \|\| e\._dead \|\| e\.hp > 0\) return null/.test(h));
 }

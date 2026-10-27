@@ -573,11 +573,56 @@ const stars = Array.from({ length: 48 }, (_, i) => ({
 }));
 let particles = [];
 let screenFlash = 0;
-let hitShake = 0;
 let bgScroll = 0;
 /* v3.13：動畫 sprite 嘅全域時間軸（毫秒）。所有 anim 共用同一條時間軸，
    咁同一個 anim 嘅所有實例同步閃爍（同 sprite-pipeline 嘅「同 anchor 對齊」原則）。 */
 let animT = 0;
+
+/* ---------- v0.29.0 gamedev-feel：trauma cam + hit-stop + ship pop ----------
+   規則（personal STG）：
+   1. 只震 **繪圖 offset**，唔改 ship.x/y／碰撞
+   2. trauma² + sin（唔好每 frame Math.random → buzz）
+   3. juice 分層：graze < grunt kill < elite < hurt < bomb < boss
+   4. hit-stop 用 real-time；sim 停、render 繼續
+   5. prefers-reduced-motion → 跳過 shake / hit-stop，保留色＋SFX */
+const REDUCED_MOTION = (typeof matchMedia === 'function')
+  && matchMedia('(prefers-reduced-motion: reduce)').matches;
+const cam = { x: 0, y: 0, trauma: 0, decay: 2.2, max: 14 };
+let hitStopUntil = 0;
+let shipPop = 1;           /* 機體 scale 彈一下，1 = 正常 */
+function addTrauma(a) {
+  if (REDUCED_MOTION || !(a > 0)) return;
+  cam.trauma = Math.min(1, cam.trauma + a);
+}
+function hitStop(ms) {
+  if (REDUCED_MOTION || !(ms > 0)) return;
+  hitStopUntil = Math.max(hitStopUntil, performance.now() + ms);
+}
+function pulseShip(amt) {
+  const a = (amt == null) ? 0.18 : amt;
+  shipPop = Math.max(shipPop, 1 + a);
+}
+function updateCam(dtMs) {
+  if (cam.trauma <= 0) { cam.x = cam.y = 0; cam.trauma = 0; return; }
+  cam.trauma = Math.max(0, cam.trauma - cam.decay * (dtMs / 1000));
+  const s = cam.trauma * cam.trauma;
+  const t = performance.now() * 0.031;
+  cam.x = cam.max * s * Math.sin(t * 1.7);
+  cam.y = cam.max * s * Math.sin(t * 2.3);
+}
+/* juice tier 預設（可被事件覆寫） */
+const FEEL = Object.freeze({
+  graze:      { trauma: 0.07 },
+  grazeFull:  { trauma: 0.22, stop: 40, pop: 0.14, flash: 0.14 },
+  hitGrunt:   { trauma: 0.05 },
+  killGrunt:  { trauma: 0.14, stop: 32 },
+  killElite:  { trauma: 0.32, stop: 70, flash: 0.42, boom: 1.55 },
+  killBoss:   { trauma: 0.62, stop: 110, flash: 0.72, boom: 2.1 },
+  hurt:       { trauma: 0.42, stop: 55, pop: 0.22, flash: 0.35 },
+  hurtShield: { trauma: 0.28, stop: 35, pop: 0.12, flash: 0.22 },
+  bomb:       { trauma: 0.55, stop: 90, flash: 0.7, boom: 1.8 },
+  die:        { trauma: 0.85, stop: 130, flash: 0.8, boom: 2.2 },
+});
 
 function spawnSparks(x, y, n, speed) {
   const sp = speed == null ? 0.12 : speed;
@@ -587,10 +632,12 @@ function spawnSparks(x, y, n, speed) {
     particles.push({ x, y, vx: Math.cos(a)*v, vy: Math.sin(a)*v, life: 280 + Math.random()*220, max: 400, kind: 'spark' });
   }
 }
-function spawnBoom(x, y) {
-  particles.push({ x, y, vx: 0, vy: 0, life: 420, max: 420, kind: 'boom', frame: 0 });
-  spawnSparks(x, y, 10, 0.18);
-  screenFlash = Math.max(screenFlash, 0.55);
+function spawnBoom(x, y, power) {
+  const p = (power == null || power < 0.5) ? 1 : power;
+  const life = Math.min(720, 420 * p);
+  particles.push({ x, y, vx: 0, vy: 0, life: life, max: life, kind: 'boom', frame: 0 });
+  spawnSparks(x, y, Math.round(10 * p), 0.18 * Math.min(1.6, p));
+  screenFlash = Math.max(screenFlash, Math.min(0.95, 0.55 * p));
 }
 
 /* ---------- v0.27.0 #105：元素粒子 + 屏幕效果 ----------
@@ -949,7 +996,9 @@ function tickVfx(dtMs) {
   if (grazeRingT > 0) grazeRingT = Math.max(0, grazeRingT - dtMs * 0.0035);
   if (grazeFlash > 0) grazeFlash = Math.max(0, grazeFlash - dtMs * 0.002);
   if (screenFlash > 0) screenFlash = Math.max(0, screenFlash - dtMs * 0.0022);
-  if (hitShake > 0) hitShake = Math.max(0, hitShake - dtMs * 0.012);
+  updateCam(dtMs);
+  /* ship pop 回彈到 1 */
+  if (shipPop > 1) shipPop = Math.max(1, shipPop - dtMs * 0.0045);
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i];
     p.life -= dtMs;
@@ -2577,6 +2626,7 @@ function doGraze(ex, ey) {
   runScore += gained;
   grazeScoreTotal += gained;
   grazeEnergy++;
+  addTrauma(FEEL.graze.trauma);
   /* 集滿一次就回充兩個技能嘅冷卻，令走位可以「賺」返炸彈
      v0.25.0：回充目標由「聚焦」改成**專屬技能**（#88）。
      A 機被動 = 擦彈回充 ×2（靠貼彈賺返技能 CD）。 */
@@ -2588,6 +2638,12 @@ function doGraze(ex, ey) {
     skillCdUntil = Math.max(0, skillCdUntil - refund);
     bombCDUntil  = Math.max(0, bombCDUntil  - GRAZE_REFUND_MS);
     grazeFlash = 1;
+    const gf = FEEL.grazeFull;
+    addTrauma(gf.trauma);
+    hitStop(gf.stop);
+    pulseShip(gf.pop);
+    screenFlash = Math.max(screenFlash, gf.flash);
+    spawnSparks(ex, ey, 8, 0.11);
     const t = performance.now();
     const cdText = (until) => until - t > 0 ? ((until - t) / 1000).toFixed(1) + ' 秒' : '就緒';
     console.log('[擦彈] 集滿 ' + GRAZE_ENERGY_NEED + ' 次 → 回充 ' + (refund / 1000).toFixed(1) +
@@ -2596,7 +2652,7 @@ function doGraze(ex, ey) {
   }
   grazeRingT = 1;
   grazeRingX = ex; grazeRingY = ey;
-  spawnSparks(ex, ey, 2, 0.05);
+  spawnSparks(ex, ey, 3, 0.06);
 }
 
 /* ---------- 計分（PLAN v2 §計分） ---------- */
@@ -3527,7 +3583,9 @@ function resetRunFresh() {
   iFrameUntil = 0;
   particles.length = 0;
   screenFlash = 0;
-  hitShake = 0;
+  cam.trauma = 0; cam.x = 0; cam.y = 0;
+  hitStopUntil = 0;
+  shipPop = 1;
 }
 function goRetry() {
   resetRunFresh();
@@ -4018,8 +4076,12 @@ function tryBomb() {
     const k = enemies[i].kind;
     if (k === 'bullet' || k === 'laser') enemies.splice(i, 1);
   }
-  if (ship) spawnBoom(ship.x, ship.y);
-  screenFlash = Math.max(screenFlash, 0.7);
+  const f = FEEL.bomb;
+  if (ship) spawnBoom(ship.x, ship.y, f.boom);
+  screenFlash = Math.max(screenFlash, f.flash);
+  addTrauma(f.trauma);
+  hitStop(f.stop);
+  pulseShip(0.16);
   sfx('bomb');
   console.log('[炸彈] 開啟無敵', (BOMB_IFRAME_MS/1000).toFixed(1) + '秒 · 冷卻', (cd/1000).toFixed(1) + '秒 @', (now/1000).toFixed(2));
   return true;
@@ -5013,7 +5075,13 @@ function elementTick(dtMs) {
    回傳 'boss' = 死咗 boss（caller 要即刻叫 onBossDown 並停低）；'grunt' = 雜魚。 */
 function killEnemy(e) {
   if (!e || e._dead || e.hp > 0) return null;
-  spawnBoom(e.x, e.y);
+  /* v0.29.0：kill tier —— elite / boss 更大 boom + trauma + hit-stop；grunt 細 */
+  const isBoss = e.kind === 'spiral';
+  const tier = isBoss ? FEEL.killBoss : (e.elite ? FEEL.killElite : FEEL.killGrunt);
+  spawnBoom(e.x, e.y, tier.boom || 1);
+  if (tier.flash) screenFlash = Math.max(screenFlash, tier.flash);
+  addTrauma(tier.trauma);
+  hitStop(tier.stop);
   /* ⚠️ v0.27.2：boss 都要 set _dead。
      原本 boss 喺 `return 'boss'` 之前就 return 咗，所以 e._dead 永遠唔會 set
      —— 死咗嘅 boss 仲留喺 enemies 入面當「仲生存」：
@@ -5022,7 +5090,7 @@ function killEnemy(e) {
      ② 渲染同 tick 都會繼續當佢存在。
      set 咗之後，tick 尾段嘅 cull 迴圈會統一 splice 走。 */
   e._dead = true;
-  if (e.kind === 'spiral') return 'boss';   /* boss 死亡流程特別，caller 處理 */
+  if (isBoss) return 'boss';   /* boss 死亡流程特別，caller 處理 */
   runScore += (e.score || GRUNT_SCORE) * affScore * styScore;
   runKills++;
   runGrunts++;
@@ -5116,8 +5184,13 @@ function onPlayerBulletHit(b, e) {
    回傳 true = 已死亡（呼叫者要即刻停低）。 */
 function damageShip(n) {
   if (!ship) return false;
-  hitShake = 1;
-  screenFlash = Math.max(screenFlash, 0.35);
+  /* v0.29.0：盾擋 vs 真扣血 分兩檔 juice */
+  const willHitHp = !(ship.shield > 0);
+  const hf = willHitHp ? FEEL.hurt : FEEL.hurtShield;
+  addTrauma(hf.trauma);
+  hitStop(hf.stop);
+  pulseShip(hf.pop);
+  screenFlash = Math.max(screenFlash, hf.flash);
   sfx('hurt');
   if (ship.shield > 0) {
     /* v0.25.0 B 機「護盾」技能：生效期間護盾唔會被打穿（擋到但唔減盾值） */
@@ -5170,7 +5243,11 @@ function damageShip(n) {
     return false;
   }
   console.log('[戰機] 被擊毀');
-  spawnBoom(ship.x, ship.y);
+  const df = FEEL.die;
+  spawnBoom(ship.x, ship.y, df.boom);
+  screenFlash = Math.max(screenFlash, df.flash);
+  addTrauma(df.trauma);
+  hitStop(df.stop);
   sfx('die');
   fsm.set(STATE.GAMEOVER);
   return true;
@@ -5952,8 +6029,8 @@ function renderTail() {
   ctx.restore();
 }
 function render() {
-  const shakeX = hitShake > 0 ? (Math.random() - 0.5) * 4 * hitShake : 0;
-  const shakeY = hitShake > 0 ? (Math.random() - 0.5) * 4 * hitShake : 0;
+  const shakeX = cam.x;
+  const shakeY = cam.y;
   ctx.save();
   ctx.translate(shakeX, shakeY);
   /* v3.13：動畫時間軸（統一用 performance.now()，唔受暫停影響 —— 暫停時
@@ -6006,7 +6083,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.28.0 · 元素層 · 五種元素 · 強化卡池重抽', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.29.0 · gamedev-feel · trauma · hit-stop', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -7021,34 +7098,42 @@ function render() {
     }
     /* 推進器焰 */
     const thName = (Math.floor(performance.now() / 80) % 2) ? 'thrust_1' : 'thrust_0';
-    drawSprite(thName, ship.x, ship.y + 12, 1.6);
+    const shipScale = 2.1 * shipPop;
+    drawSprite(thName, ship.x, ship.y + 12 * shipPop, 1.6 * shipPop);
     if (ship.shield > 0) {
       ctx.strokeStyle = 'rgba(0,255,255,' + (0.35 + 0.25*Math.sin(performance.now()/120)).toFixed(2) + ')';
       ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.arc(ship.x, ship.y, 13, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(ship.x, ship.y, 13 * shipPop, 0, Math.PI * 2); ctx.stroke();
     }
     const sn = SHIP_SPRITE[ship.chassis] || 'ship_a';
+    /* v0.29.0：i-frame blink（55ms 半透明）+ shipPop squash scale */
+    const prevA = ctx.globalAlpha;
+    if (isIFramed()) {
+      const on = (Math.floor(performance.now() / 55) % 2) === 0;
+      ctx.globalAlpha = on ? 1 : 0.28;
+    }
     /* v3.13：ship_a 有動畫幀（引擎閃爍），其他機體靜態（anim 冇對應就自動退化） */
     const drawnShip = ship.chassis === 'A'
-      ? drawSpriteAnim('anim_ship_a', sn, ship.x, ship.y, 2.1, animT)
-      : drawSprite(sn, ship.x, ship.y, 2.1);
+      ? drawSpriteAnim('anim_ship_a', sn, ship.x, ship.y, shipScale, animT)
+      : drawSprite(sn, ship.x, ship.y, shipScale);
     if (!drawnShip) {
       ctx.fillStyle = '#0ff';
       ctx.beginPath();
-      ctx.moveTo(ship.x, ship.y - 8);
-      ctx.lineTo(ship.x - 6, ship.y + 6);
-      ctx.lineTo(ship.x + 6, ship.y + 6);
+      ctx.moveTo(ship.x, ship.y - 8 * shipPop);
+      ctx.lineTo(ship.x - 6 * shipPop, ship.y + 6 * shipPop);
+      ctx.lineTo(ship.x + 6 * shipPop, ship.y + 6 * shipPop);
       ctx.closePath();
       ctx.fill();
     }
+    ctx.globalAlpha = prevA;
     if (isSkillActive()) {
       ctx.strokeStyle = 'rgba(255,255,0,0.6)';
       ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(ship.x, ship.y, 15, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(ship.x, ship.y, 15 * shipPop, 0, Math.PI * 2); ctx.stroke();
     }
     if (isIFramed()) {
-      ctx.strokeStyle = 'rgba(255,100,200,0.5)';
-      ctx.beginPath(); ctx.arc(ship.x, ship.y, 18, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,100,200,' + (0.35 + 0.25 * Math.sin(performance.now() / 40)).toFixed(2) + ')';
+      ctx.beginPath(); ctx.arc(ship.x, ship.y, 18 * shipPop, 0, Math.PI * 2); ctx.stroke();
     }
     /* v0.26.0 #94 通用技能生效中：機身外圍一圈紫光，
        令玩家知道「而家通用技能係開嘅」。 */
@@ -7134,6 +7219,14 @@ function loop(nowMs) {
   lastFrame = nowMs;
   accMs += dt;
   while (accMs >= FIXED_DT_MS) {
+    /* v0.29.0 hit-stop：sim 凍結（丟棄累加步），VFX／cam 仍用 real-time 衰減，render 繼續 */
+    if (nowMs < hitStopUntil) {
+      updateCam(FIXED_DT_MS);
+      if (shipPop > 1) shipPop = Math.max(1, shipPop - FIXED_DT_MS * 0.0045);
+      if (screenFlash > 0) screenFlash = Math.max(0, screenFlash - FIXED_DT_MS * 0.0022);
+      accMs -= FIXED_DT_MS;
+      continue;
+    }
     tickVfx(FIXED_DT_MS);
     tick(FIXED_DT_MS);
     accMs -= FIXED_DT_MS;
@@ -7149,7 +7242,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.28.0 已載入');
+console.log('[啟動] 末日救未來 v0.29.0 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */
@@ -7176,6 +7269,11 @@ window.__dsf = {
   seenUpgradeIds: () => seenUpgradeIds,
   /* 測試用：強制指定某張卡（實機驗證 form_rail 修正用） */
   upgrades: UPGRADES,
+  /* v0.29.0 gamedev-feel */
+  FEEL, cam, addTrauma, hitStop, pulseShip,
+  get hitStopUntil(){ return hitStopUntil; },
+  get shipPop(){ return shipPop; },
+  get trauma(){ return cam.trauma; },
 };
 </script>
 </body>

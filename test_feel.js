@@ -8,7 +8,7 @@ function check(label, ok, extra) {
 }
 
 console.log('=== v0.29.0 markers ===');
-check('version string v0.29.0', h.includes('v0.29.0'));
+check('version string v0.29+/v0.30', /v0\.29|v0\.30/.test(h));
 check('no hitShake leftover', !/\bhitShake\b/.test(h));
 check('addTrauma', h.includes('function addTrauma'));
 check('hitStop', h.includes('function hitStop'));
@@ -42,9 +42,15 @@ check('doGraze → addTrauma', /function doGraze[\s\S]{0,400}addTrauma/.test(h))
 check('i-frame blink', h.includes("Math.floor(performance.now() / 55)"));
 check('shipPop scale', h.includes('2.1 * shipPop'));
 check('spawnBoom power arg', /function spawnBoom\(x, y, power\)/.test(h));
-check('__dsf exposes FEEL', /FEEL, cam, addTrauma/.test(h));
-
-console.log('=== pure trauma math ===');
+check('FEEL.hitGrunt', !!FEEL.hitGrunt && FEEL.hitGrunt.trauma > 0);
+check('FEEL.hitLaser trauma=0', FEEL.hitLaser && FEEL.hitLaser.trauma === 0);
+check('feelHitEnemy', h.includes('function feelHitEnemy'));
+check('tickHitFlash', h.includes('function tickHitFlash'));
+check('hitFlash draw grunt', h.includes('v0.29.1：中彈白閃'));
+check('laser killEnemy skipScore', /killEnemy\(e,\s*\{\s*skipScore:\s*true\s*\}/.test(h));
+check('fireLaser no bare onBossDown', !/function fireLaser[\s\S]{0,900}?if \(e\.hp <= 0\) onBossDown\(e\)/.test(h));
+check('laser grunt no bare _dead kill', !/function laserTick[\s\S]{0,1200}?runKills\+\+; runGrunts\+\+; e\._dead = true/.test(h));
+check('version v0.30.0', h.includes('v0.30.0'));
 {
   const cam = { x: 0, y: 0, trauma: 0, decay: 2.2, max: 14 };
   function addTrauma(a) { cam.trauma = Math.min(1, cam.trauma + a); }

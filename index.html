@@ -610,11 +610,25 @@ function updateCam(dtMs) {
   cam.x = cam.max * s * Math.sin(t * 1.7);
   cam.y = cam.max * s * Math.sin(t * 2.3);
 }
+/* 敵人中彈白閃（draw only；唔改 hitbox） */
+function feelHitEnemy(e, kind) {
+  if (!e) return;
+  e.hitFlash = 1;
+  const t = (kind === 'laser') ? FEEL.hitLaser.trauma : FEEL.hitGrunt.trauma;
+  if (t > 0) addTrauma(t);
+}
+function tickHitFlash(dtMs) {
+  for (let i = 0; i < enemies.length; i++) {
+    const e = enemies[i];
+    if (e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - dtMs * 0.014);
+  }
+}
 /* juice tier 預設（可被事件覆寫） */
 const FEEL = Object.freeze({
   graze:      { trauma: 0.07 },
   grazeFull:  { trauma: 0.22, stop: 40, pop: 0.14, flash: 0.14 },
-  hitGrunt:   { trauma: 0.05 },
+  hitGrunt:   { trauma: 0.045 },
+  hitLaser:   { trauma: 0 },          /* 光束每 tick 唔疊 trauma，淨 flash */
   killGrunt:  { trauma: 0.14, stop: 32 },
   killElite:  { trauma: 0.32, stop: 70, flash: 0.42, boom: 1.55 },
   killBoss:   { trauma: 0.62, stop: 110, flash: 0.72, boom: 2.1 },
@@ -999,6 +1013,7 @@ function tickVfx(dtMs) {
   updateCam(dtMs);
   /* ship pop 回彈到 1 */
   if (shipPop > 1) shipPop = Math.max(1, shipPop - dtMs * 0.0045);
+  tickHitFlash(dtMs);
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i];
     p.life -= dtMs;
@@ -1168,8 +1183,16 @@ function drawHudChips() {
      v0.26.0 #95：位置由「畫面底部中央」搬到「**頂部中央**」——
      底部中央而家俾**中下通用技能掣**（x 128–192, y 408–472）霸咗，
      節奏 chip 擺喺底部會被掣蓋住（v0.25.0 已經撞過一次「暫停」掣）。
-     頂部由上而下：關卡名 chip（y 6–22）→ 節奏 chip（y 26–39）→ 擦彈條（y 46–67）。
-     ⚠️ 血心／裝備 icon 喺 x 16–100、暫停掣喺 x 258–314，頂部中央呢條柱冇嘢撞。 */
+     v0.30.0 #113：**同關卡 chip 合併成一行**（原本行 26–39）。
+     頂部由上而下：關卡+節奏 合併行（y 3–15）→ 擦彈文字（baseline 24）+ 條（y 27–31）。
+     ⚠️ 頂部中央帶而家只到 **y 31**，boss 本體（y 37 起）同血條（y 32 起）完全離開。 */
+  /* v0.30.0 #113：關卡 chip + 節奏 chip 合併成**一行**（y 3–15）。
+     原本係三行（關卡 6–22 / 節奏 26–39 / 擦彈文字 baseline 58 + 條 62–67），
+     由 y 6 一路蓋到 y 67 —— 而 boss 本體（y 37–123）同血條（y 26–91）
+     全部喺呢個範圍入面，學生睇唔到 boss 血量變化（實測，見 PLAN #113）。
+     壓成兩行後頂部中央 HUD 帶 = y 3–31，boss + 血條完全離開。
+     ⚠️ 兩段嘢同一行：關卡名用 stage accent 色、節奏狀態用亮色，中間「·」分隔。
+        兩者放唔落就淨係畫節奏狀態（動態資訊比靜態關卡名更紧要）。 */
   if (ship && isStage(fsm.cur) && SHIPS[ship.chassis]) {
     const c = SHIPS[ship.chassis];
     let txt = c.rhythm;
@@ -1183,13 +1206,38 @@ function drawHudChips() {
     } else if (ship.chassis === 'E') {
       if (isConvergeActive()) txt = '收束中';
     }
+    const th = STAGE_THEME[lastStage] || STAGE_THEME[1];
+    const stageTxt = 'S' + lastStage + ' · ' + th.name;
+    ctx.textAlign = 'left';
     ctx.font = '9px monospace';
-    ctx.textAlign = 'center';
-    const tw = ctx.measureText(txt).width;
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
-    ctx.fillRect(VIEW_W / 2 - tw / 2 - 5, 26, tw + 10, 13);
-    ctx.fillStyle = '#8ff';
-    ctx.fillText(txt, VIEW_W / 2, 36);
+    const rw = ctx.measureText(txt).width;
+    ctx.font = 'bold 10px monospace';
+    const sw = ctx.measureText(stageTxt).width;
+    ctx.font = '9px monospace';
+    const sepW = ctx.measureText(' · ').width;
+    const total = sw + sepW + rw;
+    if (txt && total + 12 <= 300) {
+      /* 兩個都畫：關卡名喺左、節奏狀態喺右，同一條暗底 */
+      let x = (VIEW_W - total) / 2;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(x - 6, 3, total + 12, 11);
+      ctx.fillStyle = th.accent;
+      ctx.font = 'bold 10px monospace';
+      ctx.fillText(stageTxt, x, 13);
+      x += sw;
+      ctx.fillStyle = '#8ff';
+      ctx.font = '9px monospace';
+      ctx.fillText(' · ', x, 13);
+      x += sepW;
+      ctx.fillText(txt, x, 13);
+    } else {
+      /* 放唔落：淨係畫節奏狀態（動態資訊優先） */
+      ctx.font = '9px monospace';
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(VIEW_W / 2 - rw / 2 - 5, 3, rw + 10, 11);
+      ctx.fillStyle = '#8ff';
+      ctx.fillText(txt, VIEW_W / 2, 13);
+    }
     ctx.textAlign = 'left';
   }
   /* v0.27.0 #100：元素 chip（**左上角**，血心／裝備 icon 之下）——
@@ -3380,7 +3428,10 @@ function selectDiffAndContinue(id) {
 function diffCardsLayout() {
   const w = 88, h = 120, gap = 10;
   const startX = (VIEW_W - (w * 3 + gap * 2)) / 2;
-  const y = VIEW_H / 2 - 40;
+  /* v0.30.0 #114：VIEW_H/2 − 40 → **VIEW_H/2 − 50**，對齊 UI_STYLE_GUIDE §2.2
+     「卡片區垂直置中（VIEW_H/2 − 50）」。原本偏下 10px，令標題區同卡片區之間
+     嘅死空間（135px）再長啲。 */
+  const y = VIEW_H / 2 - 50;
   return {
     w, h, gap, startX, y,
     rect: (i) => ({ x: startX + i * (w + gap), y, w, h }),
@@ -4270,14 +4321,20 @@ function fireLaser(ship) {
       if (!laserHitAt) laserHitAt = new Map();
       laserHitAt.set(e, now);
       e.hp -= dmg;
+      feelHitEnemy(e, 'laser');
       spawnSparks(e.x, e.y, 3, 0.08);
       sfx('hit');
       if (e.kind === 'spiral') {
         runScore += BOSS_SCORE * 0.05 * affScore * styScore;   /* 光束打 boss：低分只為防止無限刷 */
-        if (e.hp <= 0) onBossDown(e);
+        /* v0.29.1：同 laserTick — 一律 killEnemy → onBossDown（唔再裸 onBossDown） */
+        if (e.hp <= 0) {
+          if (killEnemy(e, { skipScore: true }) === 'boss') { onBossDown(e); return; }
+        }
       } else {
         runScore += (e.score || GRUNT_SCORE) * 0.5 * affScore * styScore;
-        if (e.hp <= 0) { runKills++; runGrunts++; e._dead = true; sfx('kill'); }
+        /* v0.29.1：雜魚死都要經 killEnemy（boom／tier／C被動／迴氣／分裂）
+           skipScore：tick 分已經加咗，避免再加滿額擊殺分 */
+        if (e.hp <= 0) killEnemy(e, { skipScore: true });
       }
     }
   }
@@ -4299,6 +4356,7 @@ function laserTick(ship, dtMs) {
       if (!laserHitAt) laserHitAt = new Map();
       laserHitAt.set(e, now);
       e.hp -= dmg;
+      feelHitEnemy(e, 'laser');
       spawnSparks(e.x, e.y, 2, 0.06);
       if (e.kind === 'spiral') {
         runScore += BOSS_SCORE * 0.05 * affScore * styScore;
@@ -4308,11 +4366,12 @@ function laserTick(ship, dtMs) {
               就會叫第二次 onBossDown → 掉兩件裝備 + 分數雙計。
            改用同子彈路徑一致嘅統一路徑：killEnemy() → onBossDown()。 */
         if (e.hp <= 0) {
-          if (killEnemy(e) === 'boss') { onBossDown(e); return; }
+          if (killEnemy(e, { skipScore: true }) === 'boss') { onBossDown(e); return; }
         }
       } else {
         runScore += (e.score || GRUNT_SCORE) * 0.5 * affScore * styScore;
-        if (e.hp <= 0) { runKills++; runGrunts++; e._dead = true; sfx('kill'); }
+        /* v0.29.1：雜魚激光擊殺統一 killEnemy（skipScore 防雙計） */
+        if (e.hp <= 0) killEnemy(e, { skipScore: true });
       }
     }
   }
@@ -5073,8 +5132,9 @@ function elementTick(dtMs) {
 
 /* 敵人死亡處理（v0.27.0 抽出嚟俾元素效果重用 —— 灼燒 / 連鎖 / 爆發都經過呢度）。
    回傳 'boss' = 死咗 boss（caller 要即刻叫 onBossDown 並停低）；'grunt' = 雜魚。 */
-function killEnemy(e) {
+function killEnemy(e, opts) {
   if (!e || e._dead || e.hp > 0) return null;
+  const skipScore = !!(opts && opts.skipScore);
   /* v0.29.0：kill tier —— elite / boss 更大 boom + trauma + hit-stop；grunt 細 */
   const isBoss = e.kind === 'spiral';
   const tier = isBoss ? FEEL.killBoss : (e.elite ? FEEL.killElite : FEEL.killGrunt);
@@ -5091,7 +5151,9 @@ function killEnemy(e) {
      set 咗之後，tick 尾段嘅 cull 迴圈會統一 splice 走。 */
   e._dead = true;
   if (isBoss) return 'boss';   /* boss 死亡流程特別，caller 處理 */
-  runScore += (e.score || GRUNT_SCORE) * affScore * styScore;
+  if (!skipScore) {
+    runScore += (e.score || GRUNT_SCORE) * affScore * styScore;
+  }
   runKills++;
   runGrunts++;
   /* v0.25.0 C 機被動：每次擊殺回充 5% 炸彈冷卻 */
@@ -5736,6 +5798,7 @@ function tick(dtMs) {
               if (b.knock) {
                 applyKnockback(e, e.x - ship.x, e.y - ship.y, b.knock);
               }
+              feelHitEnemy(e);
               spawnSparks(b.x, b.y, 3, 0.08);
               sfx('hit');
               const remove = onPlayerBulletHit(b, e);
@@ -6083,7 +6146,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.29.0 · gamedev-feel · trauma · hit-stop', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.30.0 · HUD 壓縮 · feel 補完', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -6152,7 +6215,7 @@ function render() {
     });
     ctx.fillStyle = '#ff6';
     ctx.font = '12px monospace';
-    ctx.fillText('按 1 / 2 / 3 或點擊卡牌', VIEW_W/2, VIEW_H - 40);
+    ctx.fillText('按 1 / 2 / 3 或點擊卡牌', VIEW_W/2, VIEW_H - 56);
     renderTail();
     return;
   }
@@ -6202,7 +6265,7 @@ function render() {
     });
     ctx.fillStyle = '#ff6';
     ctx.font = '12px monospace';
-    ctx.fillText('點卡 或 按 1 2 3 4 5', VIEW_W/2, VIEW_H - 48);
+    ctx.fillText('點卡 或 按 1 2 3 4 5', VIEW_W/2, VIEW_H - 56);
     ctx.fillStyle = '#9ab';
     ctx.font = '10px monospace';
     ctx.fillText('揀完元素仲會再揀一個通用技能', VIEW_W/2, VIEW_H - 30);
@@ -6267,7 +6330,7 @@ function render() {
     });
     ctx.fillStyle = '#ff6';
     ctx.font = '12px monospace';
-    ctx.fillText('點左/中/右 或 按 1 2 3', VIEW_W/2, VIEW_H - 48);
+    ctx.fillText('點左/中/右 或 按 1 2 3', VIEW_W/2, VIEW_H - 56);
     renderTail();
     return;
   }
@@ -6330,7 +6393,7 @@ function render() {
     });
     ctx.fillStyle = '#ff6';
     ctx.font = '12px monospace';
-    ctx.fillText('點卡 或 按 1 2 3 4 5', VIEW_W/2, VIEW_H - 48);
+    ctx.fillText('點卡 或 按 1 2 3 4 5', VIEW_W/2, VIEW_H - 56);
     ctx.fillStyle = '#9ab';
     ctx.font = '10px monospace';
     ctx.fillText('揀完機體仲會再揀一個通用技能', VIEW_W/2, VIEW_H - 30);
@@ -6383,7 +6446,7 @@ function render() {
     });
     ctx.fillStyle = '#ff6';
     ctx.font = '12px monospace';
-    ctx.fillText('點左/中/右 或 按 1 2 3', VIEW_W/2, VIEW_H - 48);
+    ctx.fillText('點左/中/右 或 按 1 2 3', VIEW_W/2, VIEW_H - 56);
     renderTail();
     return;
   }
@@ -6534,7 +6597,7 @@ function render() {
     ctx.fillStyle = '#ff6';
     ctx.font = '12px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('點左/中/右 或 按 1 2 3', VIEW_W/2, VIEW_H - 48);
+    ctx.fillText('點左/中/右 或 按 1 2 3', VIEW_W/2, VIEW_H - 56);
     renderTail();
     return;
   }
@@ -6590,7 +6653,7 @@ function render() {
     ctx.fillStyle = '#ff6';
     ctx.font = '12px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('點左/中/右 或 按 1 2 3', VIEW_W/2, VIEW_H - 48);
+    ctx.fillText('點左/中/右 或 按 1 2 3', VIEW_W/2, VIEW_H - 56);
     renderTail();
     return;
   }
@@ -6648,7 +6711,7 @@ function render() {
     ctx.fillStyle = '#ff6';
     ctx.font = '12px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('點左/中/右 或 按 1 2 3', VIEW_W/2, VIEW_H - 48);
+    ctx.fillText('點左/中/右 或 按 1 2 3', VIEW_W/2, VIEW_H - 56);
     renderTail();
     return;
   }
@@ -6714,7 +6777,7 @@ function render() {
     ctx.fillStyle = '#ff6';
     ctx.font = '12px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('點左/中/右 或 按 1 2 3', VIEW_W/2, VIEW_H - 48);
+    ctx.fillText('點左/中/右 或 按 1 2 3', VIEW_W/2, VIEW_H - 56);
     renderTail();
     return;
   }
@@ -6858,6 +6921,16 @@ function render() {
         ctx.strokeStyle = '#ffd0e4';
         ctx.lineWidth = 1;
         ctx.stroke();
+      }
+      /* v0.29.1：中彈白閃（hitFlash 1→0；只畫 overlay） */
+      if (e.hitFlash > 0) {
+        ctx.save();
+        ctx.globalAlpha = Math.min(0.7, e.hitFlash * 0.65);
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, R + 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
       }
       /* ---- v3.11 #71 新敵人程序特徵（零新資產檔，全部用 canvas 畫） ---- */
       /* splitter：菱形裂紋 —— 見到就知「死咗會爆」 */
@@ -7047,14 +7120,27 @@ function render() {
         ctx.fillStyle = '#f06';
         ctx.beginPath(); ctx.arc(e.x, e.y, 12, 0, Math.PI * 2); ctx.fill();
       }
+      if (e.hitFlash > 0) {
+        ctx.save();
+        ctx.globalAlpha = Math.min(0.65, e.hitFlash * 0.55);
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(e.x, e.y, 16, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
       const totalHp = e.maxHp || STAGE_TABLE[e.stage || lastStage].bossHp;
       const hpFrac = Math.max(0, Math.min(1, e.hp / totalHp));
+      /* v0.30.0 #113：血條由 e.y − 24 改成 **e.y − 18**（貼住 sprite 頂部）。
+         boss body 頂 = e.y − 13（12×10 sprite @scale 2.6 → 半高 13），
+         血條高 5 → 底 = e.y − 13 剛好貼實。
+         ⚠️ 原本 y − 24 → 血條 y 26–91，而頂部 HUD 中央帶由 y 6 蓋到 y 67
+            → boss 行到中心時血條被「節奏 chip / 擦彈條」蓋住，
+              學生睇唔到 boss 血量變化。而家血條 y 32–87，完全喺 HUD 帶（≤31）之下。 */
       ctx.fillStyle = 'rgba(0,0,0,0.55)';
-      ctx.fillRect(e.x - 18, e.y - 24, 36, 5);
+      ctx.fillRect(e.x - 18, e.y - 18, 36, 5);
       ctx.fillStyle = hpFrac > 0.5 ? '#0f6' : (hpFrac > 0.25 ? '#ff6' : '#f06');
-      ctx.fillRect(e.x - 18, e.y - 24, 36 * hpFrac, 5);
+      ctx.fillRect(e.x - 18, e.y - 18, 36 * hpFrac, 5);
       ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-      ctx.strokeRect(e.x - 18, e.y - 24, 36, 5);
+      ctx.strokeRect(e.x - 18, e.y - 18, 36, 5);
       if ((e.pattern === 'E' || e.pattern === 'D') && e.laserWarn !== undefined && e.laserWarn > 0 && !e.laserFiring) {
         ctx.strokeStyle = '#ff6';
         ctx.lineWidth = 2;
@@ -7169,9 +7255,12 @@ function drawGrazeMeter() {
   /* v0.26.0 #95：能量條由**底部中央搬到頂部**——
      底部中央而家俾「中下通用技能掣」（x 128–192, y 408–472）霸咗，
      條擺喺底部會被掣蓋住。
-     新位置：頂部中央，喺關卡名 chip（y 6–22）同節奏 chip（y 26–39）之下。 */
+     新位置：頂部中央，喺「關卡+節奏」合併行（y 3–15）之下。
+     v0.30.0 #113：條由 y 62 → **y 27**、文字 baseline 由 58 → **24** ——
+     原本條頂到 y 67，而 boss 血條最低去到 y 26，兩者會撞
+     （HUD 蓋住 boss 血量，學生睇唔到 boss 點死）。而家頂部中央帶只到 y 31。 */
   const w = 84, h = 5;
-  const x = (VIEW_W - w) / 2, y = 62;
+  const x = (VIEW_W - w) / 2, y = 27;
   ctx.fillStyle = 'rgba(0,0,0,0.55)';
   ctx.fillRect(x, y, w, h);
   const f = clamp(grazeEnergy / GRAZE_ENERGY_NEED, 0, 1);
@@ -7193,16 +7282,9 @@ function drawGrazeMeter() {
   drawGrazeFx();
   drawGrazeMeter();
   drawPauseBtn();
-  /* 關卡名標籤 */
-  if (isStage(fsm.cur)) {
-    const th = STAGE_THEME[lastStage] || STAGE_THEME[1];
-    ctx.fillStyle = 'rgba(0,0,0,0.4)';
-    ctx.fillRect(VIEW_W/2 - 60, 6, 120, 16);
-    ctx.fillStyle = th.accent;
-    ctx.font = 'bold 10px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('S' + lastStage + ' · ' + th.name, VIEW_W/2, 17);
-  }
+  /* v0.30.0 #113：關卡名標籤**搬咗入 drawHudChips()**，同節奏狀態合併成一行
+     （原本喺呢度獨立畫 y 6–22，令頂部中央蓋到 y 67，boss + 血條喺底下睇唔到）。
+     見 PLAN #113 同 drawHudChips() 入面嘅合併行。 */
   drawStageAffixFx();       /* v3.8 #43：詞綴橫幅 + 停電暗幕 */
   /* v0.27.0 #105：元素屏幕效果（火焰 vignette / 結冰覆蓋 / 雷閃 / 光爆 / 暗幕）。
      ⚠️ 畫喺遊戲層之上、HUD 之下 —— 玩家要見到效果，但唔可以蓋住讀數。 */
@@ -7242,7 +7324,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.29.0 已載入');
+console.log('[啟動] 末日救未來 v0.30.0 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */
@@ -7270,7 +7352,7 @@ window.__dsf = {
   /* 測試用：強制指定某張卡（實機驗證 form_rail 修正用） */
   upgrades: UPGRADES,
   /* v0.29.0 gamedev-feel */
-  FEEL, cam, addTrauma, hitStop, pulseShip,
+  FEEL, cam, addTrauma, hitStop, pulseShip, feelHitEnemy,
   get hitStopUntil(){ return hitStopUntil; },
   get shipPop(){ return shipPop; },
   get trauma(){ return cam.trauma; },

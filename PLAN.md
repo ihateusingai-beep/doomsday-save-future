@@ -658,6 +658,9 @@ ship.shotTags = { pierce, homing, split, slow, ricochet }  // 層數
 ## 改動紀錄
 
 - **v0.30.0 HUD 壓縮 + feel 補完（2026-10-27）**：落地 PLAN #113/#114/#115。① 頂部中央 HUD 三行→兩行（關卡+節奏合併 y3–15；擦彈 y24/27）；boss 血條 `e.y−18` 貼頂。② 選單 DIFF 卡片 `VIEW_H/2−50`；提示統一 `VIEW_H−56`。③ feel 餘下：laser 全路徑 `killEnemy({skipScore})`；`feelHitEnemy` 中彈白閃（彈 micro trauma／激光淨 flash）；boss hitFlash。`test_feel`/`test_v0272` 綠。
+  **⚠️ 起因：版面違規實測揪出**。用 Playwright WebKit + iPad 直向 834×1194 + **dpr=1 逐行像素掃描**（唔係讀代碼估）量到：HUD 頂部中央由 y 6 蓋到 y 67，而 boss 本體 y 37–123、血條 y 26–91 → **boss 行到中心就整個俾「關卡 chip／節奏 chip／擦彈條」蓋住，學生睇唔到 boss 血量變化**（違反 `UI_STYLE_GUIDE.md` §2.1「HUD 帶永遠唔遮遊戲內容」）；玩家子彈全部喺 x=160 正中央，頂段被蓋 → 子彈「消失喺字下面」。**零數值改動**：boss 軌跡、玩家座標、彈體參數、卡池、抽法權重、元素層全部不變。
+  **實機驗證**：boss 行到最高點（y = 51，最差情況）時截圖確認 **綠色血條完整可見喺 boss 正上方（y 32–37）**，boss 本體 + 標籤「維港起飛 · S1」全部清楚；合併行「S1 · 維港起飛 · 連射加速 ×1.60」壓成一行 y 3–15；頂部中央帶由 65px 縮到 **29px（y 3–31，縮 55%）**。
+  **新增守門 `test_layout.js`**（5 節）：座標全部**由 index.html 原文抽取**（唔喺測試檔 hardcode），斷言嘅係**幾何關係** —— `boss 本體頂 (37) > HUD 帶底 (31)`、`boss 血條頂 (32) > HUD 帶底 (31)`、血條唔同本體重疊、玩家子彈命中 boss 嗰刻喺 HUD 帶之下；再加「舊座標已清走」同選單座標對齊 §2.2。**還原驗證通過**：① boss 血條改返 `e.y−24` → 2 條 fail；② 擦彈條改返 y 62 → 3 條 fail；③ DIFF 卡片改返 `−40` → 2 條 fail；全部還原 → ALL PASS。**意思係：從此任何人郁 HUD 或 boss 座標，測試即刻 fail，唔會等到下次先發現 boss 俾蓋住。**
 
 - **v0.29.1 feel 補完（2026-10-27）**：① laser `fireLaser`/`laserTick` 雜魚／boss 死一律 `killEnemy({skipScore:true})`（boom／tier／C被動／迴氣／分裂；防 tick 分雙計；fireLaser 唔再裸 `onBossDown`）。② `feelHitEnemy` + `hitFlash` 白閃（彈=micro trauma；激光=淨 flash）。③ boss 都有 hitFlash。`test_feel` 加守門。**併入 v0.30.0 出街**。
 

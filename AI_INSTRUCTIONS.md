@@ -183,6 +183,26 @@ for f in test_*.js; do node "$f" >/dev/null 2>&1 && echo "PASS $f" || echo "FAIL
 > ⑤ **boss 死亡路徑統一**（`laserTick` 經 `killEnemy()`；`killEnemy` 對 boss 都 set `_dead`）；
 > ⑥ 版號 >= v0.27.2。
 >
+> **`test_pool_v0273.js` 係 v0.27.3 強化卡池抽法嘅守門測試**（5 節），覆蓋：
+> 「玩法卡」定義（5 形態 + 4 tag + 5 生存 = 14 張）**係單一真實來源**
+> （`isOffenseStyleCard()` 收埋 form_/tag_ 前綴，`isPlayStyleCard()` 同 `upgradeWeight()` 都引用佢，
+> **唔准任何一個函式自己再寫一套前綴判斷**）、加權同定義一致
+> （行為驗證：**權重 > 1 ⟺ 玩法卡**，26 張逐張對）、
+> 三個抽卡規則（只抽未見過 / 加權 / 保底）+ 保底邊界 fallback、
+> 「已見過」清單**唔跨局**（揀機 + resetRunFresh 兩處清）、
+> 形態卡「**轉職**」標記嘅行為、版號 >= v0.27.3。
+> ⚠️ 詳細抽卡行為測試（5000 次抽卡保底 0 違例、跨次唔重複、2 萬局模擬零形態卡 < 1%）
+> 喺 `test_upgrades.js` §6。
+> ⚠️ `test_upgrades.js` eval 呢幾個 helper 時**順序有意義**：`isPlayStyleCard` 同 `upgradeWeight`
+> 都引用 `isOffenseStyleCard`，所以要**先 eval `isOffenseStyleCard`**（自由變數喺 module scope 解析得到）。
+>
+> **`test_weapons.js` 最後一節係 v0.28.0 形態卡死卡修正嘅守門測試**（PLAN #111 / #112）：
+> `bulletSurvivesHit()` 行為（rail / boomerang / missile 命中唔死 · bolt / wave 命中會死）、
+> `bossOrNearest()` 行為（有 boss 鎖 boss · 冇 boss 追最近敵人）、
+> `onPlayerBulletHit()` 實際執行（迴力鏢 / 導彈 / 光束 return false · 普通彈 return true 對照組），
+> 加結構斷言（迴力鏢 `maxLife = 1800` · 轉向條件 `y < 40` · spawn 就初始化 `_hitSet` · 追蹤用 `bossOrNearest`）。
+> ⚠️ 呢啲係**行為測試唔係 regex 掃描** —— 還原修正之後 5 條會 fail（已做還原驗證）。
+>
 > ### 5.1.1 抽出函數做行為測試（**兩個陷阱，2026-10-25 踩過**）
 >
 > 本 repo 嘅測試用 `makeFn(name, deps, consts)` 把函數抽出嚟喺 stub 環境實際執行。
@@ -360,6 +380,13 @@ console.log(t.length?'✗ em dash 殘留: '+t.join(' | '):'✓ 零 em dash');
 | **逐字斷行會拆走數字** | 「−25%」變成「−」/「25%」、「+20%」變成「+2」/「0%」—— 符號同數字分兩行，低耐性學生讀唔啱 | `wrapText()` 改用**原子**切法（符號 + 數字 + 小數 + 百分比 = 一個原子）—— **v0.27.2 已做** |
 | **sprite key 當文字印出嚟** | 玩家見到「icon_iron 鐵壁」—— 內部變數名洩漏到畫面 | 一律用 `drawIconWithText()`（icon 係圖集 sprite，文字淨係得個名）；掃描守門：**全檔 `fillText(...icon...)` = 0**（掃前先剝註解） |
 | **橫幅只喺「戰鬥畫面」畫，但掉落發生喺 boss 死嗰刻** | boss 死即刻跳 modal，所以正常節奏下橫幅**根本睇唔到**；就算睇到仲會同另一條橫幅撞位 | 提示要喺**玩家真正會停留嘅畫面**畫（掉落 → CHOICE modal）；唔好靠「2.6 秒內要行完幾個選單」呢類假設 |
+| **強化卡池純隨機抽** | 一局 12 個卡位只見到 10.08/26 張卡，**6.87% 嘅局零形態卡** → 玩家感覺「無 build concept」（唔係卡設計差，係**出卡率**問題） | 三規則：① 只抽本局未見過嘅卡 ② 玩法卡加權 ③ 每次 boss 強化保底 1 張玩法卡 → 零形態卡 6.87% → **0.16%**（v0.27.3 已做）。⚠️ 玩法卡定義要**單一真實來源**（`isOffenseStyleCard()` 收埋 form_/tag_ 前綴，`isPlayStyleCard()` 同 `upgradeWeight()` 都引用佢，唔准各自寫一套） |
+| **畫面畫成光束，但命中判定用點撞** | 光束喺畫面由機身畫到畫面頂，但判定用 `|b.y - e.y| < hh`，而嗰類子彈**根本唔郁**（只 `life -= dtMs`）→ 實際只打中貼住機身嗰十幾像素 = **死卡**（揀咗嗰張卡之後 boss 永遠唔死，關卡卡死 200+ 秒） | 命中判定要**同畫面一致**：光束類彈體用「柱 + 長度」（`playerBulletHits()`），唔用普通彈嗰套點撞。⚠️ 呢類 bug **實機跑完整一局**先捉到（蒙地卡羅只驗證分佈，驗證唔到卡嘅機制本身壞咗） |
+| **「命中即刪彈」令返程／追擊根本唔存在** | 迴力鏢畫成會返嚟、導彈畫成會追，但 `onPlayerBulletHit()` 一律 `return true` 刪彈 → 撞到第一隻雜魚就死 → **boss 血量 0 跌幅**（實機：92 秒 boss 血量一個位都冇跌過，關卡永久卡死） | 命中規則要**同畫面一致**：`bulletSurvivesHit(b)` 列出「命中唔死」嘅彈體（`rail` / `boomerang` / `missile`），護盾同護罩炮台分支都要同步；同一目標只打一次靠 `_hitSet`（**由 spawn 就初始化**，唔係轉向時先建） |
+| **慢速子彈每幀改追「最近嘅敵人」** | boss 橫向游走（x 振幅 ±80、最快 133px/s），而雜魚永遠比 boss 近 → 慢速彈體 100% 撞唔到 boss（實機：導彈全部死喺機身上方 10–25px） | 慢速形態卡用 `bossOrNearest(x, y)`：**場上有 boss 就鎖 boss**；而「命中唔死」先可以令佢穿過雜魚繼續追 |
+| **彈體射程唔夠打唔到 boss** | 迴力鏢轉向條件「生命過半」（1000ms）→ 只飞到 y ≈ 158，而 boss 喺 y = 51–109（下沿 122）→ **物理上入唔到 boss 嘅 y 範圍** | 射程要對住 boss 嘅實際位置調（boss 位置 = `e.y = 80 + sin(e.t/400) × 30`）；轉向條件用**位置**（飛到畫面頂）而唔係**時間**，並且 `maxLife` 要夠往返 |
+| **「加速」只做咗減速嗰半** | v3.11 寫「① 鎖定期慢速微追 ② **巡航期加速**」，但程式只喺鎖定期降速一次（`_lockSpd`），之後**永久停喺 45%** → 導彈要 2826ms 先飛到 boss，但 `life` 只有 2200ms → **物理上飛唔到** | 每個「兩階段」機制都要睇**兩半都做咗冇**；減速嗰半用 `_lockSpd` 做一次性旗標，加速嗰半要喺階段切換時**還原**（並用另一個旗標，唔好重複做） |
+| **爆散碎屑喺 boss 身上爆開 → 即時再打中 boss** | 碎屑 `Math.max(1, dmg×0.4)` 令每粒最少 1 傷，3 粒 = 3 傷，即係每發導彈實際 2.2 + 3 = 5.2 傷（實測 DPS 8.84，比同儕強 5 倍） | 碎屑類「對群體有實質價值」嘅效果要標記 `noBoss`，碰撞時跳過 boss（同「連鎖閃電唔打 boss」一致）；boss 只食主彈傷害 |
 | **同一個死亡流程有兩條路** | `laserTick` 直接叫 `onBossDown()` 唔經 `killEnemy()` → 冇爆炸、`_dead` 唔 set、同一幀第二個傷害源會**再觸發一次**（掉兩件裝備 + 分數雙計） | 所有傷害出口一律經 `killEnemy()`；`killEnemy` 對 boss 都要 set `_dead` |
 | **圖集座標表 drift** | 圖靜靜哋錯位，**測試全部照過** | `node tools/sync_sheet.js` —— **v0.24.0 已解** |
 | **加咗 sprite 但唔更新 `SPRITE`** | 圖錯位 / 空白格 | 跑 `node tools/sync_sheet.js`，唔好手改座標表 |

@@ -1713,19 +1713,109 @@ let stylePicked = -1;
    冇經 STYLE 直接入關就係 false → 清走舊風格。 */
 let stylePending = false;
 
+/* ---------- v0.28.0 強化卡池抽法（PLAN v3.18）----------
+ *
+ * 問題（100 萬局蒙地卡羅實測）：原本 `generateChoiceOffer()` 係**全池純隨機**、
+ * 逐張抽、可重複 → 一局 12 個卡位只見到 **10.08 / 26 張卡**（38.8%），
+ * **6.87% 嘅局一張形態卡都見唔到**、**12.33% 零 tag** ——
+ * 呢個就係用戶講「好似無 build concept」嘅真正量化原因（唔係元素層嘅問題）。
+ *
+ * 新抽法（三個規則疊埋，數據全部有實測支撐）：
+ * ① **只抽本局未見過嘅卡** → 12 個卡位全部係唔同嘅卡，一局見卡 10.08 → **12.00**。
+ *    ⚠️ 代價：同一張卡唔會喺同一局出現兩次，所以「疊加」（PLAN #3 疊加係設計核心）
+ *    會大幅削弱 —— 呢個係**刻意接受**嘅取捨（用戶 2026-10-26 明確揀咗最激進版）。
+ * ② **玩法卡加權** → 「玩法卡」= 5 張形態 + 4 張 tag + 5 張生存 = **14 張**。
+ *    形態/tag 權重 3 · 生存權重 2 · 純數值權重 1。
+ *    玩法卡平均 6.46 → 8.45 張／局，零形態卡 3.06% → 0.20%。
+ * ③ **保底：每次 boss 強化 3 張卡至少 1 張玩法卡** → 零形態卡再降到 **0.16%**、
+ *    零 tag **0.74%**。保底係冗餘防護網（加權後幾乎自然滿足），但零成本。
+ *
+ * ⚠️ 「玩法卡」定義必須係**單一真實來源**（下面 isPlayStyleCard）——
+ *    加權同保底都靠佢，唔好散落三份判斷。
+ */
+let seenUpgradeIds = new Set();   /* 本局已出現過嘅強化卡 id（唔跨局） */
+
+/** 攻擊向玩法卡（5 張形態 + 4 張 tag = 9 張）—— **前綴規則嘅唯一真實來源**
+ *  ⚠️ 「玩法卡」呢個概念原本喺 isPlayStyleCard() 同 upgradeWeight() 各寫咗一次
+ *     form_/tag_ 前綴判斷 —— 兩份定義遲早會漂移（記憶規則：同一個概念只有一個真實來源）。
+ *     收埋成呢個 helper，兩個函式都引用佢。 */
+function isOffenseStyleCard(up) {
+  if (!up || !up.id) return false;
+  return up.id.indexOf('form_') === 0 || up.id.indexOf('tag_') === 0;
+}
+/** 呢張卡算唔算「玩法卡」？（5 形態 + 4 tag + 5 生存 = 14 張）
+ *  ⚠️ 單一真實來源：加權（upgradeWeight）同保底（generateChoiceOffer）都靠佢。 */
+function isPlayStyleCard(up) {
+  if (!up || !up.id) return false;
+  if (isOffenseStyleCard(up)) return true;     /* 5 張主彈形態 + 4 張 tag */
+  if (up.cat === '防禦') return true;           /* 5 張生存（生命/盾/復活） */
+  return false;
+}
+/** 抽卡權重：玩法卡加權，形態/tag 最受歡迎
+ *  ⚠️ 唔准自己再寫一次 form_/tag_ 前綴判斷 → 引用 isOffenseStyleCard()。 */
+function upgradeWeight(up) {
+  if (!up || !up.id) return 1;
+  if (isOffenseStyleCard(up)) return 3;
+  if (up.cat === '防禦') return 2;
+  return 1;
+}
+/** 按權重抽一個 index（同一次三選一之內唔會重複） */
+function pickWeightedIndex(list, wf) {
+  let total = 0;
+  for (const u of list) total += wf(u);
+  let r = Math.random() * total;
+  for (let i = 0; i < list.length; i++) {
+    r -= wf(list[i]);
+    if (r <= 0) return i;
+  }
+  return list.length - 1;
+}
+/** 呢張形態卡其實係「轉職」？（玩家已持有另一種形態 → 揀咗會頂走舊嗰種）
+ *  ⚠️ 只喺卡面**顯示**用，唔改 game logic（互斥邏輯喺 applyPickedUpgrade）。 */
+function isFormTransferCard(up) {
+  if (!up || !up.id || up.id.indexOf('form_') !== 0) return false;
+  for (const id of Object.keys(playerStacks)) {
+    if (id.indexOf('form_') === 0 && id !== up.id) return true;
+  }
+  return false;
+}
 function generateChoiceOffer() {
-  /* PLAN v3.8 #40：同一次三選一之內唔會出現重複 id（解決「三張卡一模一樣」）。
-     ⚠️ 只限制「同一次」，唔限制跨次疊加——疊加係設計核心（#3）。
-     逐張抽、抽中就用,唔做全局洗牌，所以保留原有分佈。 */
-  const pool = UPGRADES.slice();
+  /* v0.28.0：只抽本局**未見過**嘅卡（12 個卡位全部唔同） */
+  const unseen = UPGRADES.filter(u => !seenUpgradeIds.has(u.id));
+  /* ⚠️ fallback：萬一將來加 boss 令卡位超過 26，池會乾 —— 退回全池（唔會卡死） */
+  const pool = (unseen.length ? unseen : UPGRADES).slice();
   const out = [];
+  const usedIds = new Set();
   let guard = 0;
   while (out.length < 3 && pool.length > 0 && guard++ < 200) {
-    const i = Math.floor(Math.random() * pool.length);
-    out.push(pool.splice(i, 1)[0]);
+    const i = pickWeightedIndex(pool, upgradeWeight);
+    const u = pool.splice(i, 1)[0];
+    out.push(u);
+    usedIds.add(u.id);
   }
-  /* 池唔夠 3 張先會出現（目前池 = 17，正常唔會） */
+  /* 池抽乾（卡位 > 未見過池大細）：由全池補，但要避開已抽中嘅 id */
+  if (out.length < 3) {
+    const rest = UPGRADES.filter(u => !usedIds.has(u.id));
+    while (out.length < 3 && rest.length) {
+      const i = pickWeightedIndex(rest, upgradeWeight);
+      const u = rest.splice(i, 1)[0];
+      out.push(u);
+      usedIds.add(u.id);
+    }
+  }
+  /* 最後防線：連全池都用盡（正常唔會發生，池 26 > 卡位 12）—— 容許重複，唔好卡死 */
   while (out.length < 3) out.push(UPGRADES[Math.floor(Math.random() * UPGRADES.length)]);
+  /* 保底：3 張入面至少 1 張玩法卡（用 pool 剩低嘅未見過玩法卡替換第三張）。
+     ⚠️ 被替換走嗰張**唔算已出現**（玩家見唔到佢），所以唔加入 seenUpgradeIds。 */
+  if (!out.some(isPlayStyleCard)) {
+    let stylePool = pool.filter(isPlayStyleCard);
+    /* ⚠️ 邊界：池剩低嘅未見過玩法卡唔夠時（卡位接近池大細），
+       pool 可能已經抽乾 → stylePool 空 → 保底靜靜失效。
+       所以要退回全池搵（並避開已抽中嘅 id，唔可以出現重複卡）。 */
+    if (!stylePool.length) stylePool = UPGRADES.filter(isPlayStyleCard).filter(u => !usedIds.has(u.id));
+    if (stylePool.length) out[2] = stylePool[pickWeightedIndex(stylePool, upgradeWeight)];
+  }
+  for (const u of out) seenUpgradeIds.add(u.id);
   return out;
 }
 
@@ -3201,6 +3291,9 @@ function pickShipAndStart(id) {
       id = 'A';
     }
     initRunSeed();
+    /* v0.28.0：新局清「已見過嘅強化卡」清單 ——
+       強化卡池每局重新由 26 張開始（只抽未見過嘅規則係 per-run）。 */
+    seenUpgradeIds.clear();
     pickShip(id);
     if (!ship) throw new Error('pickShip 後 ship 仍係 null');
     console.log('[選機] OK', id, 'seed', runSeed, 'form', ship.shotForm);
@@ -3407,6 +3500,7 @@ function resetRunFresh() {
   stageStartMs = null;
   pausedAtMs = null;
   playerStacks = Object.create(null);
+  seenUpgradeIds.clear();   /* v0.28.0：強化卡「已見過」清單唔跨局 */
   ship = null;
   bullets.length = 0;
   enemies.length = 0;
@@ -4025,8 +4119,15 @@ const MISSILE_BURST_CAP = 6;     /* 爆散小彈同時存在上限，避免爆�
 function applyShotFormCosts(s) {
   if (!s) return;
   const f = s.shotForm || 'bolt';
-  if (f === 'boomerang') s.fireRate *= 0.7;
-  else if (f === 'missile') s.fireRate *= 0.55;
+  /* v0.28.0：呢兩個乘數原本係「對住壞咗嘅行為」訂嘅 ——
+     迴力鏢 / 導彈之前對 boss 係 0 傷害（死卡），所以從來冇人驗過佢哋嘅實際 DPS。
+     修正咗「命中唔死 + 射程 + 巡航加速」之後，佢哋會**必定命中 boss**
+     （實測 16.94 / 18.48 HP/s），比其他形態卡（wave 3.13 · laser 1.80 · rail 1.60）**強 5–6 倍**
+     → 變成必揀卡。所以要重訂射速代價，令 5 張形態卡落喺同一個 DPS 帶（≈ 3.4 HP/s）。
+     實測推算 + 覆核：boom 0.7 → 0.15（16.94 → 3.63 → **實測 2.36**）·
+     miss 0.55 → 0.10（18.48 → 8.84 → 爆散唔打 boss 後 **5.60**）→ 再收窄到 0.07（≈ 3.7）。 */
+  if (f === 'boomerang') s.fireRate *= 0.15;
+  else if (f === 'missile') s.fireRate *= 0.07;
   else if (f === 'rail') s.fireRate *= 0.35;
   else if (f === 'wave') s.bulletSpd *= 0.9;
 }
@@ -4061,6 +4162,17 @@ function nearestEnemy(x, y) {
     if (d < bestD) { bestD = d; best = e; }
   }
   return best;
+}
+/** 追擊目標（慢速彈體用）：**場上有 boss 就鎖 boss，冇 boss 先追最近敵人**。
+ *  ⚠️ v0.28.0 死卡修正：boss 會橫向游走（x = 160 + cos(t/600)×80，最快 133px/s），
+ *     而雜魚永遠比 boss 近 → 慢速子彈（導彈 / 迴力鏢）如果每幀改追「最近嘅雜魚」，
+ *     就 **100% 撞唔到 boss**（實機：揀咗 form_miss 之後 boss 血量 92 秒一啲都冇跌）。
+ *  ⚠️ **只限 missile / boomerang 兩張形態卡用**；追蹤 tag（tag_home）行為唔變。 */
+function bossOrNearest(x, y) {
+  for (const e of enemies) {
+    if (e.kind === 'spiral' && !e._dead) return e;
+  }
+  return nearestEnemy(x, y);
 }
 
 function pushPlayerBullet(b) {
@@ -4468,7 +4580,11 @@ function spawnPlayerShot() {
       formSpd = formSpd * 0.95;
       vx = Math.cos(a) * formSpd + (i - mid) * 0.04;
       vy = Math.sin(a) * formSpd;
-      life = maxLife = 1000;
+      /* v0.28.0 死卡修正（射程）：原本 maxLife = 1000 → 轉向時（550ms）只飞到 y ≈ 158，
+         而 boss 喺 y = 51–109（下沿 122）→ **永遠入唔到 boss 嘅 y 範圍**（實機 boss 0 傷害）。
+         而家 maxLife 1800 + 轉向改成「飛到畫面頂 y < 40 先轉」→
+         出程 832ms 到頂、返程 724ms 返到機身，夠往返 boss 高度。 */
+      life = maxLife = 1800;
       phase = 0; /* 0 out, 1 return */
     } else if (form === 'missile') {
       dmg = baseDmg * 2.2;
@@ -4497,6 +4613,10 @@ function spawnPlayerShot() {
       dmg,
       pierceLeft: pierce,
       _lastHit: null,
+      /* v0.28.0：會「命中唔死」嘅彈體由 spawn 就初始化 `_hitSet`，
+         確保同一目標只被打一次（PLAN #69）—— 原本 `_hitSet` 只喺迴力鏢轉向時先建立，
+         出程撞同一隻可以重複計傷害。 */
+      _hitSet: (form === 'boomerang' || form === 'missile') ? [] : null,
       life, maxLife,
       phase,
       baseX: ship.x + (i - mid) * 4,
@@ -4544,9 +4664,13 @@ function tickPlayerBullets(dtMs) {
 
     /* homing tag 或 missile 微追 */
     const homeLv = (b.tags && b.tags.homing) || 0;
-    const wantHome = homeLv > 0 || b.form === 'missile';
+    /* v0.28.0：迴力鏢出程（phase 0）都會追，返程（phase 1）唔追（要返機身）。
+       ⚠️ 追蹤目標改用 bossOrNearest()：boss 橫向游走，雜魚永遠比 boss 近，
+          慢速彈體每幀改追「最近嘅雜魚」就 100% 撞唔到 boss（實機 0 傷害）。 */
+    const isTrackForm = b.form === 'missile' || (b.form === 'boomerang' && b.phase === 0);
+    const wantHome = homeLv > 0 || isTrackForm;
     if (wantHome) {
-      const tgt = nearestEnemy(b.x, b.y);
+      const tgt = isTrackForm ? bossOrNearest(b.x, b.y) : nearestEnemy(b.x, b.y);
       if (tgt) {
         const tx = tgt.x - b.x, ty = tgt.y - b.y;
         const len = Math.hypot(tx, ty) || 1;
@@ -4568,6 +4692,24 @@ function tickPlayerBullets(dtMs) {
             b.vx = (b.vx / cur) * s2;
             b.vy = (b.vy / cur) * s2;
           }
+          /* v0.28.0 死卡修正（巡航期加速）：v3.11 #70 寫「① 鎖定期慢速微追 ② **巡航期加速**」，
+             但巡航期**加返速度**嗰半從來冇實作 —— `_lockSpd` 只降一次就永久停喺 45%
+             （0.44 × 0.55 × 0.45 = 0.109 px/ms）。要飛到 boss（機身 388 → boss 80 = 308px）
+             需要 308 ÷ 0.109 = **2826ms**，但導彈 `life` 只有 2200ms →
+             **物理上飛唔到 boss**（實機：boss 血量 92 秒一啲都冇跌）。
+             而家鎖定期一過就恢復速度（再 ×1.15 加速，符合「巡航期加速」）。 */
+          if (!locked && b._lockSpd != null && !b._lockRestored) {
+            b._lockRestored = true;
+            const cur = Math.hypot(b.vx, b.vy) || 1;
+            const s2 = b._lockSpd * 1.15;
+            b.vx = (b.vx / cur) * s2;
+            b.vy = (b.vy / cur) * s2;
+          }
+        } else if (b.form === 'boomerang') {
+          /* v0.28.0：迴力鏢出程弱追蹤（轉角 0.0045，比導彈巡航期 0.0070 慢一截，
+             保留「拋出去」嘅手感）—— boss 橫向游走 ±80px（133px/s），
+             純直線彈道 + 800ms 飛行延遲＝幾乎打唔中。 */
+          turn = 0.0045;
         } else {
           turn = 0.0022 * Math.min(3, homeLv || 1);
         }
@@ -4594,11 +4736,16 @@ function tickPlayerBullets(dtMs) {
 
     /* boomerang：前半出、後半返 */
     if (b.form === 'boomerang') {
-      if (b.phase === 0 && (b.life < b.maxLife * 0.45 || b.y < 36)) {
+      /* v0.28.0 死卡修正（射程）：原本轉向條件係「生命過半」（maxLife 1000 → 550ms），
+         以 A 機 0.418 px/ms 計**最高只飞到 y ≈ 158**，而 boss 喺 y = 51–109（下沿 122）
+         → **物理上入唔到 boss 嘅 y 範圍**（實機：boss 血量 86.8 秒一啲都冇跌）。
+         而家改成「**飛到畫面頂 y < 40 先轉**」（生命剩 25% 兜底保證一定會返嚟）。 */
+      if (b.phase === 0 && (b.y < 40 || b.life < b.maxLife * 0.25)) {
         b.phase = 1;
         /* v3.11 #69：返程**唔再重置 _lastHit**。原本 `b._lastHit = null` 令返程
            可以再打同一隻 → 同一發子彈對同一目標計兩次傷害，數值偏離直覺。
-           改成用 _hitSet：返程仍然打得中**其他**敵人，但同一隻只打一次。 */
+           改成用 _hitSet：返程仍然打得中**其他**敵人，但同一隻只打一次。
+           ⚠️ v0.28.0：_hitSet 已經喺 spawn 初始化，所以呢行唔會再建立新嘅。 */
         b._hitSet = b._hitSet || [];
       }
       if (b.phase === 1 && ship) {
@@ -4660,6 +4807,12 @@ function spawnMissileBurst(src) {
       x: src.x, y: src.y,
       vx: Math.cos(a) * spd, vy: Math.sin(a) * spd,
       dmg, pierceLeft: 0, _lastHit: null,
+      /* v0.28.0：爆散**唔打 boss** —— 爆散係「對群體有實質價值」嘅效果（#70），
+         但佢哋喺命中點（即 boss 身上）爆開 → 下一幀即刻再打中 boss，
+         `Math.max(1, dmg×0.4)` 又令每粒最少 1 傷 → 每發導彈實際 2.2 + 3 = **5.2 傷**
+         （實測 DPS 8.84 HP/s，比其他形態卡強 5 倍）。
+         同「連鎖閃電唔打 boss」一致：爆炸碎屑唔打 boss，boss 只食導彈本身嘅傷害。 */
+      noBoss: true,
       life: 620, maxLife: 620, phase: 0, t: 0,
       tags: {}, ricochetLeft: 0, _splitDone: true, /* 唔再裂 */
     });
@@ -4896,6 +5049,37 @@ function killEnemy(e) {
   return 'grunt';
 }
 
+/** 呢種子彈**命中之後唔會消失**？
+ *  ⚠️ v0.28.0 死卡修正 —— 呢個係「畫面同行為一致」嘅保證：
+ *     `rail`（光束）畫成由機身射到畫面頂、`boomerang`（迴力鏢）畫成會返嚟、
+ *     `missile`（導彈）畫成會追 —— 但三者的 `onPlayerBulletHit()` 原本都行
+ *     `b.pierceLeft > 0` 分支（`ship.pierce` 預設 0）→ **命中即刪彈**，
+ *     結果：光束同導彈嘅「持續／追擊」根本唔存在、迴力鏢永远返唔到嚟。
+ *     實機後果：form_boom / form_miss 兩張卡 **boss 血量 0 跌幅**（揀咗就卡死關卡）。
+ *  ⚠️ 命中唔死唔代表可以無限打同一隻 —— `_hitSet` 由 spawn 就初始化，確保同一目標只打一次（PLAN #69）。 */
+function bulletSurvivesHit(b) {
+  return !!b && (b.form === 'rail' || b.form === 'boomerang' || b.form === 'missile');
+}
+
+/* 玩家子彈 vs 敵人：命中判定（抽出嚟方便做行為測試）。
+   ⚠️ v0.28.0 **死卡修正**：form_rail（軌道炮）嘅光束喺畫面上係由機身一直畫到畫面頂
+   （render: moveTo(b.x, b.y) → lineTo(b.x, 8)），但原本命中判定用 `|b.y - e.y| < hh`，
+   而 **rail 子彈唔會郁**（tickPlayerBullets 對 rail 淨係 `life -= dtMs`，b.y 永遠停喺機身）
+   → 光束實際上只打中貼住機身嗰十幾像素嘅敵人 = **死卡**（畫面見到打上頂，實際打唔到）。
+   實機後果：揀咗 form_rail 之後幾乎打唔到嘢 → boss 永遠唔死 → **死鎖**（STAGE_3 卡死 200+ 秒）。
+   修正：rail 嘅判定改成**一整條直欄**（同一條柱 + 喺機身以上），
+   同畫面見到嘅光束一致。
+   ⚠️ laser 唔喺呢度判（laserTick 自己處理，佢嘅直欄 + 長度判定本來就正確）。 */
+function playerBulletHits(b, e, halfW) {
+  if (b.form === 'rail') {
+    if (Math.abs(b.x - e.x) >= 11) return false;   /* 柱闊（同原本 hw 一致） */
+    return e.y < b.y + 4;                            /* 機身（含）以上成條柱都中 */
+  }
+  const hw = (b.form === 'laser') ? halfW + 2 : halfW;
+  const hh = (b.form === 'laser') ? halfW + 4 : halfW;
+  return Math.abs(b.x - e.x) < hw && Math.abs(b.y - e.y) < hh;
+}
+
 function onPlayerBulletHit(b, e) {
   /* v0.27.0 #104：元素效果統一喺「命中」事件觸發（喺任何 return 之前） */
   applyElementEffects(e, b);
@@ -4916,6 +5100,9 @@ function onPlayerBulletHit(b, e) {
     b._railHit.push(e);
     return false; /* ray 視覺自己消失，可打多隻 */
   }
+  /* v0.28.0：迴力鏢 / 導彈命中都唔死（bulletSurvivesHit）。
+     ⚠️ 同一目標只打一次由 `_hitSet` 負責（spawn 時已初始化，#69）。 */
+  if (bulletSurvivesHit(b)) return false;
   if (b.pierceLeft > 0) {
     b.pierceLeft--;
     return false;
@@ -5423,10 +5610,11 @@ function tick(dtMs) {
     for (let i = bullets.length - 1; i >= 0; i--) {
       const b = bullets[i];
       if (b.owner !== 'player') continue;
-      /* rail 用線寬；其餘點撞 */
-      const hw = (b.form === 'rail') ? 11 : (b.form === 'laser' ? halfW + 2 : halfW);
-      const hh = (b.form === 'rail') ? halfW + 2 : (b.form === 'laser' ? halfW + 4 : halfW);
-      if (Math.abs(b.x - e.x) < hw && Math.abs(b.y - e.y) < hh) {
+      /* v0.28.0：導彈爆散碎屑唔打 boss（理由見 spawnMissileBurst） */
+      if (b.noBoss && e.kind === 'spiral') continue;
+      /* rail 用線寬；其餘點撞（v0.28.0：判定抽出 playerBulletHits()，
+         因為 rail 嘅判定要同「畫面上嘅光束」一致，唔係普通點撞） */
+      if (playerBulletHits(b, e, halfW)) {
               /* 同一彈唔好每幀重複打同一隻 */
               /* v3.11 #69：同一子彈對同一敵人只打一次（_hitSet）。
            對 rail（瞬發線）同 boomerang（去返都打）特別重要——否則
@@ -5441,11 +5629,14 @@ function tick(dtMs) {
                   if (b.pierceLeft > 0) {
                     b.pierceLeft--;
                     b._lastHit = e;
-                  } else if (b.form !== 'rail') {
+                  } else if (!bulletSurvivesHit(b)) {
                     bullets.splice(i, 1);
                   }
                   spawnSparks(b.x, b.y, 4, 0.1);
                   screenFlash = Math.max(screenFlash, 0.12);
+                  /* v0.28.0：被護盾擋住都要記低打過，否則「命中唔死」嘅彈體
+                     （迴力鏢 / 導彈）會每一幀重複撞同一隻護盾機。 */
+                  if (b._hitSet) b._hitSet.push(e);
                   continue;
                 }
               }
@@ -5454,7 +5645,7 @@ function tick(dtMs) {
                 if (b.pierceLeft > 0) {
                   b.pierceLeft--;
                   b._lastHit = e;
-                } else if (b.form !== 'rail') {
+                } else if (!bulletSurvivesHit(b)) {
                   bullets.splice(i, 1);
                 }
                 if (b._hitSet) b._hitSet.push(e);
@@ -5815,7 +6006,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.27.2 · 元素層 · 五種元素 · 全新特效', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.28.0 · 元素層 · 五種元素 · 強化卡池重抽', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -6242,6 +6433,15 @@ function render() {
         ctx.font = 'bold 10px monospace';
         ctx.textAlign = 'right';
         ctx.fillText('x' + n, x + cardW - 6, y + 14);
+      } else if (isFormTransferCard(up)) {
+        /* v0.28.0：形態卡喺「玩家已經有形態」時其實係**轉職**（會頂走舊形態）。
+           抽法改成「只抽未見過」之後，一局平均會見到 3.3 張形態卡，
+           所以呢個情況好常見 —— 唔標明嘅話，玩家會以為揀咗係加強。
+           ⚠️ 形態卡互斥（唔會疊加），所以呢個分支唔會同上面嘅「x2」撞位。 */
+        ctx.fillStyle = '#ff6';
+        ctx.font = 'bold 9px monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText('轉職', x + cardW - 6, y + 14);
       }
       ctx.fillStyle = '#ff6';
       ctx.font = 'bold 10px monospace';
@@ -6949,7 +7149,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.27.2 已載入');
+console.log('[啟動] 末日救未來 v0.28.0 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */
@@ -6970,6 +7170,12 @@ window.__dsf = {
   elementCardsLayout, hitElementCard, currentElement, applyElementEffects,
   elemOffer: () => elementOffer, elemChoiceOffer: () => elemChoiceOffer,
   applyPickedUniversal,
+  /* v0.28.0 強化卡池抽法（驗證新抽法用） */
+  choiceOffer: () => choiceOffer,
+  playerStacks: () => playerStacks,
+  seenUpgradeIds: () => seenUpgradeIds,
+  /* 測試用：強制指定某張卡（實機驗證 form_rail 修正用） */
+  upgrades: UPGRADES,
 };
 </script>
 </body>

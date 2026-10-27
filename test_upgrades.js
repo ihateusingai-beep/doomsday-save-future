@@ -94,20 +94,89 @@ const iCost = applySrc.indexOf('if (n > 0) up.cost(ship, n);');
 check('mod 迴圈喺 cost 迴圈之前', iMod > 0 && iCost > iMod, '(mod@' + iMod + ' cost@' + iCost + ')');
 check('applyUpgrades 內兩個迴圈都存在', iMod > 0 && iCost > 0);
 
-console.log('\n=== 6. 抽卡去重（#40）===');
+console.log('\n=== 6. 抽卡（v0.27.3 新抽法：只抽未見過 + 玩法卡加權 + 保底）===');
+/* ⚠️ v0.27.3：generateChoiceOffer() 而家依賴 4 個自由變數
+   （seenUpgradeIds / isPlayStyleCard / upgradeWeight / pickWeightedIndex）。
+   正確做法係 eval 返全部去測試檔 scope（見 AI_INSTRUCTIONS.md §5.1.1）——
+   唔可以直接用 new Function('UPGRADES', ...) 注入，咁自由變數會 undefined。
+   ⚠️ 順序有意義：isPlayStyleCard / upgradeWeight 都引用 isOffenseStyleCard，
+   所以要先 eval 佢。 */
+const seenUpgradeIds = new Set();
+const isOffenseStyleCard = eval('(' + h.match(/function isOffenseStyleCard\(up\)[\s\S]*?\n\}/)[0] + ')');
+const isPlayStyleCard = eval('(' + h.match(/function isPlayStyleCard\(up\)[\s\S]*?\n\}/)[0] + ')');
+const upgradeWeight = eval('(' + h.match(/function upgradeWeight\(up\)[\s\S]*?\n\}/)[0] + ')');
+const pickWeightedIndex = eval('(' + h.match(/function pickWeightedIndex\(list, wf\)[\s\S]*?\n\}/)[0] + ')');
 const genSrc = h.match(/function generateChoiceOffer\(\)[\s\S]*?\n\}\n/)[0];
-const gen = new Function('UPGRADES', genSrc + '\nreturn generateChoiceOffer;')(UPGRADES);
-let dupRuns = 0, shortRuns = 0;
+const gen = eval('(' + genSrc + ')');
+
+/* 玩法卡 = 14 張（5 形態 + 4 tag + 5 生存） */
+const styleCards = UPGRADES.filter(isPlayStyleCard);
+check('玩法卡 = ' + styleCards.length + ' 張（5 形態 + 4 tag + 5 生存 = 14）', styleCards.length === 14);
+check('玩法卡分類正確', styleCards.filter(u => u.id.startsWith('form_')).length === 5 &&
+  styleCards.filter(u => u.id.startsWith('tag_')).length === 4 &&
+  styleCards.filter(u => u.cat === '防禦').length === 5);
+check('純數值卡 = ' + (UPGRADES.length - styleCards.length) + ' 張（12）', UPGRADES.length - styleCards.length === 12);
+check('權重分層正確（形態/tag=3 · 生存=2 · 數值=1）',
+  UPGRADES.filter(u => u.id.startsWith('form_') || u.id.startsWith('tag_')).every(u => upgradeWeight(u) === 3) &&
+  UPGRADES.filter(u => u.cat === '防禦').every(u => upgradeWeight(u) === 2) &&
+  UPGRADES.filter(u => !isPlayStyleCard(u)).every(u => upgradeWeight(u) === 1));
+
+let dupRuns = 0, shortRuns = 0, noStyleRuns = 0;
+const seenAll = new Set();
 for (let i = 0; i < 5000; i++) {
   const offer = gen();
   if (offer.length !== 3) shortRuns++;
   const ids = offer.map(u => u.id);
   if (new Set(ids).size !== ids.length) dupRuns++;
+  if (!offer.some(isPlayStyleCard)) noStyleRuns++;
+  ids.forEach(id => seenAll.add(id));
 }
 check('5000 次抽卡：出現重複 = ' + dupRuns, dupRuns === 0);
 check('5000 次抽卡：唔足 3 張 = ' + shortRuns, shortRuns === 0);
+check('保底生效：5000 次抽卡全部至少 1 張玩法卡（違例 ' + noStyleRuns + '）', noStyleRuns === 0);
 check('實作用 splice 移除已抽中（唔係獨立 random 撞運氣）', /pool\.splice/.test(genSrc));
-check('跨次疊加仍然允許（冇按 playerStacks 過濾）', !/playerStacks/.test(genSrc));
+check('冇按 playerStacks 過濾（過濾依據係「本局已見過」而唔係持有）', !/playerStacks/.test(genSrc));
+check('只抽本局未見過嘅卡（seenUpgradeIds 過濾）', /seenUpgradeIds\.has\(u\.id\)/.test(genSrc));
+
+/* 跨次唔再出同一張卡（v0.27.3 刻意取捨：疊加機制讓位） */
+seenUpgradeIds.clear();
+const firstBatch = gen().map(u => u.id);
+const secondBatch = gen().map(u => u.id);
+check('同一局跨次唔會再出同一張卡（12 個卡位全部唔同）',
+  firstBatch.every(id => !secondBatch.includes(id)), firstBatch.join('/') + ' vs ' + secondBatch.join('/'));
+seenUpgradeIds.clear();
+
+/* 統計：模擬完整一局（4 次 boss × 3 選 1），量零形態卡機率 */
+let zeroForm = 0, zeroTag = 0, styleTotal = 0, formTotal = 0, distinctTotal = 0;
+const RUNS = 20000;
+for (let r = 0; r < RUNS; r++) {
+  seenUpgradeIds.clear();
+  const all = new Set();
+  let s = 0, f = 0, tg = 0;
+  for (let t = 0; t < 4; t++) {
+    const offer = gen();
+    offer.forEach(u => {
+      all.add(u.id);
+      if (u.id.startsWith('form_')) { f++; s++; }
+      else if (u.id.startsWith('tag_')) { tg++; s++; }
+      else if (isPlayStyleCard(u)) s++;
+    });
+  }
+  styleTotal += s; formTotal += f; distinctTotal += all.size;
+  if (f === 0) zeroForm++;
+  if (tg === 0) zeroTag++;
+}
+check('一局平均見到 ' + (distinctTotal / RUNS).toFixed(2) + ' 張唔同卡（=12 = 每個卡位都唔同）',
+  Math.abs(distinctTotal / RUNS - 12) < 0.05);
+check('一局平均玩法卡 ' + (styleTotal / RUNS).toFixed(2) + ' 張（模擬預期 ≈8.5）',
+  styleTotal / RUNS > 7.5 && styleTotal / RUNS < 9.5);
+check('一局平均形態卡 ' + (formTotal / RUNS).toFixed(2) + ' 張（模擬預期 ≈3.3）',
+  formTotal / RUNS > 2.5 && formTotal / RUNS < 4.2);
+check('零形態卡機率 ' + (zeroForm / RUNS * 100).toFixed(2) + '%（< 1%）',
+  zeroForm / RUNS < 0.01);
+check('零 tag 機率 ' + (zeroTag / RUNS * 100).toFixed(2) + '%（< 2%）',
+  zeroTag / RUNS < 0.02);
+seenUpgradeIds.clear();
 
 console.log('\n=== 7. 零死卡：每個 mod/cost 寫入嘅欄位都有 game logic 讀 ===');
 const FIELDS = ['maxHp','shield','speed','fireRate','bulletCount','bulletDmg','bulletSpd',

@@ -527,14 +527,22 @@ sprite("icon_swarm", { w: 10, h: 10, outline: "k" }, `
   ..g..g..g.
   .g..g..g..`)
 
+/* 停電 = 「熄咗嘅螢幕」：白框 + 深色內部。
+   ⚠️ v0.31.0 修正：原本成個框都用 'N'（#121a30 最暗色）→ 喺詞綴橫幅嗰個
+      深藍底（rgba(0,20,40,0.85) ≈ #011327）上面實測對比只得 **1.08:1**
+      = 完全睇唔到（其他 5 個詞綴 icon 都係 7–14.7:1）。
+      而家改白框（'w' #f8ffff）→ 對比 ~19:1，白框勾出「一塊熄咗嘅屏」嘅形，
+      深色內部保留「畫面暗」嘅語意。
+   ⚠️ 尺寸維持 10×10（art）→ 圖集格 12×12 → **座標唔會移**，
+      所以唔會推走任何其他 sprite。 */
 sprite("icon_blackout", { w: 10, h: 10, outline: "k" }, `
-  .NNNNNNNN.
-  .N......N.
-  .N......N.
-  .N......N.
-  .N......N.
-  .N......N.
-  .NNNNNNNN.`)
+  .wwwwwwww.
+  .wNNNNNNw.
+  .wNNNNNNw.
+  .wNNNNNNw.
+  .wNNNNNNw.
+  .wNNNNNNw.
+  .wwwwwwww.`)
 
 sprite("icon_glass", { w: 10, h: 10, outline: "k" }, `
   ..cccc....

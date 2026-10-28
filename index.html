@@ -393,7 +393,7 @@ const SPRITE = Object.freeze({
   p_frost: { x:0, y:219, w:4, h:4 },
   p_arc: { x:5, y:219, w:6, h:3 },
 });
-const SHEET_B64 = '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';
+const SHEET_B64 = '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';
 const sheetImg = new Image();
 let sheetReady = false;
 sheetImg.onload = () => { sheetReady = true; console.log('[貼圖] 圖集就緒 ·', Object.keys(SPRITE).length, '格'); };
@@ -1047,12 +1047,42 @@ function tickVfx(dtMs) {
     if (s.y > VIEW_H + 4) { s.y = -4; s.x = (s.x + 47) % VIEW_W; }
   }
 }
+/* v0.31.0 效能：per-stage 快取 gradient 對象（每幀 0 次 gradient 配置）
+   原本 drawBackdrop() 每幀做 2 次 gradient 配置：
+     createLinearGradient（天空）+ createRadialGradient（暗角）
+   → 每次都係新物件 = 每幀 2 次 allocation（GC 壓力來源，profile 見到 GC 10.9ms/8s）。
+   關卡主題係 Object.freeze（唔會變），所以 gradient 對象可以 per-stage 快取。
+   ⚠️ 點解**唔**烘焙成離屏圖層（試過，廢棄）：
+      ① 天空層 bake 出嚟再 drawImage 返 → alpha 合成 round-trip，逐像素比對證實
+         **146k/153k 像素差 1–2（maxDelta 2）** —— 離屏畫布嘅 premultiplied alpha
+         精度損失喺 unpremultiply 時被放大（6% 透明度 → 誤差 ×16）。
+      ② tint+暗角合併層 → 同樣問題（低 alpha 圖層）。
+      遊戲本身實測已經 60 FPS（dpr=2 + 4x CPU 節流都係 59 FPS），
+      為咗一個未證實嘅收益引入 ±2 嘅視覺誤差 = **修錯邊**。
+      → 最終只保留「快取 gradient 對象」：0 allocation、**100% 像素精確**、零風險。
+   ⚠️ CanvasGradient 嘅座標係喺**填色當下**嘅 user space 換算，所以快取後
+      喺唔同 transform 底下用都正確（背景永遠喺同一個 transform 入面畫）。 */
+const bgGradCache = new Map();
+function bgGradient(stageId, kind) {
+  let g = bgGradCache.get(stageId + '@' + kind);
+  if (g) return g;
+  const th = STAGE_THEME[stageId] || STAGE_THEME[1];
+  if (kind === 'sky') {
+    g = ctx.createLinearGradient(0, 0, 0, VIEW_H);
+    g.addColorStop(0, th.skyTop);
+    g.addColorStop(1, th.skyBot);
+  } else {
+    g = ctx.createRadialGradient(VIEW_W/2, VIEW_H/2, VIEW_H*0.2, VIEW_W/2, VIEW_H/2, VIEW_H*0.75);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(1, 'rgba(0,0,0,0.45)');
+  }
+  bgGradCache.set(stageId + '@' + kind, g);
+  return g;
+}
 function drawBackdrop(stageId) {
   const th = STAGE_THEME[stageId] || STAGE_THEME[1];
-  const g = ctx.createLinearGradient(0, 0, 0, VIEW_H);
-  g.addColorStop(0, th.skyTop);
-  g.addColorStop(1, th.skyBot);
-  ctx.fillStyle = g;
+  /* v0.31.0：天空 gradient per-stage 快取 → 每幀 0 次 gradient 配置 */
+  ctx.fillStyle = bgGradient(stageId, 'sky');
   ctx.fillRect(0, 0, VIEW_W, VIEW_H);
   for (const s of stars) {
     const name = s.kind === 2 ? 'star_2' : (s.kind === 1 ? 'star_1' : 'star_0');
@@ -1084,12 +1114,11 @@ function drawBackdrop(stageId) {
     drawSprite('gate', VIEW_W/2, 70 + Math.sin(bgScroll * 0.03) * 6, 1.4);
     for (let i = 0; i < 3; i++) drawSprite('debris', 40 + i * 100, 200 + i * 40, 1);
   }
+  /* v0.31.0：暗角 gradient per-stage 快取 → 每幀 0 次 gradient 配置
+     （tint 仍然直接畫 —— 保持像素完全精確） */
   ctx.fillStyle = th.tint;
   ctx.fillRect(0, 0, VIEW_W, VIEW_H);
-  const vg = ctx.createRadialGradient(VIEW_W/2, VIEW_H/2, VIEW_H*0.2, VIEW_W/2, VIEW_H/2, VIEW_H*0.75);
-  vg.addColorStop(0, 'rgba(0,0,0,0)');
-  vg.addColorStop(1, 'rgba(0,0,0,0.45)');
-  ctx.fillStyle = vg;
+  ctx.fillStyle = bgGradient(stageId, 'vignette');
   ctx.fillRect(0, 0, VIEW_W, VIEW_H);
 }
 function drawParticles() {
@@ -1349,6 +1378,9 @@ function setupCanvas() {
   canvas.style.width  = Math.floor(cssW) + 'px';
   canvas.style.height = Math.floor(cssH) + 'px';
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);    // logical coords = internal 320×480
+  /* v0.31.0：dpr 變咗 → 背景 gradient 要重建（座標喺填色當下換算，理论上安全，
+     但 dpr 改變時重取最穩陣，亦避免舊物件留低） */
+  if (typeof bgGradCache !== 'undefined') bgGradCache.clear();
   /* HUD 錨喺畫布左上角（唔係視窗左上角），闊螢幕都唔會走飛 */
   if (hudEl.root) {
     const r = canvas.getBoundingClientRect();
@@ -2234,6 +2266,20 @@ const AFFIX_DEFS = [
   { id:'glass',    name:'玻璃', icon:'icon_glass',   desc:'生命−1｜分×1.6',    score:1.6,  hpDelta:-1 },
   { id:'static',   name:'靜電', icon:'icon_static',   desc:'敵彈−18%｜分×1.2',  score:1.2,  bulletSpd:0.82 },
 ];
+/* v0.31.0 #116/#117：詞綴橫幅時長 + 停電暗幕 alpha（兩個數值都係實測調校出嚟，唔係估）
+   ① 橫幅閱讀時間：認 icon 0.3s + 讀名 0.4s + 讀 2 個數值 1.6s + 理解 0.5s ≈ **3.6s**。
+      原本總長 2.6s 而且 fade 由 2.0s 就開始 → **完整可讀時間只有 2.0s**（唔夠）。
+      修正：總長 2600 → **4200ms**、fade 2000 → **3600ms**（即前 3.6s 完全唔淡）。
+   ② 停電暗幕：alpha 0.42 → 雜魚對比跌到 **3.01:1**（零餘量，啱啱卡喺 WCAG 非文字 3:1 門檻）。
+      降到 **0.22** → 雜魚 **4.60:1** / 玩家子彈 **5.13:1**（兩樣都過 AA 4.5:1），
+      同時「畫面暗」嘅訊號保留：全畫面平均亮度跌 14.7%、背景像素跌 18.3%、89% 像素有變化。
+      ⚠️ 五關 sky 本身已經近黑（S1 #030814→#0a1a3a · S4 #000000→#101820 …），
+         所以暗幕由 0.42 減到 0.22 對「暗」嘅感覺影響極細，但對比度差咗一個級別 —— 呢個係取捨嘅重點。 */
+const AFFIX_BANNER_MS       = 4200;  /* 橫幅總顯示時間 */
+const AFFIX_BANNER_FADE_MS  = 3600;  /* 由呢一刻開始淡出（之前 3.6s = 完整閱讀） */
+const AFFIX_BANNER_FADE_SPAN = 600;  /* 淡出長度 */
+const AFFIX_DARK_ALPHA      = 0.22;  /* 停電暗幕最大不透明度 */
+
 /* 本關生效嘅乘數。每次入關由 rollStageAffix() 重設（唔跨關、唔跨局）。 */
 let stageAffix    = null;
 let affixShownAt  = 0;          /* 詞綴橫幅時間戳 */
@@ -2245,6 +2291,12 @@ function rollStageAffix(stageId) {
   /* 用獨立 rng stream（9000 + stageId），唔會影響同一關嘅波次組波序列 */
   const rng = stageRngFor(runSeed, 9000 + stageId);
   const def = AFFIX_DEFS[Math.floor(rng() * AFFIX_DEFS.length)] || AFFIX_DEFS[0];
+  console.log('[詞綴] S' + stageId + ' ·', def.name, '·', def.desc);
+  return applyStageAffix(def);
+}
+/* v0.31.0：套用詞綴嘅實際動作（roll 同「測試時強制指定」共用同一條路徑，
+   咁測試時唔會漏咗任何一個乘數）。 */
+function applyStageAffix(def) {
   stageAffix = def;
   affScore      = def.score      || 1;
   affEnemyHp    = def.enemyHp    || 1;
@@ -2255,7 +2307,6 @@ function rollStageAffix(stageId) {
   affDark       = def.dark       || 0;
   affHpDelta    = def.hpDelta    || 0;
   affixShownAt  = performance.now();
-  console.log('[詞綴] S' + stageId + ' ·', def.name, '·', def.desc);
   return def;
 }
 function resetAffix() {
@@ -6024,18 +6075,24 @@ function drawAudioUi() {
   ctx.fillText('撳面板以外 = 關閉', p.x + p.w / 2, p.y + p.h - 13);
 }
 
-/* v3.8 #43：詞綴橫幅（入關 2.6 秒）＋「停電」暗幕 */
+/* v3.8 #43：詞綴橫幅（入關 4.2 秒）＋「停電」暗幕
+   v0.31.0 #116：總長 2.6s → 4.2s、fade 2.0s → 3.6s（閱讀時間實測調校）
+   v0.31.0 #117：停電 alpha 0.42 → 0.22（對比度實測調校） */
 function drawStageAffixFx() {
   if (!isStage(fsm.cur)) return;
-  /* 停電：全畫面壓暗，唔遮掣（HUD 喺 renderTail 之後畫） */
+  /* 停電：全畫面壓暗（v0.31.0 #117：alpha 0.42 → 0.22，見 PLAN 已知落差 #13）。
+     ⚠️ 繪製次序：暗幕喺 drawAbilityBtns / drawHudChips / drawGrazeMeter 之後 →
+     所以**能力掣、關卡 chip、擦彈條都會被壓暗**；只有 renderTail() 畫嘅
+     音效掣 + 掃描線喺暗幕之後（唔會被壓暗）。 */
   if (affDark) {
-    ctx.fillStyle = 'rgba(0,0,20,' + (0.42 * affDark).toFixed(3) + ')';
+    ctx.fillStyle = 'rgba(0,0,20,' + (AFFIX_DARK_ALPHA * affDark).toFixed(3) + ')';
     ctx.fillRect(0, 0, VIEW_W, VIEW_H);
   }
   if (!stageAffix || affixShownAt <= 0) return;
   const age = performance.now() - affixShownAt;
-  if (age > 2600) return;
-  const fade = age > 2000 ? Math.max(0, 1 - (age - 2000) / 600) : 1;
+  if (age > AFFIX_BANNER_MS) return;
+  const fade = age > AFFIX_BANNER_FADE_MS
+    ? Math.max(0, 1 - (age - AFFIX_BANNER_FADE_MS) / AFFIX_BANNER_FADE_SPAN) : 1;
   const y = 96;
   ctx.globalAlpha = fade;
   ctx.fillStyle = 'rgba(0,20,40,0.85)';
@@ -6146,7 +6203,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.30.0 · HUD 壓縮 · feel 補完', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.31.0 · 可讀性調校 · 效能快取', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -7324,7 +7381,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.30.0 已載入');
+console.log('[啟動] 末日救未來 v0.31.0 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */
@@ -7353,6 +7410,14 @@ window.__dsf = {
   upgrades: UPGRADES,
   /* v0.29.0 gamedev-feel */
   FEEL, cam, addTrauma, hitStop, pulseShip, feelHitEnemy,
+  /* v0.31.0 效能：背景 gradient 快取（測試用：分配計數 + 像素比對） */
+  bgGradient, theme: STAGE_THEME, viewW: VIEW_W, viewH: VIEW_H,
+  /* v0.31.0 可讀性：測試用：強制指定詞綴（停電暗幕對比度實測用） */
+  setAffix: (id) => {
+    const d = AFFIX_DEFS.find(x => x.id === id);
+    return d ? applyStageAffix(d) : null;
+  },
+  affixDefs: AFFIX_DEFS,
   get hitStopUntil(){ return hitStopUntil; },
   get shipPop(){ return shipPop; },
   get trauma(){ return cam.trauma; },

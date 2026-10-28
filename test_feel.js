@@ -50,7 +50,14 @@ check('hitFlash draw grunt', h.includes('v0.29.1：中彈白閃'));
 check('laser killEnemy skipScore', /killEnemy\(e,\s*\{\s*skipScore:\s*true\s*\}/.test(h));
 check('fireLaser no bare onBossDown', !/function fireLaser[\s\S]{0,900}?if \(e\.hp <= 0\) onBossDown\(e\)/.test(h));
 check('laser grunt no bare _dead kill', !/function laserTick[\s\S]{0,1200}?runKills\+\+; runGrunts\+\+; e\._dead = true/.test(h));
-check('version v0.30.0', h.includes('v0.30.0'));
+/* 版本斷言用 >=（唔鎖死版本號）：記憶規則 §3 */
+{
+  const m = h.match(/末日救未來 v(\d+)\.(\d+)\.(\d+) 已載入/);
+  const ver = m ? [+m[1], +m[2], +m[3]] : null;
+  check('版本號可解析', !!ver, ver ? ver.join('.') : '搵唔到');
+  check('version >= v0.30.0', !!ver && (ver[0] > 0 || ver[1] > 30 || (ver[1] === 30 && ver[2] >= 0)),
+        ver ? ver.join('.') : '—');
+}
 {
   const cam = { x: 0, y: 0, trauma: 0, decay: 2.2, max: 14 };
   function addTrauma(a) { cam.trauma = Math.min(1, cam.trauma + a); }

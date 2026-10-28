@@ -81,7 +81,14 @@ check('所有選單提示都係 VIEW_H − 56（spec §2.2）', hintYs.length > 
 check('冇剩低 VIEW_H − 48 嘅選單提示', !/ctx\.fillText\('[^']*(?:按 1|點卡|點左\/中\/右)[^']*', VIEW_W\/2, VIEW_H - 48\)/.test(h));
 
 console.log('\n=== 5. 版號 ===');
-check('version string v0.30', /v0\.30\.0/.test(h));
+/* 版本斷言用 >=（唔鎖死版本號）：記憶規則 §3 */
+{
+  const m = h.match(/末日救未來 v(\d+)\.(\d+)\.(\d+) 已載入/);
+  const ver = m ? [+m[1], +m[2], +m[3]] : null;
+  check('版本號可解析', !!ver, ver ? ver.join('.') : '搵唔到');
+  check('version >= v0.30.0', !!ver && (ver[0] > 0 || ver[1] > 30 || (ver[1] === 30 && ver[2] >= 0)),
+        ver ? ver.join('.') : '—');
+}
 
 console.log('\n' + (fails ? fails + ' FAIL' : 'ALL PASS'));
 process.exit(fails ? 1 : 0);

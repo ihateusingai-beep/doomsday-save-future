@@ -392,8 +392,9 @@ const SPRITE = Object.freeze({
   p_ember: { x:73, y:206, w:4, h:5 },
   p_frost: { x:0, y:219, w:4, h:4 },
   p_arc: { x:5, y:219, w:6, h:3 },
+  smokestack: { x:12, y:219, w:12, h:28 },
 });
-const SHEET_B64 = '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';
+const SHEET_B64 = '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';
 const sheetImg = new Image();
 let sheetReady = false;
 sheetImg.onload = () => { sheetReady = true; console.log('[貼圖] 圖集就緒 ·', Object.keys(SPRITE).length, '格'); };
@@ -559,12 +560,32 @@ function wrapText(ctx, text, maxWidth) {
 
 /* ---------- 特效 / 場景（美化） ---------- */
 const STAGE_THEME = Object.freeze({
-  1: { name:'維港起飛', skyTop:'#030814', skyBot:'#0a1a3a', accent:'#00f0ff', prop:'tower', tint:'rgba(0,180,255,0.06)' },
-  2: { name:'九龍煙柱', skyTop:'#100808', skyBot:'#2a1010', accent:'#ff6a20', prop:'bldg',  tint:'rgba(255,80,40,0.07)' },
-  3: { name:'大氣層',   skyTop:'#080618', skyBot:'#1a1040', accent:'#ff9a18', prop:'meteor',tint:'rgba(180,100,255,0.06)' },
-  4: { name:'軌道殘骸', skyTop:'#000000', skyBot:'#101820', accent:'#8aa0c8', prop:'debris',tint:'rgba(120,160,200,0.05)' },
-  5: { name:'逃逸門',   skyTop:'#000510', skyBot:'#001828', accent:'#3dff8a', prop:'gate',  tint:'rgba(0,255,140,0.07)' },
+  1: { name:'維港起飛', skyTop:'#030814', skyBot:'#0a1a3a', accent:'#00f0ff', tint:'rgba(0,180,255,0.06)' },
+  2: { name:'九龍煙柱', skyTop:'#100808', skyBot:'#2a1010', accent:'#ff6a20',  tint:'rgba(255,80,40,0.07)' },
+  3: { name:'大氣層',   skyTop:'#080618', skyBot:'#1a1040', accent:'#ff9a18',tint:'rgba(180,100,255,0.06)' },
+  4: { name:'軌道殘骸', skyTop:'#000000', skyBot:'#101820', accent:'#8aa0c8',tint:'rgba(120,160,200,0.05)' },
+  5: { name:'逃逸門',   skyTop:'#000510', skyBot:'#001828', accent:'#3dff8a',  tint:'rgba(0,255,140,0.07)' },
 });
+/* ---------- v0.32.0 背景場景三層縱深（PLAN #120） ----------
+   ⚠️ 舊實作嘅根因：`baseY = VIEW_H - 10 = 470`，而能力掣區係 y 408–472
+      → S1/S2 嘅樓宇 100% 落喺掣區底下，玩家由頭到尾未見過（實測）。
+   而家三層：遠景（細／淡／慢）、中景、近景（貼地線 = PLAY_BOTTOM = 396）。
+   ⚠️ 每關專屬 prop 家族 —— 唔可以跨關共用，否則 S5「逃逸門」會出現維港樓宇
+      （VISUAL_QUALITY_RUBRIC §V11 明寫「5 個關卡只換色」係常見 AI 失敗模式）。 */
+const BG_FLOOR = 396;   /* 近景貼地線 = 遊戲區底（PLAY_BOTTOM），唔可以再落喺能力掣區 */
+const BG_LAYERS = [
+  { scale: 0.55, alpha: 0.40, sx: 0.06, n: 7 },   /* 遠景：細、淡、慢 */
+  { scale: 0.90, alpha: 0.72, sx: 0.14, n: 6 },   /* 中景 */
+  { scale: 1.30, alpha: 1.00, sx: 0.28, n: 5 },   /* 近景：貼地、全亮 */
+];
+const SCENERY = {
+  1: { mode:'ground', far:['bldg','tower'],      mid:['tower','bldg'],  near:['tower','bldg'] },
+  2: { mode:'ground', far:['smokestack','bldg'],  mid:['smokestack'],    near:['smokestack','bldg'] },
+  3: { mode:'sky',    far:['meteor'],             mid:['meteor','debris'], near:['meteor','debris'] },
+  4: { mode:'sky',    far:['debris'],             mid:['debris'],        near:['debris','meteor'] },
+  5: { mode:'sky',    far:['gate'],               mid:['gate','debris'], near:['debris'],
+       hero: { name:'gate', x:VIEW_W/2, y:70, scale:1.4, bob:6 } },
+};
 const stars = Array.from({ length: 48 }, (_, i) => ({
   x: (i * 53 + 17) % VIEW_W,
   y: (i * 97 + 11) % VIEW_H,
@@ -1079,6 +1100,49 @@ function bgGradient(stageId, kind) {
   bgGradCache.set(stageId + '@' + kind, g);
   return g;
 }
+/* v0.32.0：背景場景三層縱深（PLAN #120）
+   遠景（scale 0.55 / alpha 0.40 / 慢）→ 中景（0.90 / 0.72）→ 近景（1.30 / 全亮 / 貼地）。
+   ⚠️ 貼地線 = BG_FLOOR = 396 = PLAY_BOTTOM —— 舊版用 VIEW_H - 10 = 470，
+      落喺能力掣區（y 408–472）底下，玩家由頭到尾未見過 S1/S2 嘅場景。
+   ⚠️ 每個 instance 速度唔同（0.78–1.22 變化），否則成層同一速度 = 機械感。
+   ⚠️ 背景值階梯刻意保留暗：樓宇主體對 sky 只有 ~1.85:1，遠低過 gameplay
+      元素嘅 4.6:1 → 玩家子彈（青）同雜魚（粉）照樣跳出，唔會被背景 camouflage。 */
+function drawScenery(stageId) {
+  const sc = SCENERY[stageId] || SCENERY[1];
+  for (let L = 0; L < BG_LAYERS.length; L++) {
+    const ly = BG_LAYERS[L];
+    const fam = L === 0 ? sc.far : (L === 1 ? sc.mid : sc.near);
+    ctx.globalAlpha = ly.alpha;
+    for (let i = 0; i < ly.n; i++) {
+      const nm = fam[i % fam.length];
+      const f = SPRITE[nm];
+      const fw = f ? f.w : 12, fh = f ? f.h : 16;
+      const sp = ly.sx * (0.78 + ((i * 37) % 45) / 100);
+      const span = VIEW_W + fw + 60;
+      const x = ((i * 61 + L * 29 + bgScroll * sp) % span) - (fw / 2 + 30);
+      let y;
+      if (sc.mode === 'ground') {
+        if (L === 0) {
+          /* 遠景：由飛機望落去嘅城市 —— 4 條深度帶，愈遠愈高愈細 */
+          y = BG_FLOOR - 168 + (i % 4) * 36 + ((i * 53) % 10);
+        } else {
+          /* 中景／近景：企喺自己嘅地平線上 */
+          const base = L === 1 ? BG_FLOOR - 26 - (i % 3) * 10 : BG_FLOOR;
+          y = base - fh * ly.scale / 2;
+        }
+      } else {
+        /* 空中層：飄落（隕石／殘骸／逃逸門） */
+        y = 46 + ((i * 97 + L * 53 + bgScroll * (0.30 + L * 0.12)) % (VIEW_H - 130));
+      }
+      drawSprite(nm, x, y, ly.scale);
+    }
+  }
+  ctx.globalAlpha = 1;
+  if (sc.hero) {
+    const h = sc.hero;
+    drawSprite(h.name, h.x, h.y + Math.sin(bgScroll * 0.03) * h.bob, h.scale);
+  }
+}
 function drawBackdrop(stageId) {
   const th = STAGE_THEME[stageId] || STAGE_THEME[1];
   /* v0.31.0：天空 gradient per-stage 快取 → 每幀 0 次 gradient 配置 */
@@ -1091,29 +1155,7 @@ function drawBackdrop(stageId) {
       ctx.fillRect(s.x, s.y, s.kind ? 2 : 1, s.kind ? 2 : 1);
     }
   }
-  const prop = th.prop;
-  const baseY = VIEW_H - 10 + Math.sin(bgScroll * 0.02) * 2;
-  if (prop === 'tower' || prop === 'bldg') {
-    for (let i = 0; i < 5; i++) {
-      const x = ((i * 70 + bgScroll * 0.15) % (VIEW_W + 40)) - 20;
-      drawSprite(i % 2 ? 'tower' : 'bldg', x, baseY - (i % 3) * 8, 1.2);
-    }
-  } else if (prop === 'meteor') {
-    for (let i = 0; i < 4; i++) {
-      const x = (i * 90 + bgScroll * 0.4) % (VIEW_W + 30) - 15;
-      const y = ((i * 110 + bgScroll * 0.55) % (VIEW_H + 40)) - 20;
-      drawSprite('meteor', x, y, 1.3);
-    }
-  } else if (prop === 'debris') {
-    for (let i = 0; i < 5; i++) {
-      const x = (i * 75 + bgScroll * 0.3) % (VIEW_W + 30) - 15;
-      const y = 40 + ((i * 97 + bgScroll * 0.2) % (VIEW_H - 80));
-      drawSprite('debris', x, y, 1.2);
-    }
-  } else if (prop === 'gate') {
-    drawSprite('gate', VIEW_W/2, 70 + Math.sin(bgScroll * 0.03) * 6, 1.4);
-    for (let i = 0; i < 3; i++) drawSprite('debris', 40 + i * 100, 200 + i * 40, 1);
-  }
+  drawScenery(stageId);
   /* v0.31.0：暗角 gradient per-stage 快取 → 每幀 0 次 gradient 配置
      （tint 仍然直接畫 —— 保持像素完全精確） */
   ctx.fillStyle = th.tint;
@@ -1167,8 +1209,34 @@ function drawParticles() {
   ctx.globalAlpha = 1;
 }
 function drawScanlines() {
+  /* v0.32.0（PLAN #121）：backing-store 物理像素網格。
+     ⚠️ 舊版喺「邏輯空間」每 3 px 畫 1 px 嘅 8% 黑線。
+        **整數 DPR（1 / 2 / 3）其實冇問題**（3 邏輯 px × 整數 = 整數物理 px），
+        但喺 **DPR 2.4875（iPad 實測值）** → 3 × 2.4875 = 7.46 物理 px（非整數）
+        → 實測 **137 條線 out-of-grid、週期 7/8 混合、線長 3/2 混合、
+        暗度離散 25.5%、覆蓋率 33.3% → 42.9%** = 掃描線喺真機變成雜訊網。
+     而家 setTransform(1,0,0,1,0,0) → 直接喺 backing store 畫，每條線都落喺
+     整數物理像素；同時離開 trauma shake 嘅 translate —— 掃描線係「螢幕空間」
+     CRT overlay，唔應該跟相機一齊郁。
+     ⚠️ 週期用 round(3 × scale) 而唔係死守 4：保持同原本約 3 邏輯 px 等效密度
+        （DPR 1 → 3、2 → 6、2.4875 → 7、3 → 9，全部整數），
+        畫面平均變暗量唔會因 DPR 唔同而飄。
+     ⚠️ 線高 = round(scale) backing px（唔係死守 1）：原本「1 邏輯 px 嘅線」
+        喺 DPR 3 = 3 backing px；死守 1 物理 px 會令高 DPR 螢幕嘅掃描線
+        只佔 1/9 密度（視覺上幾乎冇），而 DPR 1 係 1/3 → 跨裝置唔一致。
+        線高跟 scale、行距用整數週期 → 密度（1+2 = 3 邏輯 px）跨 DPR 一致，
+        而且每條線都落喺整數 backing 像素（零反鋸齒、零格紋）。
+     ⚠️ 驗證要用「相對變暗量 + 線結構」（暗行必須落喺 k×P 網格上），
+        唔好用絕對 delta（會被天空漸變干擾），亦唔好兩次渲染用唔同 transform
+        （會量到假象）。 */
+  const scale = canvas.width / VIEW_W;           /* backing store 縮放 = dpr */
+  const period = Math.max(2, Math.round(3 * scale));
+  const lineH = Math.max(1, Math.round(scale));
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = 'rgba(0,0,0,0.08)';
-  for (let y = 0; y < VIEW_H; y += 3) ctx.fillRect(0, y, VIEW_W, 1);
+  for (let y = 0; y < canvas.height; y += period) ctx.fillRect(0, y, canvas.width, lineH);
+  ctx.restore();
 }
 function drawFlash() {
   if (screenFlash <= 0) return;
@@ -6203,7 +6271,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.31.0 · 可讀性調校 · 效能快取', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.32.0 · 場景重做 · 掃描線對齊', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -7381,7 +7449,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.31.0 已載入');
+console.log('[啟動] 末日救未來 v0.32.0 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */

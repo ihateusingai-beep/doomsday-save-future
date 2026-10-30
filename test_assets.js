@@ -334,12 +334,14 @@ console.log('\n=== 6. 版號 + PLAN 條目 ===');
   const m = h.match(/末日救未來 v(\d+)\.(\d+)\.(\d+) 已載入/);
   const ver = m ? [+m[1], +m[2], +m[3]] : null;
   check('版本號可解析', !!ver, ver ? ver.join('.') : '搵唔到');
-  check('★ version >= v0.32.0', !!ver && (ver[0] > 0 || ver[1] > 32 || (ver[1] === 32 && ver[2] >= 0)),
+  check('★ version >= v0.33.0', !!ver && (ver[0] > 0 || ver[1] > 33 || (ver[1] === 33 && ver[2] >= 0)),
     ver ? ver.join('.') : '—');
   check('PLAN 有 #120 背景場景條目', /\| 120 \|.*背景場景/.test(plan));
   check('PLAN 有 #121 掃描線條目', /\| 121 \|.*掃描線/.test(plan));
-  check('PLAN 改動紀錄有 v0.32.0', /\*\*v0\.32\.0/.test(plan));
-  check('index.html 顯示 v0.32.0', /v0\.32\.0 ·/.test(h));
+  check('PLAN 有 #123 形態卡 DPS 帶條目', /\| 123 \|.*形態卡 DPS 帶/.test(plan));
+  check('PLAN 有 #124 變體 D 條目', /\| 124 \|.*變體 D/.test(plan));
+  check('PLAN 改動紀錄有 v0.33.0', /\*\*v0\.33\.0/.test(plan));
+  check('index.html 顯示 v0.33.0', /v0\.33\.0 ·/.test(h));
 }
 
 console.log('\n' + (fails ? fails + ' FAIL' : 'ALL PASS'));

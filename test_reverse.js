@@ -29,10 +29,16 @@ check('唔夠就補未持有嘅（唔會開天窗）', /const rest\s+=\s*UPGRADE
 check('排除已經係傳說級嘅（唔會重複升級）', /!legendary\[u\.id\]/.test(bo));
 check('永遠 output 3 個（保底唔會空畫面）', /while \(out\.length < 3\)/.test(bo));
 check('候選不重複（同一次三選一內）', (() => {
-  /* 模擬：owned + rest 係互斥分割，splice 抽唔會重複 */
+  /* 模擬：owned + rest 係互斥分割（held vs not-held），splice 抽唔會重複 */
   const src = bo.replace(/\s+/g, ' ');
-  return /const owned = UPGRADES\.filter\(u => \(playerStacks\[u\.id\] \|\| 0\) > 0 && !legendary\[u\.id\]\);\s*const rest\s*= UPGRADES\.filter\(u => !\(playerStacks\[u\.id\] > 0\) && !legendary\[u\.id\]\);/.test(src);
+  return /const owned = UPGRADES\.filter\(u => \(playerStacks\[u\.id\] \|\| 0\) > 0 && !legendary\[u\.id\]/.test(src) &&
+         /const rest\s*= UPGRADES\.filter\(u => !\(playerStacks\[u\.id\] > 0\) && !legendary\[u\.id\]/.test(src);
 })());
+/* ⚠️ v0.33.0 #124：傳說級形態卡 = **零效果死卡**（mod 寫死 s.shotForm = X，
+   再行一次都係同一個值）→ owned / rest / 保底三處都要排除 form_*。 */
+check('★ 排除形態卡（傳說級形態 = 零效果死卡）',
+  (bo.match(/indexOf\('form_'\)/g) || []).length >= 3,
+  (bo.match(/indexOf\('form_'\)/g) || []).length + ' 處');
 
 console.log('\n=== 3. 一局只有一次 ===');
 check('reverseUsed 旗標存在', /let reverseUsed\s+= false;/.test(h));

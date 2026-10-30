@@ -96,7 +96,7 @@ section('2. 三個抽卡規則都在');
     /pickWeightedIndex/.test(genSrc) && !/Math\.floor\(Math\.random\(\) \* pool\.length\)/.test(genSrc));
   check('③ 保底：3 張至少 1 張玩法卡', /out\.some\(isPlayStyleCard\)/.test(genSrc) && /out\[2\] =/.test(genSrc));
   check('保底有邊界 fallback（池抽乾唔會靜靜失效）',
-    /if \(!stylePool\.length\) stylePool = UPGRADES\.filter\(isPlayStyleCard\)/.test(genSrc));
+    /if \(!stylePool\.length\) stylePool = eligible\.filter\(isPlayStyleCard\)/.test(genSrc));
   check('被保底替換走嘅卡唔算已出現（玩家見唔到佢）',
     /for \(const u of out\) seenUpgradeIds\.add\(u\.id\)/.test(genSrc));
 }
@@ -109,22 +109,57 @@ section('3. 「已見過」清單唔跨局');
   check('seenUpgradeIds 係 Set（用 has() 查）', /let seenUpgradeIds = new Set\(\)/.test(h));
 }
 
-section('4. 形態卡「轉職」標記（玩家已有形態時）');
+section('4. 變體 D：一局只出一次形態卡（PLAN #124 · v0.33.0）');
 {
-  check('isFormTransferCard helper 存在', /function isFormTransferCard\(up\)/.test(h));
-  check('卡面有畫「轉職」', /fillText\('轉職'/.test(h));
-  const code = h.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-  check('「轉職」只喺 isFormTransferCard 為真時畫（唔係無條件畫）',
-    /isFormTransferCard\(up\)/.test(code));
-  /* 行為驗證 */
-  const playerStacks = { form_laser: 1 };
-  const isFormTransferCard = eval('(' + extractFunction('isFormTransferCard') + ')');
-  check('玩家有 form_laser 時,form_rail 卡標記為轉職',
-    isFormTransferCard({ id: 'form_rail' }) === true);
-  check('玩家有 form_laser 時,自己嗰張 form_laser 唔算轉職',
-    isFormTransferCard({ id: 'form_laser' }) === false);
-  check('唔係形態卡就唔算轉職',
-    isFormTransferCard({ id: 'dmg_s', cat: '火力' }) === false);
+  /* ⚠️ v0.28.0 原本呢度測「轉職」標籤（isFormTransferCard）。
+     v0.33.0 #124 變體 D（一局只出一次形態卡）之後：
+       ① 玩家永遠只會有一張形態卡 → 「轉職」標籤**永遠唔會出現** = 死代碼 → 連帶移除
+       ② 持有形態卡之後，之後嘅 boss 唔再出任何 form_*（卡池層面，唔係「唔揀就唔算」） */
+  check('★ isFormTransferCard helper 已移除（變體 D 之下係死代碼）',
+    !/function isFormTransferCard\(/.test(h));
+  check('★ 卡面冇畫「轉職」黃色標籤', !/fillText\('轉職'/.test(h));
+  check('★ hasFormCard helper 存在', /function hasFormCard\(\)/.test(h));
+
+  /* ⚠️ eval 真函數喺測試檔 scope（AI_INSTRUCTIONS.md §5.1.1）——
+     generateChoiceOffer() 依賴：UPGRADES / seenUpgradeIds / playerStacks /
+     hasFormCard / isPlayStyleCard / upgradeWeight / pickWeightedIndex。 */
+  const seenUpgradeIds = new Set();
+  const playerStacks = Object.create(null);
+  const isOffenseStyleCard = eval('(' + extractFunction('isOffenseStyleCard') + ')');
+  const isPlayStyleCard = eval('(' + extractFunction('isPlayStyleCard') + ')');
+  const upgradeWeight = eval('(' + extractFunction('upgradeWeight') + ')');
+  const pickWeightedIndex = eval('(' + extractFunction('pickWeightedIndex') + ')');
+  const hasFormCard = eval('(' + extractFunction('hasFormCard') + ')');
+  const gen = eval('(' + extractFunction('generateChoiceOffer') + ')');
+  const genSrc = extractFunction('generateChoiceOffer');
+
+  /* ① 未持有形態 → 形態卡仍然會出現（唔會變成「永遠冇形態」嘅死規則） */
+  let withForm = 0;
+  for (let i = 0; i < 400; i++) {
+    if (gen().some(u => u.id.startsWith('form_'))) withForm++;
+  }
+  check('未持有形態時，形態卡仍然會出現（唔會變成永遠冇形態）', withForm > 0, withForm + '/400 次有');
+
+  /* ② 已持有形態 → 之後所有 offer 都唔可以有 form_*（包括保底 fallback） */
+  playerStacks.form_laser = 1;
+  let leak = 0;
+  for (let i = 0; i < 400; i++) {
+    if (gen().some(u => u.id.startsWith('form_'))) leak++;
+  }
+  check('★ 已持有形態後，之後 400 次抽卡零 form_* 漏出', leak === 0, leak + ' 次漏出');
+
+  /* ③ 四條路徑都要過濾（只改一條會漏） */
+  check('★ 主池 + 池抽乾 fallback + 最後防線 + 保底 fallback 全部用合資格池',
+    /const eligible = UPGRADES\.filter\(u => !isBlockedForm\(u\)\)/.test(genSrc) &&
+    /const pool = \(unseen\.length \? unseen : eligible\)/.test(genSrc) &&
+    /const rest = eligible\.filter\(u => !usedIds\.has\(u\.id\)\)/.test(genSrc) &&
+    /const spare = eligible\.length \? eligible : UPGRADES/.test(genSrc) &&
+    /eligible\.filter\(isPlayStyleCard\)/.test(genSrc));
+
+  /* ④ 傳說級（單次逆轉）唔可以出形態卡 = 零效果死卡（mod 寫死 shotForm） */
+  const boSrc = extractFunction('buildReverseOffer');
+  check('★ buildReverseOffer 排除 form_*（傳說級形態卡 = 零效果死卡）',
+    (boSrc.match(/indexOf\('form_'\)/g) || []).length >= 3);
 }
 
 section('5. 版號');

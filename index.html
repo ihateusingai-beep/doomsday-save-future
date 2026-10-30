@@ -1715,18 +1715,31 @@ let reverseUsed   = false;             /* 一局只有一次 */
 /* 由現有強化入面抽 3 個候選。優先抽玩家真係持有嘅（有意義），
    唔夠就補未持有嘅（至少有得揀，唔會開天窗）。 */
 function buildReverseOffer() {
-  const owned = UPGRADES.filter(u => (playerStacks[u.id] || 0) > 0 && !legendary[u.id]);
-  const rest  = UPGRADES.filter(u => !(playerStacks[u.id] > 0) && !legendary[u.id]);
+  /* ⚠️ v0.33.0 #124：排除全部 form_* ——
+     傳說級形態卡嘅 `mod` 係寫死 `s.shotForm = X`（**再行一次都係同一個值**）
+     → 升級完之後機體行為一模一樣 = **零效果死卡**。
+     呢個唔止係「玩家已持有嗰張」要排除，連**未持有嘅**形態卡都要排除
+     （否則玩家會揀到一張「升級咗但完全冇變化」嘅卡）。 */
+  const owned = UPGRADES.filter(u => (playerStacks[u.id] || 0) > 0 && !legendary[u.id] && u.id.indexOf('form_') !== 0);
+  const rest  = UPGRADES.filter(u => !(playerStacks[u.id] > 0) && !legendary[u.id] && u.id.indexOf('form_') !== 0);
   const out = [];
+  const usedIds = new Set();
   const take = (arr) => {
     while (arr.length && out.length < 3) {
-      out.push(arr.splice(Math.floor(Math.random() * arr.length), 1)[0]);
+      const u = arr.splice(Math.floor(Math.random() * arr.length), 1)[0];
+      out.push(u);
+      usedIds.add(u.id);
     }
   };
   take(owned);
   take(rest);
-  /* 理論上唔會發生（UPGRADES 有 26 張），但保底唔會空畫面 */
-  while (out.length < 3) out.push(UPGRADES[out.length]);
+  /* 理論上唔會發生（合資格卡池 21 張 > 3），但保底唔會空畫面 */
+  const spare = UPGRADES.filter(u => u.id.indexOf('form_') !== 0 && !usedIds.has(u.id));
+  while (out.length < 3 && spare.length) {
+    out.push(spare.splice(Math.floor(Math.random() * spare.length), 1)[0]);
+  }
+  /* 最後防線：連合資格池都用盡（正常唔會發生）—— 寧願重複都唔好卡死 */
+  while (out.length < 3) out.push(UPGRADES[out.length % UPGRADES.length]);
   return out;
 }
 function applyPickedReverse(idx) {
@@ -1967,20 +1980,30 @@ function pickWeightedIndex(list, wf) {
   }
   return list.length - 1;
 }
-/** 呢張形態卡其實係「轉職」？（玩家已持有另一種形態 → 揀咗會頂走舊嗰種）
- *  ⚠️ 只喺卡面**顯示**用，唔改 game logic（互斥邏輯喺 applyPickedUpgrade）。 */
-function isFormTransferCard(up) {
-  if (!up || !up.id || up.id.indexOf('form_') !== 0) return false;
+/** 玩家係咪已經持有形態卡？（v0.33.0 #124 變體 D：**一局只出一次形態卡**）
+ *  ⚠️ v0.28.0 原本嘅 `isFormTransferCard()`（卡面黃色「轉職」標籤）喺 #124 之後
+ *     **永遠唔會出現** —— 玩家一局只會有一張形態卡 → 嗰個標籤係死代碼，已連帶移除。
+ *     連帶 `applyPickedUpgrade()` 嘅形態互斥清走邏輯都變成「唔可能觸發」，
+ *     但仍然保留做安全網（萬一將來加卡池入口，唔會出現兩張形態卡同時生效）。 */
+function hasFormCard() {
   for (const id of Object.keys(playerStacks)) {
-    if (id.indexOf('form_') === 0 && id !== up.id) return true;
+    if (id.indexOf('form_') === 0) return true;
   }
   return false;
 }
 function generateChoiceOffer() {
   /* v0.28.0：只抽本局**未見過**嘅卡（12 個卡位全部唔同） */
-  const unseen = UPGRADES.filter(u => !seenUpgradeIds.has(u.id));
-  /* ⚠️ fallback：萬一將來加 boss 令卡位超過 26，池會乾 —— 退回全池（唔會卡死） */
-  const pool = (unseen.length ? unseen : UPGRADES).slice();
+  /* ⚠️ v0.33.0 #124 變體 D：玩家一局只出**一次**形態卡 ——
+     持有形態卡之後，之後嘅 boss 唔再出任何 form_*（卡池層面，唔係「唔揀就唔算」）。
+     ⚠️ **四條路徑要一齊過濾**（只改一條會漏）：
+        ① 主池（未見過）② 池抽乾 fallback（由全池補）③ 全池用盡嘅最後防線 ④ 保底玩法卡 fallback。 */
+  const formUsed = hasFormCard();
+  const isBlockedForm = (u) => formUsed && u.id && u.id.indexOf('form_') === 0;
+  /* 合資格卡池：已持有形態 → 剔走全部 form_* */
+  const eligible = UPGRADES.filter(u => !isBlockedForm(u));
+  const unseen = eligible.filter(u => !seenUpgradeIds.has(u.id));
+  /* ⚠️ fallback：萬一將來加 boss 令卡位超過 26，池會乾 —— 退回合資格全池（唔會卡死） */
+  const pool = (unseen.length ? unseen : eligible).slice();
   const out = [];
   const usedIds = new Set();
   let guard = 0;
@@ -1990,9 +2013,9 @@ function generateChoiceOffer() {
     out.push(u);
     usedIds.add(u.id);
   }
-  /* 池抽乾（卡位 > 未見過池大細）：由全池補，但要避開已抽中嘅 id */
+  /* 池抽乾（卡位 > 未見過池大細）：由合資格全池補，但要避開已抽中嘅 id */
   if (out.length < 3) {
-    const rest = UPGRADES.filter(u => !usedIds.has(u.id));
+    const rest = eligible.filter(u => !usedIds.has(u.id));
     while (out.length < 3 && rest.length) {
       const i = pickWeightedIndex(rest, upgradeWeight);
       const u = rest.splice(i, 1)[0];
@@ -2000,16 +2023,19 @@ function generateChoiceOffer() {
       usedIds.add(u.id);
     }
   }
-  /* 最後防線：連全池都用盡（正常唔會發生，池 26 > 卡位 12）—— 容許重複，唔好卡死 */
-  while (out.length < 3) out.push(UPGRADES[Math.floor(Math.random() * UPGRADES.length)]);
+  /* 最後防線：連合資格池都用盡（正常唔會發生，合資格池 21 張 > 卡位 12）—— 容許重複，唔好卡死 */
+  while (out.length < 3) {
+    const spare = eligible.length ? eligible : UPGRADES;
+    out.push(spare[Math.floor(Math.random() * spare.length)]);
+  }
   /* 保底：3 張入面至少 1 張玩法卡（用 pool 剩低嘅未見過玩法卡替換第三張）。
      ⚠️ 被替換走嗰張**唔算已出現**（玩家見唔到佢），所以唔加入 seenUpgradeIds。 */
   if (!out.some(isPlayStyleCard)) {
     let stylePool = pool.filter(isPlayStyleCard);
     /* ⚠️ 邊界：池剩低嘅未見過玩法卡唔夠時（卡位接近池大細），
        pool 可能已經抽乾 → stylePool 空 → 保底靜靜失效。
-       所以要退回全池搵（並避開已抽中嘅 id，唔可以出現重複卡）。 */
-    if (!stylePool.length) stylePool = UPGRADES.filter(isPlayStyleCard).filter(u => !usedIds.has(u.id));
+       所以要退回合資格全池搵（並避開已抽中嘅 id，唔可以出現重複卡）。 */
+    if (!stylePool.length) stylePool = eligible.filter(isPlayStyleCard).filter(u => !usedIds.has(u.id));
     if (stylePool.length) out[2] = stylePool[pickWeightedIndex(stylePool, upgradeWeight)];
   }
   for (const u of out) seenUpgradeIds.add(u.id);
@@ -2019,7 +2045,11 @@ function generateChoiceOffer() {
 function applyPickedUpgrade(idx) {
   if (idx < 0 || idx >= choiceOffer.length) return;
   const up = choiceOffer[idx];
-  /* v3.10：主彈形態互斥 — 揀新形態就清走其他 form_* 疊加 */
+  /* v3.10：主彈形態互斥 — 揀新形態就清走其他 form_* 疊加
+     ⚠️ v0.33.0 #124 變體 D（一局只出一次形態卡）之下，呢段**唔可能觸發**
+        （卡池已經唔會再出第二張形態卡）→ 保留做安全網：萬一將來加卡池入口，
+        唔會出現兩張形態卡同時寫入 playerStacks（applyUpgrades() 係逐個 UPGRADES
+        行 mod → 後寫嗰張贏，唔係玩家揀嗰張贏 = 靜靜讀錯值）。 */
   if (up.id && up.id.indexOf('form_') === 0) {
     for (const id of Object.keys(playerStacks)) {
       if (id.indexOf('form_') === 0 && id !== up.id) delete playerStacks[id];
@@ -4348,16 +4378,55 @@ const MISSILE_BURST_N = 3;
 const MISSILE_BURST_DMG = 0.4;   /* 相對母彈 dmg */
 const MISSILE_BURST_CAP = 6;     /* 爆散小彈同時存在上限，避免爆版 */
 
+/* v0.33.0 #123：形態卡 DPS 帶 —— 每張形態卡 × 每架機體嘅「每發傷害」乘數。
+   ⚠️ **點解唔改射速、改傷害？**
+      每種形態嘅「節奏」就係佢嘅玩法身份：導彈要慢、迴力鏢要往返、軌道炮要一發一線
+      —— 改射速會令手感完全唔同（例：導彈要 2.0× DPS 就得，但用射速做 → B 機導彈
+      會由 0.5/s 變成 5.5/s，「慢但追」就冇咗）。
+      而 **DPS 對「每發傷害」係線性**（每種形態都係「每發傷害 × 命中率 × 射速」）
+      → 用傷害乘數校準，**一輪實測就收斂**，而且節奏特徵全部保留。
+   ⚠️ **laser 特別注意**：佢嘅 DPS 由連續光束 tick 率（LASER_DMG_TICK_MS = 90ms
+      → 11.1 次/秒）主導，**完全唔受 fireRate 影響** → 必須用傷害乘數
+      （用射速乘數會 100% 冇效果 = 死卡）。
+   ⚠️ 表值由實機 12 秒 boss 窗口校準（目標：相對無卡 = 2.0×）。
+      凍結驗收線（PLAN #123）：每張卡 5 架機全部 ≥1.5×，同一張卡 max ÷ min ≤2×。
+   ⚠️ 表外（bolt / 未列機體）一律 1 → 冇卡 = 無卡效果。 */
+const FORM_DPS_MUL = {
+  /* 激光：光束 tick 率固定（11.1/s），傷害 = 機體子彈傷害 × 0.35 */
+  laser:     { A:   1.1149, B:   0.7619, C:   0.1651, D:   0.5736, E:   1.2345 },
+  /* 軌道炮：一發一線，射速 ×0.35 */
+  rail:      { A:   0.5366, B:   1.1111, C:   0.4127, D:   0.5917, E:   1.5773 },
+  /* 迴力鏢：往返，射速 ×0.15 */
+  boomerang: { A:   2.8852, B:   5.2173, C:        2, D:   1.8433, E:   3.5927 },
+  /* 導彈：慢但追（每發 ×2.2），射速 ×0.07 */
+  missile:   { A:   2.1052, B:   2.2727, C:   0.7879, D:   1.5172, E:   2.3206 },
+  /* 波動彈：左右擺，彈速 ×0.9 */
+  wave:      { A:   2.1205, B:   2.4483, C:    1.625, D:   2.2413, E:   2.6576 },
+};
+
 function applyShotFormCosts(s) {
   if (!s) return;
   const f = s.shotForm || 'bolt';
+  /* v0.33.0 #123：形態卡 DPS 帶 —— 傷害乘數（表 = FORM_DPS_MUL）。
+     ⚠️ 呢個欄位由 game logic 讀（spawnPlayerShot / fireLaser / laserTick），
+        所以每次 applyUpgrades() 都會全量重算 → 永遠同當前形態一致。 */
+  s.formDmgMul = 1;
+  const row = FORM_DPS_MUL[f];
+  if (row) {
+    const m = row[s.chassis];
+    if (typeof m === 'number' && isFinite(m) && m > 0) s.formDmgMul = m;
+  }
   /* v0.28.0：呢兩個乘數原本係「對住壞咗嘅行為」訂嘅 ——
      迴力鏢 / 導彈之前對 boss 係 0 傷害（死卡），所以從來冇人驗過佢哋嘅實際 DPS。
      修正咗「命中唔死 + 射程 + 巡航加速」之後，佢哋會**必定命中 boss**
      （實測 16.94 / 18.48 HP/s），比其他形態卡（wave 3.13 · laser 1.80 · rail 1.60）**強 5–6 倍**
      → 變成必揀卡。所以要重訂射速代價，令 5 張形態卡落喺同一個 DPS 帶（≈ 3.4 HP/s）。
      實測推算 + 覆核：boom 0.7 → 0.15（16.94 → 3.63 → **實測 2.36**）·
-     miss 0.55 → 0.10（18.48 → 8.84 → 爆散唔打 boss 後 **5.60**）→ 再收窄到 0.07（≈ 3.7）。 */
+     miss 0.55 → 0.10（18.48 → 8.84 → 爆散唔打 boss 後 **5.60**）→ 再收窄到 0.07（≈ 3.7）。
+     ⚠️ v0.33.0 #123：**呢啲射速乘數刻意保留唔改** —— 佢哋定嘅係每種形態嘅「節奏身份」
+        （導彈慢 / 迴力鏢往返 / 軌道炮一發一線），而 v0.28.0 嘅問題唔係「有射速代價」，
+        係「用絕對乘數去對付差 3.75 倍嘅機體基礎射速」→ DPS 帶嘅問題而家改用
+        **傷害乘數（FORM_DPS_MUL）** 校正，節奏不變。 */
   if (f === 'boomerang') s.fireRate *= 0.15;
   else if (f === 'missile') s.fireRate *= 0.07;
   else if (f === 'rail') s.fireRate *= 0.35;
@@ -4426,7 +4495,9 @@ let laserHitAt = null;             /* 敵 → 上次命中時間戳 */
 
 /* 開火：立即做一次線上判定（唔等下一幀，確保第一下就打中） */
 function fireLaser(ship) {
-  const dmg = ((ship.bulletDmg || 1) + lootBulletDmg()) * 0.35;
+  /* v0.33.0 #123：形態卡 DPS 帶 —— laser 嘅 DPS 由光束 tick 率（11.1/s）主導，
+     完全唔受 fireRate 影響 → 必須用傷害乘數（表 FORM_DPS_MUL.laser）。 */
+  const dmg = ((ship.bulletDmg || 1) + lootBulletDmg()) * 0.35 * (ship.formDmgMul || 1);
   const x = ship.x, y = ship.y - 8;
   const now = performance.now();
   for (const e of enemies) {
@@ -4462,7 +4533,9 @@ function fireLaser(ship) {
 /* 每幀：光束持續判定（同一敵人 LASER_DMG_TICK_MS 內只計一次） */
 function laserTick(ship, dtMs) {
   if (!ship || ship.shotForm !== 'laser') return;
-  const dmg = ((ship.bulletDmg || 1) + lootBulletDmg()) * 0.35;
+  /* v0.33.0 #123：形態卡 DPS 帶 —— laser 嘅 DPS 由光束 tick 率（11.1/s）主導，
+     完全唔受 fireRate 影響 → 必須用傷害乘數（表 FORM_DPS_MUL.laser）。 */
+  const dmg = ((ship.bulletDmg || 1) + lootBulletDmg()) * 0.35 * (ship.formDmgMul || 1);
   const x = ship.x, y = ship.y - 8;
   const now = performance.now();
   for (const e of enemies) {
@@ -4718,6 +4791,9 @@ function spawnPlayerShot() {
   const form = ship.shotForm || 'bolt';
   const tags = ship.shotTags || {};
   const baseDmg = (ship.bulletDmg || 1) + lootBulletDmg();
+  /* v0.33.0 #123：形態卡 DPS 帶 —— 每發傷害乘數（1 = 冇形態卡）。
+     ⚠️ 喺形態分支**之後**先乘 → 導彈本身嘅 ×2.2 唔會被覆蓋。 */
+  const formMul = ship.formDmgMul || 1;
   let n = Math.max(1, ship.bulletCount | 0);
   let mid = (n - 1) / 2;
   let spread = n <= 1 ? 0 : (n <= 2 ? 0.08 : 0.12);
@@ -4756,7 +4832,7 @@ function spawnPlayerShot() {
     const x0 = ship.x, y0 = ship.y - 8;
     pushPlayerBullet({
       owner: 'player', form: 'rail', x: x0, y: y0,
-      vx: 0, vy: 0, dmg: baseDmg, pierceLeft: 99,
+      vx: 0, vy: 0, dmg: baseDmg * formMul, pierceLeft: 99,
       life: 90, maxLife: 90, isRay: true,
       _hitSet: null, tags: Object.assign({}, tags),
     });
@@ -4831,7 +4907,21 @@ function spawnPlayerShot() {
       formSpd = formSpd * 0.55;
       vx = Math.cos(a) * formSpd;
       vy = Math.sin(a) * formSpd;
-      life = maxLife = 2200;
+      /* v0.33.0 #123：導彈生命期要夠飛到 boss ——
+         導彈初速跟機體 bulletSpd（A 0.44 · B 0.26 · C 0.30 · D 0.40 · E 0.28），
+         鎖定期（400ms）過後巡航速 = 初速 × 1.15（鎖定期只減速一次，之後恢復），
+         由機身 y=412 飛到 boss y=50–110 要 302–362px：
+           A 機 1367ms · B 機 2317ms · C 機 2000ms · D 機 1502ms · E 機 2147ms
+         但 `life` 原本寫死 2200ms → **B 機物理上飛唔到 boss**（要 2717ms）。
+         ⚠️ 實測（12 秒 boss 窗口）：B 機導彈 12 秒得 0.44 次命中（DPS = 無卡嘅
+            **0.06×**）、C 機 0.18×、E 機 0.11× → 校準要 32× 傷害乘數先夠 1.5×，
+            而且加咗 32× 之後 B / C / E 仍然係 **0.000×**（根本未到，加幾多傷都冇用）。
+            v0.28.0 嘅修正只做咗「巡航期恢復速度」，冇檢查生命期夠唔夠飛到。
+         → 生命期按實際飛行時間計（最少 2200ms）。⚠️ **只延長生命期、唔改速度** →
+            「慢但追」嘅手感不變；MISSILE_CAP = 8 唔受影響（B 機 0.5/s × 2.8s ≈ 1.4 發在場）。 */
+      const cruise = formSpd * 1.15;
+      const needMs = MISSILE_LOCK_MS + 400 / Math.max(0.02, cruise);
+      life = maxLife = Math.max(2200, Math.ceil(needMs));
     } else if (form === 'wave') {
       vx = Math.cos(a) * formSpd;
       vy = Math.sin(a) * formSpd;
@@ -4843,6 +4933,10 @@ function spawnPlayerShot() {
       /* bolt */
       life = maxLife = 0; /* 0 = 用出界 cull */
     }
+
+    /* v0.33.0 #123：形態卡 DPS 帶 —— 每發傷害乘數（喺形態分支之後乘，
+       所以導彈嘅 ×2.2 保留，軌道炮／迴力鏢／波動彈／普通彈全部一齊被校準）。 */
+    dmg *= formMul;
 
     pushPlayerBullet({
       owner: 'player',
@@ -6271,7 +6365,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.32.0 · 場景重做 · 掃描線對齊', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.33.0 · 形態卡重訂 · 一局一張', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -6698,16 +6792,10 @@ function render() {
         ctx.font = 'bold 10px monospace';
         ctx.textAlign = 'right';
         ctx.fillText('x' + n, x + cardW - 6, y + 14);
-      } else if (isFormTransferCard(up)) {
-        /* v0.28.0：形態卡喺「玩家已經有形態」時其實係**轉職**（會頂走舊形態）。
-           抽法改成「只抽未見過」之後，一局平均會見到 3.3 張形態卡，
-           所以呢個情況好常見 —— 唔標明嘅話，玩家會以為揀咗係加強。
-           ⚠️ 形態卡互斥（唔會疊加），所以呢個分支唔會同上面嘅「x2」撞位。 */
-        ctx.fillStyle = '#ff6';
-        ctx.font = 'bold 9px monospace';
-        ctx.textAlign = 'right';
-        ctx.fillText('轉職', x + cardW - 6, y + 14);
       }
+      /* ⚠️ v0.33.0 #124：原本呢度有個「轉職」黃色標籤（isFormTransferCard）——
+         變體 D（一局只出一次形態卡）之下，玩家永遠只會有一張形態卡 →
+         個標籤**永遠唔會出現** = 死代碼，已連帶移除 helper 一齊刪走。 */
       ctx.fillStyle = '#ff6';
       ctx.font = 'bold 10px monospace';
       ctx.textAlign = 'center';
@@ -7449,7 +7537,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.32.0 已載入');
+console.log('[啟動] 末日救未來 v0.33.0 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */

@@ -36,6 +36,11 @@ function shipBase() {
   return { fireRate: 10, bulletSpd: 0.3, shotForm: 'bolt', shotTags: {} };
 }
 // extract applyShotFormCosts via eval of function text
+/* ⚠️ v0.33.0 #123：applyShotFormCosts() 依賴 FORM_DPS_MUL 表（形態卡 DPS 帶）
+   → 表一齊 eval 返去測試檔 scope（AI_INSTRUCTIONS.md §5.1.1）。
+   ⚠️ 用「攞走 const 前綴 → eval 成物件字面量表達式」，
+      唔可以直接 eval('const ...') —— direct eval 嘅 const 係 eval 自己 scope，唔會漏出嚟。 */
+const FORM_DPS_MUL = eval('(' + h.match(/const FORM_DPS_MUL = \{[\s\S]*?\n\};/)[0].replace(/^const FORM_DPS_MUL = /, '').replace(/;\s*$/, '') + ')');
 const fn = h.match(/function applyShotFormCosts\(s\) \{[\s\S]*?\n\}/)[0];
 eval(fn);
 {

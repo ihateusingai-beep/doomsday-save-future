@@ -102,6 +102,11 @@ console.log('\n=== 6. 抽卡（v0.27.3 新抽法：只抽未見過 + 玩法卡�
    ⚠️ 順序有意義：isPlayStyleCard / upgradeWeight 都引用 isOffenseStyleCard，
    所以要先 eval 佢。 */
 const seenUpgradeIds = new Set();
+/* ⚠️ v0.33.0 #124（變體 D）：generateChoiceOffer() 多咗兩個自由變數 ——
+   `playerStacks`（玩家有冇持有形態卡）同 `hasFormCard()` → 一齊 eval 返去測試檔 scope
+   （AI_INSTRUCTIONS.md §5.1.1：唔可以用 new Function 注入，咩自由變數會 undefined）。 */
+const playerStacks = Object.create(null);
+const hasFormCard = eval('(' + h.match(/function hasFormCard\(\)[\s\S]*?\n\}/)[0] + ')');
 const isOffenseStyleCard = eval('(' + h.match(/function isOffenseStyleCard\(up\)[\s\S]*?\n\}/)[0] + ')');
 const isPlayStyleCard = eval('(' + h.match(/function isPlayStyleCard\(up\)[\s\S]*?\n\}/)[0] + ')');
 const upgradeWeight = eval('(' + h.match(/function upgradeWeight\(up\)[\s\S]*?\n\}/)[0] + ')');

@@ -341,7 +341,19 @@ console.log('\n=== 6. 版號 + PLAN 條目 ===');
   check('PLAN 有 #123 形態卡 DPS 帶條目', /\| 123 \|.*形態卡 DPS 帶/.test(plan));
   check('PLAN 有 #124 變體 D 條目', /\| 124 \|.*變體 D/.test(plan));
   check('PLAN 改動紀錄有 v0.33.0', /\*\*v0\.33\.0/.test(plan));
-  check('index.html 顯示 v0.33.0', /v0\.33\.0 ·/.test(h));
+  /* ⚠️ v0.34.0：呢條原本係精確字串比對 `/v0\.33\.0 ·/` —— 改版號就必 fail，
+     違反記憶 §3「test invariant 用 >= 唔用 exact-equal」。改成解析版本再比大小。 */
+  check('★ version >= v0.34.0', !!ver && (ver[0] > 0 || ver[1] > 34 || (ver[1] === 34 && ver[2] >= 0)),
+    ver ? ver.join('.') : '—');
+  const title = h.match(/fillText\('(v\d+\.\d+\.\d+)[^']*'/);
+  check('標題畫面顯示同版號一致', !!title && !!ver &&
+    title[1].replace(/^v/, '') === ver.join('.'), title ? title[1] : '—');
+  check('PLAN 改動紀錄有 v0.34.0', /\*\*v0\.34\.0/.test(plan));
+  check('PLAN 有 #126 空波修正條目', /\| 126 \|.*splitter/.test(plan));
+  check('PLAN 有 #127 未教敵種閘條目', /\| 127 \|.*pool 家族閘/.test(plan));
+  check('PLAN 有 #128 敵種攤分條目', /\| 128 \|.*敵種攤分/.test(plan));
+  check('PLAN 有 #129 波次對比條目', /\| 129 \|.*強弱對比/.test(plan));
+  check('PLAN 有 #130 版號條目', /\| 130 \|.*v0\.34\.0/.test(plan));
 }
 
 console.log('\n' + (fails ? fails + ' FAIL' : 'ALL PASS'));

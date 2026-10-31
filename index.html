@@ -2189,22 +2189,49 @@ const SPECIAL_TYPES = ['sniper', 'shield', 'swarm'];
 /* 本關 enemy roll 出嘅結果：chunkId → { add（數量增減）, type（統一角色，null = 原樣） } */
 let enemyRoll = Object.create(null);
 
+/* v0.34.0 #127：本關 pool 出現過嘅敵人 type 集合（教學閘嘅依據）。
+   ⚠️ **唔可以用 chunk id 前綴推斷家族** —— `sp_2` 個前綴 `sp_` 係「彈幕 spray」
+   但佢實際 type 係 `splitter`；`mix_gr_sn` / `md_gr` / `tu_gr` 更係混編
+   → 必須攤平 `WAVE_CHUNKS[id].spawn[].type` 取真實 type 集合。 */
+function poolEnemyTypes(stageId) {
+  const cfg = STAGE_RAND[stageId] || {};
+  const ids = cfg.slots ? cfg.slots.flat() : (cfg.pool || []);
+  const set = new Set();
+  for (const id of ids) {
+    const ch = WAVE_CHUNKS[id];
+    if (!ch) continue;
+    for (const s of ch.spawn) set.add(s.type);
+  }
+  return set;
+}
+
 /* 喺入關時 roll 一次。回傳可以喺 tick() 之後查。 */
 function rollEnemyRoles(stageId, waves) {
   const cfg = ENEMY_ROLL[stageId] || ENEMY_ROLL[2];
   const rng = stageRngFor(runSeed, 11000 + stageId);
   enemyRoll = Object.create(null);
   if (!cfg.jitter) return enemyRoll;     /* S1 教學關唔 roll */
+  /* v0.34.0 #127：未教敵種唔准偷渡 —— 特殊角色只可以 roll 成
+     「本關 pool 出現過嘅 type」。冇教過就唔應該出現（teach-then-test）。 */
+  const poolTypes = poolEnemyTypes(stageId);
+  const canElite = poolTypes.has('elite');
+  const canSpecial = SPECIAL_TYPES.filter(t => poolTypes.has(t));
   for (const w of waves) {
     /* count jitter：−jitter..+jitter（整數），實際 count 由 emitWaveType clamp */
     const add = Math.floor(rng() * (cfg.jitter * 2 + 1)) - cfg.jitter;
     /* 角色 roll：先判精英，再判 special（互斥，避免 elite + special 疊加成雜牌） */
     let type = null;
     const r = rng();
-    if (r < cfg.elitePct) {
+    if (canElite && r < cfg.elitePct) {
       type = 'elite';
-    } else if (r < cfg.elitePct + cfg.specialPct) {
-      type = SPECIAL_TYPES[Math.floor(rng() * SPECIAL_TYPES.length)];
+    } else if (canSpecial.length) {
+      /* ⚠️ elite 唔喺 pool → 佢嗰份 elitePct 機會**併入** special 機會。
+         唔可以無聲吃掉（否則 elitePct 等於失效，統計上 roll 機會冇晒）。 */
+      const elitePct = canElite ? cfg.elitePct : 0;
+      const spPct = cfg.specialPct + (canElite ? 0 : cfg.elitePct);
+      if (r - elitePct < spPct) {
+        type = canSpecial[Math.floor(rng() * canSpecial.length)];
+      }
     }
     enemyRoll[w.chunk] = { add, type };
   }
@@ -2302,8 +2329,30 @@ const STAGE_RAND = {
         ['g_m','g_l'],              // 7 波 23000
      ] },
   2: { pool: ['g_m','g_l','g_xl','sp_s','sp_m','sp_l','sp_w','ai_s','ai_w','rg_s'] },
-  3: { pool: ['mt_s','mt_m','mt_l','g_l','dv_s','dv_m','dv_l','rg_m','sn_1','sn_2','mix_gr_sn','sp_2','ram_1','ln_1','md_1','ch_1','bm_1'] },
-  4: { pool: ['rg_m','rg_l','g_l','g_xl','dv_m','sh_1','el_1','el_2','sn_1','sn_2','mix_sh_gr','sp_2','ram_2','ln_1','mix_sp_ram','md_gr','ch_1','ch_2','bm_1','tu_1','tu_gr'] },
+  /* v0.34.0 #128：S3 敵種攤分 —— 同時守 PLAN #72「S3–S5 pool ∈ [14,24]」+
+     #97「S3–S5 pool 要有 v0.26.0 新敵人」兩條 invariant，又令每局新敵種 ≤2.5：
+     ① 移除 md_1（醫護）/ ch_1（追蹤撞）/ bm_1（自爆）—— chaser 同 bomber 冇 telegraph，
+        medic 唔攻擊只醫療 → 三者都係「加咗認知負荷但冇加教學價值」，延後到 S4／S5 先教
+     ② 移除 sn_1 / sn_2 / mix_gr_sn（狙擊）—— 狙擊嘅核心概念「有敵人會瞄準你」S1 已經用
+        `aim` 教過，S3 再引入一個新 type 唔划算 → 延後到 S4 先教
+     ③ 俯衝只留 dv_s 一個規模（dv_m / dv_l 移除）—— 保住「大氣層 = 流星落下、俯衝雜魚」
+        嘅關卡主題，同時收窄新 type 覆蓋率
+     ④ 保留 sp_2 / ram_1 / mix_sp_ram（splitter / rammer；#72 要 S3 有 ≥3 個 v3.11 新 chunk）
+        —— 佢哋有常駐強可視特徵（六角裂紋／楔形撞角），學生唔使等佢開火就認得出
+     ⑤ 保留 tu_1（炮台）—— #97 invariant，而且四種 v0.26.0 新敵入面 turret 最有教學價值
+        （定點射擊 + 可破護罩）
+     ⑥ 補 sp_s / sp_m / ai_s / rg_l / g_xl（全部係 S1／S2 已教過嘅 type）→ 已教波比例高，
+        每局「新敵種覆蓋率」下降。池長度 17 → 16。 */
+  3: { pool: ['mt_s','mt_m','mt_l','g_l','g_m','g_xl','rg_m','rg_l','sp_s','sp_m','ai_s','dv_s','sp_2','ram_1','mix_sp_ram','tu_1'] },
+  /* v0.34.0 #128：S4 移除 bm_1（bomber）/ md_gr（醫護）/ ch_1（追蹤撞）/ ch_2（追蹤）
+     → 呢三種都係「冇 telegraph 或零戰術價值」嘅新敵，延後到 S5 終關先教
+     （S5 pool 有 bm_2 / md_gr / ch_2）。
+     ⚠️ 移除 ln_1（lancer）——「雷射」同 S4「軌道殘骸」嘅主題唔配。
+     ⚠️ 移除 sn_1 / sn_2（狙擊）—— 狙擊嘅核心概念「有敵人會瞄準你」S1 已經用 `aim`
+        教過，S4 再教一個新 type 唔划算 → 延後到 S5（mix_sw_sn）先教。
+     ⇒ S4 只教 elite（重裝精英）+ shield（護盾）兩種新敵 → S4 變成「複習 + 精英化」關卡，
+        符合「軌道殘骸」嘅防禦型主題；負荷遞增曲線變成 S3 2.14 → S4 2.47 → S5 最高。 */
+  4: { pool: ['rg_m','rg_l','g_l','g_xl','dv_m','sh_1','el_1','el_2','mix_sh_gr','sp_2','ram_2','mix_sp_ram','tu_1','tu_gr'] },
   5: { pool: ['mt_m','mt_l','g_xl','dv_l','el_1','el_2','sw_2','sw_3','sp_w','rg_l','mix_sw_sn','mix_sh_gr','sp_2','ram_2','ln_1','mix_sp_ram','md_gr','ch_2','bm_2','tu_1','tu_gr'] },
 };
 
@@ -3050,7 +3099,18 @@ function emitWaveType(s, stageId, chunkId) {
     case 'medic':
     case 'chaser':
     case 'bomber':
-    case 'turret': {
+    case 'turret':
+    /* v0.34.0 #126：splitter / rammer / lancer —— v3.11 #71 引入呢三種敵人時，
+       淨係加咗 spawnGruntFormation() 嘅 hp/score/落速/role 旗標 + tick 行為
+       （splitter 死後裂散射彈 / rammer 預警鎖定後加速撞 / lancer 垂直光束）
+       + 繪製 + sprite，但**漏咗呢個 switch 嘅 case**。
+       switch 又冇 default → 三種 type 落入空檔乜都唔做 → 嗰啲波次生成 0 隻敵人
+       （實測：S3 每局 17.2% / S4 18.7% / S5 18.3% 嘅波係空波，PLAYER 見到嘅
+       「少咗一波」其實係三種敵人從來冇出場）。
+       ⚠️ 呢度只係補返入口，行為邏輯零改動（走同一個 spawnGruntFormation 路徑）。 */
+    case 'splitter':
+    case 'rammer':
+    case 'lancer': {
       /* #36：角色 roll 有結果就用佢，冇就保留 chunk 原定類型。
          count jitter 一併注入（注入 opt.count，唔改 opt 本身——waveQueue 係
          每次入關重新 assemble 嘅，但仍然唔好污染原始定義）。 */
@@ -6365,7 +6425,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.33.0 · 形態卡重訂 · 一局一張', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.34.0 · 敵種攤分 · 教學閘', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -7537,7 +7597,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.33.0 已載入');
+console.log('[啟動] 末日救未來 v0.34.0 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */

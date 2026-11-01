@@ -39,7 +39,7 @@ console.log('\n=== 3. cost 冪等性（applyUpgrades 每次全量重算）===');
 /* applyUpgrades() 每次都由基礎值重算，所以 mod/cost 必須係 n 嘅純函數。
    模擬：同一組 playerStacks 連續套兩次，結果必須一模一樣。 */
 function freshShip() {
-  return { maxHp: 3, shield: 1, speed: 3.6, fireRate: 14, bulletCount: 1,
+  return { maxHp: 3, shield: 1, speed: 3.6, fireRate: 14, bulletCount: 1, bulletBonus: 0,
            bulletDmg: 1, bombCD: 12000, focusFactor: 0.3, grazeMult: 1,
            pierce: 0, resurrect: 0, masterStacks: 0 };
 }
@@ -73,10 +73,15 @@ console.log('\n=== 4. 代價確實生效，而且方向啱 ===');
   check('速度++：bombCD 12000→14400（×1.2）', Math.abs(s.bombCD - 14400) < 1e-6, '= ' + s.bombCD + 'ms');
 }
 {
+  /* v0.35.0 #132：多彈卡改相對機體自然彈數 → 寫 bulletBonus，唔再覆寫 bulletCount */
   let s = applyAll(freshShip(), { gun_3: 1 });
-  /* gun_3 係 min(4, 3+n)：由 3 連發升到 4，唔係由現值 +n */
-  check('三砲：bulletCount → 4（3 連發→4 連發）', s.bulletCount === 4, '= ' + s.bulletCount);
-  check('三砲：maxHp 3→2（−1）', s.maxHp === 2, '= ' + s.maxHp);
+  check('多彈++：bulletBonus → 3（每級 +3）', s.bulletBonus === 3, '= ' + s.bulletBonus);
+  check('多彈++：bulletCount 唔再被覆寫（機體基礎值保持 1）', s.bulletCount === 1, '= ' + s.bulletCount);
+  check('多彈++：maxHp 3→2（−1）', s.maxHp === 2, '= ' + s.maxHp);
+  let s2 = applyAll(freshShip(), { gun_2: 1 });
+  check('多彈：bulletBonus → 2（每級 +2）', s2.bulletBonus === 2, '= ' + s2.bulletBonus);
+  let s3 = applyAll(freshShip(), { gun_2: 1, gun_3: 1 });
+  check('多彈 + 多彈++：bulletBonus 疊加 → 5（唔會互相覆蓋）', s3.bulletBonus === 5, '= ' + s3.bulletBonus);
 }
 { /* 底線：生命上限唔可以跌到 0，否則即刻死 */
   let s = applyAll(freshShip(), { hp_s: 1, gun_3: 1 });
@@ -140,7 +145,10 @@ check('5000 次抽卡：出現重複 = ' + dupRuns, dupRuns === 0);
 check('5000 次抽卡：唔足 3 張 = ' + shortRuns, shortRuns === 0);
 check('保底生效：5000 次抽卡全部至少 1 張玩法卡（違例 ' + noStyleRuns + '）', noStyleRuns === 0);
 check('實作用 splice 移除已抽中（唔係獨立 random 撞運氣）', /pool\.splice/.test(genSrc));
-check('冇按 playerStacks 過濾（過濾依據係「本局已見過」而唔係持有）', !/playerStacks/.test(genSrc));
+/* v0.35.0 #135：新增雷射／tag 互斥 → 呢一條刻意用 playerStacks（持有），
+   但**主濾仍然係「本局未見過」**（唔會因為持有就唔再出同一張卡）。 */
+check('主濾仍然係「本局未見過」（雷射／tag 互斥係刻意例外）',
+  /const pool = \(unseen\.length \? unseen : eligible\)/.test(genSrc) && /seenUpgradeIds\.has\(u\.id\)/.test(genSrc));
 check('只抽本局未見過嘅卡（seenUpgradeIds 過濾）', /seenUpgradeIds\.has\(u\.id\)/.test(genSrc));
 
 /* 跨次唔再出同一張卡（v0.27.3 刻意取捨：疊加機制讓位） */

@@ -254,6 +254,7 @@ console.log('\n=== 3. E 機散射扇形 + 收束 ===');
       SALVO_ANGLE: cval('SALVO_ANGLE'),
       HEAVY_KNOCK: cval('HEAVY_KNOCK'),
       SPREAD_N: cval('SPREAD_N'),
+      MAX_BULLETS: cval('MAX_BULLETS'),
       SPREAD_ANGLE: SPREAD_ANGLE,
       CONVERGE_DMG: cval('CONVERGE_DMG'),
       CONVERGE_SPD: cval('CONVERGE_SPD'),
@@ -284,9 +285,20 @@ console.log('\n=== 3. E 機散射扇形 + 收束 ===');
   check('E 機彈有 _groupHits（俾群傷被動用）',
     o.length === 3 && Array.isArray(o[0]._groupHits) && o[0]._groupHits.length === 0);
 
-  /* 「多彈」強化卡喺 E 機仍然有效（唔會變死卡） */
-  const o5 = runShot(Object.assign({}, base, { bulletCount: 5 }));
-  check('多彈強化令 E 機散射變 5 粒', o5.length === 5, '→ ' + o5.length);
+  /* v0.35.0 #132：「多彈」卡改相對機體自然彈數（bulletBonus），唔再覆寫 bulletCount。
+     ⚠️ PLAN #132 驗收線：E 機 + gun_2（+2）→ 5 粒（修正前係 3 = 死卡）；
+     A 機 + gun_2（+2）→ 3 粒、A 機 + gun_3（+3）→ 4 粒（同修正前一致）。 */
+  const o5 = runShot(Object.assign({}, base, { bulletCount: 1, bulletBonus: 2 }));
+  check('v0.35.0 #132：E 機 + 多彈(+2) → 5 粒（修正前係 3 = 死卡）', o5.length === 5, '→ ' + o5.length);
+  const o6 = runShot(Object.assign({}, base, { bulletCount: 1, bulletBonus: 3 }));
+  check('v0.35.0 #132：E 機 + 多彈(+3) → 6 粒', o6.length === 6, '→ ' + o6.length);
+  const o7 = runShot(Object.assign({}, base, { chassis: 'A', bulletCount: 1, bulletBonus: 2 }));
+  check('v0.35.0 #132：A 機 + 多彈(+2) → 3 粒（同修正前一致）', o7.length === 3, '→ ' + o7.length);
+  const o8 = runShot(Object.assign({}, base, { chassis: 'A', bulletCount: 1, bulletBonus: 3 }));
+  check('v0.35.0 #132：A 機 + 多彈(+3) → 4 粒（同修正前一致）', o8.length === 4, '→ ' + o8.length);
+  const o9 = runShot(Object.assign({}, base, { bulletCount: 1, bulletBonus: 99 }));
+  check('v0.35.0 #132：有效彈數永遠 ≤ MAX_BULLETS(' + cval('MAX_BULLETS') + ')',
+    o9.length <= cval('MAX_BULLETS'), '→ ' + o9.length);
 
   /* 收束：4 秒內收成單中線，傷害 ×3、彈速 ×1.6 */
   const oc = runShot(Object.assign({}, base, { _convergeUntil: 5000 }), 1000);

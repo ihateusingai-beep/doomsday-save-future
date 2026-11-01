@@ -25,13 +25,14 @@ function makeRoll(stageId, waves) {
   const cfg = ENEMY_ROLL[stageId] || ENEMY_ROLL[2];
   const rng = stageRngFor(RUNSEED, 11000 + stageId);
   if (!cfg.jitter) return enemyRoll;
-  for (const w of waves) {
+  /* v0.35.0 #131：key 由 chunk id 改成 wave index（同一關重複 chunk 唔再共用同一 roll） */
+  for (let wi = 0; wi < waves.length; wi++) {
     const add = Math.floor(rng() * (cfg.jitter * 2 + 1)) - cfg.jitter;
     let type = null;
     const r = rng();
     if (r < cfg.elitePct) type = 'elite';
     else if (r < cfg.elitePct + cfg.specialPct) type = SPECIAL_TYPES[Math.floor(rng() * SPECIAL_TYPES.length)];
-    enemyRoll[w.chunk] = { add, type };
+    enemyRoll[wi] = { add, type };
   }
   return enemyRoll;
 }
@@ -80,6 +81,22 @@ RUNSEED = 777;
 const rollOnly = makeRoll(4, waves);
 const rngWaves = stageRngFor(RUNSEED, 4);
 check('敵配 stream 唔會影響 assembleWaves stream', rollOnly && rngWaves !== null);
+
+console.log('\n=== 3.5 v0.35.0 #131：同一關重複 chunk 唔再共用同一 roll ===');
+{
+  /* ⚠️ 舊寫法 enemyRoll[w.chunk] 令後一次 roll 覆蓋前一次 → 兩波敵配一模一樣 */
+  const dupWaves = [
+    { chunk: 'g_l', spawn: [{type:'grunt', count:3}] },
+    { chunk: 'g_l', spawn: [{type:'grunt', count:3}] },
+  ];
+  const rolls = makeRoll(3, dupWaves);
+  const keys = Object.keys(rolls);
+  check('兩個 wave 各有獨立 roll key（唔再係同一個 chunk id）',
+    keys.length === 2 && keys[0] === '0' && keys[1] === '1', JSON.stringify(keys));
+  const same = rolls['0'].add === rolls['1'].add && rolls['0'].type === rolls['1'].type;
+  console.log('    （兩個 roll 嘅值碰巧相同嘅機率唔低，但 **key** 已經唔同 → 唔會再互相覆蓋）');
+  check('roll 記錄係 per-wave（舊寫法兩個 wave 會得一個 key）', keys.length === 2, same ? '值啱啱一樣' : '值唔同');
+}
 
 console.log('\n=== 4. clamp 無空波（#36 驗收）===');
 let minCount = 99, maxAdd = -99, minAdd = 99;
@@ -138,9 +155,13 @@ check('S1 走原 spawn 定義（唔經 roll）', /if \(!cfg\.jitter\) return ene
 console.log('\n=== 7. 掛鉤接線 ====');
 check('入關會叫 rollEnemyRoles（組波之後）',
   /assembleWaves\(lastStage, runSeed\);[\s\S]{0,300}rollEnemyRoles\(lastStage, waveQueue\)/.test(h));
-check('emitWaveType 收 chunkId 參數', /function emitWaveType\(s, stageId, chunkId\)/.test(h));
-check('tick 傳 w.chunk 落 emit', /emitWaveType\(s, lastStage, w\.chunk\)/.test(h));
-check('emitWaveType 有 enemyRollFor 讀取', /const roll = chunkId \? enemyRollFor\(chunkId\) : null;/.test(h));
+/* v0.35.0 #131：enemyRoll key 改 wave index → 每波獨立 roll */
+check('emitWaveType 收 waveIdx 參數', /function emitWaveType\(s, stageId, waveIdx\)/.test(h));
+check('tick 傳 waveCursor 落 emit（wave index，唔係 chunk id）',
+  /emitWaveType\(s, lastStage, waveCursor\)/.test(h) && !/emitWaveType\(s, lastStage, w\.chunk\)/.test(h));
+check('emitWaveType 有 enemyRollFor 讀取', /const roll = waveIdx != null \? enemyRollFor\(waveIdx\) : null;/.test(h));
+check('rollEnemyRoles 用 wave index 做 key', /enemyRoll\[wi\] = \{ add, type \};/.test(h));
+check('enemyRollFor 收 waveIdx', /function enemyRollFor\(waveIdx\)/.test(h));
 check('雜魚類型套用 roll.type', /roll && roll\.type \? Object\.assign\(\{\}, s, \{ type: roll\.type \}\)/.test(h));
 check('count jitter 注入 base.count', /base\.count = Math\.max\(1, \(s\.count \|\| 1\) \+ roll\.add\)/.test(h));
 check('spray 類型都套 jitter', /const cnt = Math\.max\(1, \(s\.count \|\| 1\) \+ \(roll \? roll\.add : 0\)\);/.test(h));

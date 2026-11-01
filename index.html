@@ -1659,9 +1659,11 @@ const UPGRADES = [
   { id:'fr_l',    cat:'火力', nameZh:'射速++',   icon:'icon_rapid', icon2:'icon_rapid',  desc:'射速 +50%｜初始護盾 −1',
               mod:(s,n)=>{ s.fireRate *= Math.pow(1.50, n); },
               cost:(s,n)=>{ s.shield = Math.max(0, s.shield - n); } },
-  { id:'gun_2',   cat:'火力', nameZh:'雙砲',     icon:'icon_multi',    desc:'2 連發 → 3 連發',       mod:(s,n)=>{ s.bulletCount = 2 + n; } },
-  { id:'gun_3',   cat:'火力', nameZh:'三砲',     icon:'icon_multi', icon2:'icon_multi',    desc:'3 連發 → 4 連發｜生命 −1',
-              mod:(s,n)=>{ s.bulletCount = Math.min(4, 3 + n); },
+  /* v0.35.0 #132：多彈卡改相對機體自然彈數（新增 ship.bulletBonus，唔再覆寫 bulletCount）。
+     ⚠️ 舊寫法係絕對賦值：E 機散射基數 SPREAD_N=3 → 揀 gun_2 都係 3 粒（死卡）；兩張同時持有 → 後者覆蓋前者。 */
+  { id:'gun_2',   cat:'火力', nameZh:'多彈',     icon:'icon_multi',    desc:'多彈 +2',              mod:(s,n)=>{ s.bulletBonus = (s.bulletBonus||0) + 2*n; } },
+  { id:'gun_3',   cat:'火力', nameZh:'多彈++',   icon:'icon_multi', icon2:'icon_multi',    desc:'多彈 +3｜生命 −1',
+              mod:(s,n)=>{ s.bulletBonus = (s.bulletBonus||0) + 3*n; },
               cost:(s,n)=>{ s.maxHp = Math.max(1, s.maxHp - n); } },
   { id:'dmg_s',   cat:'火力', nameZh:'火力+',    icon:'icon_damage',   desc:'子彈傷害 +1',            mod:(s,n)=>{ s.bulletDmg = (s.bulletDmg||1) + n; } },
   { id:'bomb_cd', cat:'輔助', nameZh:'炸彈冷卻-',icon:'icon_bomb',   desc:'炸彈冷卻 -25%',          mod:(s,n)=>{ s.bombCD *= Math.pow(0.75, n); } },
@@ -1720,8 +1722,10 @@ function buildReverseOffer() {
      → 升級完之後機體行為一模一樣 = **零效果死卡**。
      呢個唔止係「玩家已持有嗰張」要排除，連**未持有嘅**形態卡都要排除
      （否則玩家會揀到一張「升級咗但完全冇變化」嘅卡）。 */
-  const owned = UPGRADES.filter(u => (playerStacks[u.id] || 0) > 0 && !legendary[u.id] && u.id.indexOf('form_') !== 0);
-  const rest  = UPGRADES.filter(u => !(playerStacks[u.id] > 0) && !legendary[u.id] && u.id.indexOf('form_') !== 0);
+  /* v0.35.0 #133：加排 gun_2 / gun_3 —— 加法型 + 封頂 → 傳說級疊加到 2 級就撞正上限（飽和風險，唔係「值一樣」）。 */
+  const deadLegendary = (u) => u.id.indexOf('form_') === 0 || u.id === 'gun_2' || u.id === 'gun_3';
+  const owned = UPGRADES.filter(u => (playerStacks[u.id] || 0) > 0 && !legendary[u.id] && !deadLegendary(u));
+  const rest  = UPGRADES.filter(u => !(playerStacks[u.id] > 0) && !legendary[u.id] && !deadLegendary(u));
   const out = [];
   const usedIds = new Set();
   const take = (arr) => {
@@ -1734,7 +1738,7 @@ function buildReverseOffer() {
   take(owned);
   take(rest);
   /* 理論上唔會發生（合資格卡池 21 張 > 3），但保底唔會空畫面 */
-  const spare = UPGRADES.filter(u => u.id.indexOf('form_') !== 0 && !usedIds.has(u.id));
+  const spare = UPGRADES.filter(u => !deadLegendary(u) && !usedIds.has(u.id));
   while (out.length < 3 && spare.length) {
     out.push(spare.splice(Math.floor(Math.random() * spare.length), 1)[0]);
   }
@@ -1779,6 +1783,7 @@ function pickShip(id) {
     fireRate: c.fireRate,
     fireCD: 0,
     bulletCount: c.bulletCount,
+    bulletBonus: 0,           /* v0.35.0 #132：強化卡額外多彈數 */
     bulletDmg: c.bulletDmg,
     bulletSpd: c.bulletSpd,
     bombCD: 12000 * d.bombCdMul,
@@ -1849,6 +1854,7 @@ function applyUpgrades() {
   ship.speed        = c.speed;
   ship.fireRate     = c.fireRate;
   ship.bulletCount  = c.bulletCount;
+  ship.bulletBonus  = 0;           /* v0.35.0 #132：強化卡額外多彈數 */
   ship.bulletDmg    = c.bulletDmg;
   ship.bulletSpd    = c.bulletSpd;
   ship.bombCD       = 12000 * d.bombCdMul;
@@ -1899,9 +1905,7 @@ function applyUpgrades() {
   }
   /* v3.10 形態內建代價（#58）—— 喺全部卡之後套，保證可重算 */
   applyShotFormCosts(ship);
-  /* pierce 同步入 tag 方便 spawn 讀 */
-  if (!ship.shotTags) ship.shotTags = { homing:0, split:0, slow:0, ricochet:0 };
-  ship.shotTags.pierce = ship.pierce || 0;
+  /* v0.35.0 #136：刪走死同步（shotTags.pierce 冇人讀）+ 死分支（shotTags 恆已賦值）。 */
   /* 生命上限增加時一併補返血量 */
   if (ship.hp < ship.maxHp) ship.hp = ship.maxHp;
   /* 護盾唔可以負數 */
@@ -1999,8 +2003,15 @@ function generateChoiceOffer() {
         ① 主池（未見過）② 池抽乾 fallback（由全池補）③ 全池用盡嘅最後防線 ④ 保底玩法卡 fallback。 */
   const formUsed = hasFormCard();
   const isBlockedForm = (u) => formUsed && u.id && u.id.indexOf('form_') === 0;
-  /* 合資格卡池：已持有形態 → 剔走全部 form_* */
-  const eligible = UPGRADES.filter(u => !isBlockedForm(u));
+  /* v0.35.0 #135：激光唔產生子彈實體 → 4 張 tag 喺雷射形態冇作用對象（實機 0 粒子彈）→ 互斥。
+     ⚠️ eligible 係四條抽卡路徑嘅共同源頭，改一處就覆蓋全部。 */
+  const hasLaser = (playerStacks['form_laser'] || 0) > 0;
+  let hasTag = false;
+  for (const id of Object.keys(playerStacks)) if (id.indexOf('tag_') === 0) hasTag = true;
+  const isBlockedTag = (u) => hasLaser && u.id && u.id.indexOf('tag_') === 0;
+  const isBlockedLaser = (u) => hasTag && u.id === 'form_laser';
+  /* 合資格卡池：已持有形態 → 剔走全部 form_*；雷射／tag 互斥 */
+  const eligible = UPGRADES.filter(u => !isBlockedForm(u) && !isBlockedTag(u) && !isBlockedLaser(u));
   const unseen = eligible.filter(u => !seenUpgradeIds.has(u.id));
   /* ⚠️ fallback：萬一將來加 boss 令卡位超過 26，池會乾 —— 退回合資格全池（唔會卡死） */
   const pool = (unseen.length ? unseen : eligible).slice();
@@ -2216,7 +2227,8 @@ function rollEnemyRoles(stageId, waves) {
   const poolTypes = poolEnemyTypes(stageId);
   const canElite = poolTypes.has('elite');
   const canSpecial = SPECIAL_TYPES.filter(t => poolTypes.has(t));
-  for (const w of waves) {
+  /* v0.35.0 #131：key 改 wave index —— 舊寫法 enemyRoll[w.chunk] 令後一次 roll 覆蓋前一次。 */
+  for (let wi = 0; wi < waves.length; wi++) {
     /* count jitter：−jitter..+jitter（整數），實際 count 由 emitWaveType clamp */
     const add = Math.floor(rng() * (cfg.jitter * 2 + 1)) - cfg.jitter;
     /* 角色 roll：先判精英，再判 special（互斥，避免 elite + special 疊加成雜牌） */
@@ -2233,17 +2245,18 @@ function rollEnemyRoles(stageId, waves) {
         type = canSpecial[Math.floor(rng() * canSpecial.length)];
       }
     }
-    enemyRoll[w.chunk] = { add, type };
+    enemyRoll[wi] = { add, type };
   }
   console.log('[敵配] S' + stageId + ' · ' +
     Object.entries(enemyRoll)
-      .map(([k, v]) => k + (v.type ? ':' + v.type : '') + (v.add >= 0 ? '+' : '') + v.add)
+      .map(([k, v]) => (waves[k] ? waves[k].chunk : k) + (v.type ? ':' + v.type : '') + (v.add >= 0 ? '+' : '') + v.add)
       .join(' '));
   return enemyRoll;
 }
-/* 查某個 chunk 嘅 roll 結果（冇 roll 過 → null = 用原本 spawn 定義） */
-function enemyRollFor(chunkId) {
-  return enemyRoll[chunkId] || null;
+/* 查某個 wave 嘅 roll 結果（冇 roll 過 → null = 用原本 spawn 定義）
+   ⚠️ v0.35.0 #131：key 係 wave index（唔再係 chunk id）。 */
+function enemyRollFor(waveIdx) {
+  return enemyRoll[waveIdx] || null;
 }
 
 /* 本局種子（#34）：?seed=N 就鎖 N；否則時間 ^ 隨機。重開一局換新 seed。 */
@@ -3075,11 +3088,12 @@ function spawnSwarmChildren(ex, ey) {
   spawnGruntFormation({ type: 'grunt', count: 2, hp: 3, mini: true, x: ex, y: ey });
 }
 
-function emitWaveType(s, stageId, chunkId) {
+function emitWaveType(s, stageId, waveIdx) {
   /* 由畫面頂部產生指定類型嘅彈幕／雜魚
-     ⚠️ chunkId 係 #36 敵配 roll 用：入面會套用本關 roll 出嚟嘅數量／角色。
-        冇傳（null）就完全用原本 spawn 定義 —— S1 教學關走呢條路。 */
-  const roll = chunkId ? enemyRollFor(chunkId) : null;
+     ⚠️ waveIdx 係 #36 敵配 roll 用：入面會套用本關 roll 出嚟嘅數量／角色。
+        冇傳（null）就完全用原本 spawn 定義 —— S1 教學關走呢條路。
+        ⚠️ v0.35.0 #131：由 chunkId 改成 wave index（每波獨立 roll）。 */
+  const roll = waveIdx != null ? enemyRollFor(waveIdx) : null;
   /* RNG 規則 4：tick() 路徑唔准用 Math.random()。
      呢個 helper 令 emitWaveType 入面所有隨機（彈幕橫向擺位、初始角度、
      散射速度）全部由 runSeed 決定 —— 同 seed → 同畫面，可完整複現。
@@ -4149,6 +4163,10 @@ const CONVERGE_DMG  = 3;       /* E 機收束：傷害 ×3 */
 const CONVERGE_SPD  = 1.6;     /* E 機收束：彈速 ×1.6 */
 const SPREAD_N      = 3;       /* E 機散射：每發 3 發 */
 const SPREAD_ANGLE  = 14 * Math.PI / 180;   /* E 機散射：±14° */
+/* v0.35.0 #132：多彈卡加成後嘅有效彈數上限（7 唔係 6：E 機自然 3 粒，cap 6 會令 gun_2 被 gun_3 吃掉） */
+const MAX_BULLETS   = 7;
+/* v0.35.0 #134：tag_rico 令直上彈丸有橫向速度去到左右牆嘅上限（px/ms） */
+const RICOCHET_MAX_VX = 0.26;
 const GROUP_BONUS   = 1;       /* E 機群傷：同一發命中多隻時額外 +1 傷 */
 let universalCdUntil    = 0;   /* 通用技能冷卻完 */
 let universalActiveUntil = 0;  /* 通用技能效果結束 */
@@ -4854,7 +4872,9 @@ function spawnPlayerShot() {
   /* v0.33.0 #123：形態卡 DPS 帶 —— 每發傷害乘數（1 = 冇形態卡）。
      ⚠️ 喺形態分支**之後**先乘 → 導彈本身嘅 ×2.2 唔會被覆蓋。 */
   const formMul = ship.formDmgMul || 1;
-  let n = Math.max(1, ship.bulletCount | 0);
+  /* v0.35.0 #132：機體自然彈數 + 強化卡加成（卡唔再覆寫 bulletCount） */
+  const bonus = ship.bulletBonus || 0;
+  let n = Math.min(MAX_BULLETS, Math.max(1, ship.bulletCount | 0) + bonus);
   let mid = (n - 1) / 2;
   let spread = n <= 1 ? 0 : (n <= 2 ? 0.08 : 0.12);
   let spd = ship.bulletSpd || 0.30;
@@ -4929,7 +4949,8 @@ function spawnPlayerShot() {
       dmgMul = CONVERGE_DMG;
       spdMul = CONVERGE_SPD;
     } else {
-      n = Math.max(SPREAD_N, ship.bulletCount | 0);
+      /* v0.35.0 #132：E 機散射基數 SPREAD_N + 卡加成（⚠️ 唔係 max(SPREAD_N, bulletCount)） */
+      n = Math.min(MAX_BULLETS, SPREAD_N + bonus);
       mid = (n - 1) / 2;
       spread = n <= 3 ? SPREAD_ANGLE : (n <= 5 ? 9 * Math.PI / 180 : 6 * Math.PI / 180);
     }
@@ -4937,12 +4958,17 @@ function spawnPlayerShot() {
 
   for (let i = 0; i < n; i++) {
     const a = -Math.PI / 2 + (i - mid) * spread;
-    /* v0.26.0 #93 E 機「收束」：傷害 ×3、彈速 ×1.6。
-       ⚠️ spdMul 要同時乘入 **bx/vy 同 formSpd** —— 只乘 formSpd 嘅話
-          bolt 形態（預設）嘅速度唔會變，收束就變成「淨係加傷唔加速」。 */
+    /* v0.26.0 #93 E 機「收束」：傷害 ×3、彈速 ×1.6。⚠️ spdMul 要同時乘入 vx/vy 同 formSpd。 */
     let dmg = baseDmg * dmgMul;
     let vx = Math.cos(a) * spd * spdMul;
     let vy = Math.sin(a) * spd * spdMul;
+    /* v0.35.0 #134：tag_rico —— 單發彈丸 vx ≈ 0 → 永遠撞唔到左右牆（|vx| = 2.69e-17）。
+       按「到最近牆嘅距離 ÷ 到畫面頂所需時間」反推最小橫向速度（×1.35 令佢出界前真係撞到）。 */
+    if (form === 'bolt' && (tags.ricochet || 0) > 0 && Math.abs(vx) < 1e-6) {
+      const toL = ship.x - 4, toR = (VIEW_W - 4) - ship.x;
+      const tTop = Math.max(1, (ship.y - 8) / Math.max(0.05, Math.abs(vy)));
+      vx = (toL <= toR ? -1 : 1) * Math.min(RICOCHET_MAX_VX, (Math.min(toL, toR) / tTop) * 1.35);
+    }
     let life = 0, maxLife = 0, phase = 0;
     let formSpd = spd * spdMul;
 
@@ -5599,7 +5625,8 @@ function tick(dtMs) {
     const stageMs = performance.now() - stageStartMs;
     while (waveCursor < waveQueue.length && waveQueue[waveCursor].at <= stageMs) {
       const w = waveQueue[waveCursor];
-      for (const s of w.spawn) emitWaveType(s, lastStage, w.chunk);
+      /* v0.35.0 #131：傳 wave index（必須喺 waveCursor++ 之前傳，否則 index 錯位） */
+      for (const s of w.spawn) emitWaveType(s, lastStage, waveCursor);
       waveCursor++;
     }
   }
@@ -6425,7 +6452,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.34.0 · 敵種攤分 · 教學閘', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.35.0 · 敵配修正 · 強化池死卡', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -7597,7 +7624,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.34.0 已載入');
+console.log('[啟動] 末日救未來 v0.35.0 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */

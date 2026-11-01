@@ -114,6 +114,7 @@ function runSpawnShot(shipObj, nowMs) {
     SALVO_N: constValue('SALVO_N'),
     SALVO_ANGLE: constValue('SALVO_ANGLE'),
     HEAVY_KNOCK: constValue('HEAVY_KNOCK'),
+    MAX_BULLETS: constValue('MAX_BULLETS'),
   };
   const src = extractFunction('spawnPlayerShot');
   const fn = new Function(...Object.keys(stubs), src + '\nreturn spawnPlayerShot();');

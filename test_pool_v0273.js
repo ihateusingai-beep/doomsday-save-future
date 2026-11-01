@@ -150,7 +150,7 @@ section('4. 變體 D：一局只出一次形態卡（PLAN #124 · v0.33.0）');
 
   /* ③ 四條路徑都要過濾（只改一條會漏） */
   check('★ 主池 + 池抽乾 fallback + 最後防線 + 保底 fallback 全部用合資格池',
-    /const eligible = UPGRADES\.filter\(u => !isBlockedForm\(u\)\)/.test(genSrc) &&
+    /const eligible = UPGRADES\.filter\(u => !isBlockedForm\(u\)/.test(genSrc) &&
     /const pool = \(unseen\.length \? unseen : eligible\)/.test(genSrc) &&
     /const rest = eligible\.filter\(u => !usedIds\.has\(u\.id\)\)/.test(genSrc) &&
     /const spare = eligible\.length \? eligible : UPGRADES/.test(genSrc) &&
@@ -158,8 +158,19 @@ section('4. 變體 D：一局只出一次形態卡（PLAN #124 · v0.33.0）');
 
   /* ④ 傳說級（單次逆轉）唔可以出形態卡 = 零效果死卡（mod 寫死 shotForm） */
   const boSrc = extractFunction('buildReverseOffer');
-  check('★ buildReverseOffer 排除 form_*（傳說級形態卡 = 零效果死卡）',
-    (boSrc.match(/indexOf\('form_'\)/g) || []).length >= 3);
+  /* v0.35.0 #133：零效果卡清單加 gun_2 / gun_3 → 改成行為斷言（真抽 1000 次） */
+  {
+    const playerStacks = Object.create(null);
+    const legendary = Object.create(null);
+    playerStacks.form_rail = 1; playerStacks.gun_2 = 1; playerStacks.gun_3 = 1;
+    /* UPGRADES 已經喺檔案頂部抽出（tblSrc）→ 直接用檔案 scope 嗰個 */
+    const boFn = eval('(' + boSrc + ')');
+    let bad = 0;
+    for (let i = 0; i < 1000; i++) {
+      if (boFn().some(u => u.id.indexOf('form_') === 0 || u.id === 'gun_2' || u.id === 'gun_3')) bad++;
+    }
+    check('★ buildReverseOffer 排除零效果卡（form_* / gun_2 / gun_3）1000 次抽樣零違例', bad === 0, bad + ' 次違例');
+  }
 }
 
 section('5. 版號');

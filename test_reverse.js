@@ -36,9 +36,24 @@ check('候選不重複（同一次三選一內）', (() => {
 })());
 /* ⚠️ v0.33.0 #124：傳說級形態卡 = **零效果死卡**（mod 寫死 s.shotForm = X，
    再行一次都係同一個值）→ owned / rest / 保底三處都要排除 form_*。 */
-check('★ 排除形態卡（傳說級形態 = 零效果死卡）',
-  (bo.match(/indexOf\('form_'\)/g) || []).length >= 3,
-  (bo.match(/indexOf\('form_'\)/g) || []).length + ' 處');
+/* v0.35.0 #133：傳說級候選要排除**所有零效果卡** —— form_*（mod 寫死 shotForm）
+   同 gun_2 / gun_3（絕對賦值）→ 再行一次 mod 值一樣。
+   ⚠️ 改成行為斷言（行真 buildReverseOffer 抽 1000 次），唔再數字串出現次數。 */
+{
+  const UPGRADES = new Function('return ' + grab(/const UPGRADES = \[[\s\S]*?\n\];/).replace('const UPGRADES =', ''))();
+  const playerStacks = Object.create(null);
+  const legendary = Object.create(null);
+  playerStacks.form_rail = 1; playerStacks.gun_2 = 1; playerStacks.gun_3 = 1; playerStacks.shd_s = 1;
+  const boFn = eval('(' + bo + ')');
+  let bad = 0, n3 = 0;
+  for (let i = 0; i < 1000; i++) {
+    const ids = boFn().map(u => u.id);
+    if (ids.length !== 3) n3++;
+    if (ids.some(id => id.indexOf('form_') === 0 || id === 'gun_2' || id === 'gun_3')) bad++;
+  }
+  check('★ 排除零效果卡（form_* / gun_2 / gun_3）1000 次抽樣零違例', bad === 0, bad + ' 次違例');
+  check('★ 候選每次仍然有 3 張（排除後唔會抽乾）', n3 === 0, n3 + ' 次唔夠 3 張');
+}
 
 console.log('\n=== 3. 一局只有一次 ===');
 check('reverseUsed 旗標存在', /let reverseUsed\s+= false;/.test(h));

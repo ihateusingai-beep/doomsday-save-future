@@ -1069,20 +1069,11 @@ function tickVfx(dtMs) {
   }
 }
 /* v0.31.0 效能：per-stage 快取 gradient 對象（每幀 0 次 gradient 配置）
-   原本 drawBackdrop() 每幀做 2 次 gradient 配置：
-     createLinearGradient（天空）+ createRadialGradient（暗角）
-   → 每次都係新物件 = 每幀 2 次 allocation（GC 壓力來源，profile 見到 GC 10.9ms/8s）。
-   關卡主題係 Object.freeze（唔會變），所以 gradient 對象可以 per-stage 快取。
-   ⚠️ 點解**唔**烘焙成離屏圖層（試過，廢棄）：
-      ① 天空層 bake 出嚟再 drawImage 返 → alpha 合成 round-trip，逐像素比對證實
-         **146k/153k 像素差 1–2（maxDelta 2）** —— 離屏畫布嘅 premultiplied alpha
-         精度損失喺 unpremultiply 時被放大（6% 透明度 → 誤差 ×16）。
-      ② tint+暗角合併層 → 同樣問題（低 alpha 圖層）。
-      遊戲本身實測已經 60 FPS（dpr=2 + 4x CPU 節流都係 59 FPS），
-      為咗一個未證實嘅收益引入 ±2 嘅視覺誤差 = **修錯邊**。
-      → 最終只保留「快取 gradient 對象」：0 allocation、**100% 像素精確**、零風險。
-   ⚠️ CanvasGradient 嘅座標係喺**填色當下**嘅 user space 換算，所以快取後
-      喺唔同 transform 底下用都正確（背景永遠喺同一個 transform 入面畫）。 */
+  原本 drawBackdrop() 每幀 2 次 gradient 配置 = 每幀 2 次 allocation（GC 來源）。
+  關卡主題 Object.freeze（唔會變）→ gradient 對象可以 per-stage 快取。
+  ⚠️ 離屏圖層烘焙試過 → 廢棄：逐像素比對有 146k/153k 像素差 1–2（alpha 精度損失），
+    為未證實收益引入視覺誤差 = 修錯邊 → 只保留「快取對象」（0 allocation、100% 像素精確）。
+  完整理據見 PLAN.md v0.31.0。 */
 const bgGradCache = new Map();
 function bgGradient(stageId, kind) {
   let g = bgGradCache.get(stageId + '@' + kind);
@@ -1210,25 +1201,12 @@ function drawParticles() {
 }
 function drawScanlines() {
   /* v0.32.0（PLAN #121）：backing-store 物理像素網格。
-     ⚠️ 舊版喺「邏輯空間」每 3 px 畫 1 px 嘅 8% 黑線。
-        **整數 DPR（1 / 2 / 3）其實冇問題**（3 邏輯 px × 整數 = 整數物理 px），
-        但喺 **DPR 2.4875（iPad 實測值）** → 3 × 2.4875 = 7.46 物理 px（非整數）
-        → 實測 **137 條線 out-of-grid、週期 7/8 混合、線長 3/2 混合、
-        暗度離散 25.5%、覆蓋率 33.3% → 42.9%** = 掃描線喺真機變成雜訊網。
-     而家 setTransform(1,0,0,1,0,0) → 直接喺 backing store 畫，每條線都落喺
-     整數物理像素；同時離開 trauma shake 嘅 translate —— 掃描線係「螢幕空間」
-     CRT overlay，唔應該跟相機一齊郁。
-     ⚠️ 週期用 round(3 × scale) 而唔係死守 4：保持同原本約 3 邏輯 px 等效密度
-        （DPR 1 → 3、2 → 6、2.4875 → 7、3 → 9，全部整數），
-        畫面平均變暗量唔會因 DPR 唔同而飄。
-     ⚠️ 線高 = round(scale) backing px（唔係死守 1）：原本「1 邏輯 px 嘅線」
-        喺 DPR 3 = 3 backing px；死守 1 物理 px 會令高 DPR 螢幕嘅掃描線
-        只佔 1/9 密度（視覺上幾乎冇），而 DPR 1 係 1/3 → 跨裝置唔一致。
-        線高跟 scale、行距用整數週期 → 密度（1+2 = 3 邏輯 px）跨 DPR 一致，
-        而且每條線都落喺整數 backing 像素（零反鋸齒、零格紋）。
-     ⚠️ 驗證要用「相對變暗量 + 線結構」（暗行必須落喺 k×P 網格上），
-        唔好用絕對 delta（會被天空漸變干擾），亦唔好兩次渲染用唔同 transform
-        （會量到假象）。 */
+     舊版喺「邏輯空間」每 3 px 畫 1 px 黑線 → DPR 2.4875（iPad 實測）= 7.46 物理 px（非整數）
+     → 實測 137 條線 out-of-grid、週期 7/8 混合、暗度離散 25.5% = 掃描線喺真機變雜訊網。
+     而家 setTransform(1,0,0,1,0,0) 直接喺 backing store 畫 → 每條線都落喺整數物理像素
+     （零反鋸齒、零格紋），亦離開 trauma shake 嘅 translate（掃描線係螢幕空間 CRT overlay）。
+     ⚠️ 週期用 round(3 × scale)、線高用 round(scale) → 密度跨 DPR 一致（DPR 1/2/2.4875/3 = 3/6/7/9）。
+     完整數據同驗證方法見 PLAN.md #121。 */
   const scale = canvas.width / VIEW_W;           /* backing store 縮放 = dpr */
   const period = Math.max(2, Math.round(3 * scale));
   const lineH = Math.max(1, Math.round(scale));
@@ -1929,23 +1907,19 @@ let stylePending = false;
 
 /* ---------- v0.28.0 強化卡池抽法（PLAN v3.18）----------
  *
- * 問題（100 萬局蒙地卡羅實測）：原本 `generateChoiceOffer()` 係**全池純隨機**、
- * 逐張抽、可重複 → 一局 12 個卡位只見到 **10.08 / 26 張卡**（38.8%），
- * **6.87% 嘅局一張形態卡都見唔到**、**12.33% 零 tag** ——
- * 呢個就係用戶講「好似無 build concept」嘅真正量化原因（唔係元素層嘅問題）。
+ * 問題（100 萬局蒙地卡羅實測）：原本 `generateChoiceOffer()` 係**全池純隨機**、逐張抽、可重複
+ * → 一局 12 個卡位只見到 **10.08 / 26 張卡**，**6.87% 嘅局一張形態卡都見唔到** ——
+ * 呢個就係用戶講「好似無 build concept」嘅真正量化原因。
  *
  * 新抽法（三個規則疊埋，數據全部有實測支撐）：
- * ① **只抽本局未見過嘅卡** → 12 個卡位全部係唔同嘅卡，一局見卡 10.08 → **12.00**。
- *    ⚠️ 代價：同一張卡唔會喺同一局出現兩次，所以「疊加」（PLAN #3 疊加係設計核心）
- *    會大幅削弱 —— 呢個係**刻意接受**嘅取捨（用戶 2026-10-26 明確揀咗最激進版）。
- * ② **玩法卡加權** → 「玩法卡」= 5 張形態 + 4 張 tag + 5 張生存 = **14 張**。
- *    形態/tag 權重 3 · 生存權重 2 · 純數值權重 1。
- *    玩法卡平均 6.46 → 8.45 張／局，零形態卡 3.06% → 0.20%。
- * ③ **保底：每次 boss 強化 3 張卡至少 1 張玩法卡** → 零形態卡再降到 **0.16%**、
- *    零 tag **0.74%**。保底係冗餘防護網（加權後幾乎自然滿足），但零成本。
+ * ① **只抽本局未見過嘅卡** → 一局見卡 10.08 → **12.00**（⚠️ 代價：同一張卡唔會喺同一局
+ *    出現兩次 → 「疊加」大幅削弱，係**刻意接受**嘅取捨）。
+ * ② **玩法卡加權**（玩法卡 = 5 形態 + 4 tag + 5 生存 = 14 張；權重 3/3/2，純數值 1）
+ *    → 玩法卡 6.46 → 8.45 張／局，零形態卡 3.06% → 0.20%。
+ * ③ **保底：每次 boss 3 張卡至少 1 張玩法卡** → 零形態卡 0.16%、零 tag 0.74%（零成本防護網）。
  *
- * ⚠️ 「玩法卡」定義必須係**單一真實來源**（下面 isPlayStyleCard）——
- *    加權同保底都靠佢，唔好散落三份判斷。
+ * ⚠️ 「玩法卡」定義必須係**單一真實來源**（下面 isPlayStyleCard）—— 加權同保底都靠佢。
+ * 完整數據見 PLAN.md v3.18。
  */
 let seenUpgradeIds = new Set();   /* 本局已出現過嘅強化卡 id（唔跨局） */
 
@@ -2344,18 +2318,16 @@ const STAGE_RAND = {
   2: { pool: ['g_m','g_l','g_xl','sp_s','sp_m','sp_l','sp_w','ai_s','ai_w','rg_s'] },
   /* v0.34.0 #128：S3 敵種攤分 —— 同時守 PLAN #72「S3–S5 pool ∈ [14,24]」+
      #97「S3–S5 pool 要有 v0.26.0 新敵人」兩條 invariant，又令每局新敵種 ≤2.5：
-     ① 移除 md_1（醫護）/ ch_1（追蹤撞）/ bm_1（自爆）—— chaser 同 bomber 冇 telegraph，
+     ① 移除 md_1 / ch_1 / bm_1（醫護 / 追蹤撞 / 自爆）—— chaser 同 bomber 冇 telegraph，
         medic 唔攻擊只醫療 → 三者都係「加咗認知負荷但冇加教學價值」，延後到 S4／S5 先教
-     ② 移除 sn_1 / sn_2 / mix_gr_sn（狙擊）—— 狙擊嘅核心概念「有敵人會瞄準你」S1 已經用
-        `aim` 教過，S3 再引入一個新 type 唔划算 → 延後到 S4 先教
-     ③ 俯衝只留 dv_s 一個規模（dv_m / dv_l 移除）—— 保住「大氣層 = 流星落下、俯衝雜魚」
-        嘅關卡主題，同時收窄新 type 覆蓋率
+        （⚠️ v0.36.0 #140 已補 chaser/bomber 嘅 telegraph，呢個理由部分失效）
+     ② 移除 sn_1 / sn_2 / mix_gr_sn（狙擊）—— 狙擊嘅核心概念 S1 已經用 `aim` 教過 → 延後到 S4
+     ③ 俯衝只留 dv_s 一個規模 —— 保住「大氣層 = 流星落下」嘅關卡主題
      ④ 保留 sp_2 / ram_1 / mix_sp_ram（splitter / rammer；#72 要 S3 有 ≥3 個 v3.11 新 chunk）
         —— 佢哋有常駐強可視特徵（六角裂紋／楔形撞角），學生唔使等佢開火就認得出
-     ⑤ 保留 tu_1（炮台）—— #97 invariant，而且四種 v0.26.0 新敵入面 turret 最有教學價值
-        （定點射擊 + 可破護罩）
-     ⑥ 補 sp_s / sp_m / ai_s / rg_l / g_xl（全部係 S1／S2 已教過嘅 type）→ 已教波比例高，
-        每局「新敵種覆蓋率」下降。池長度 17 → 16。 */
+     ⑤ 保留 tu_1（炮台）—— #97 invariant，四種 v0.26.0 新敵入面最有教學價值（定點射擊 + 可破護罩）
+     ⑥ 補 sp_s / sp_m / ai_s / rg_l / g_xl（全部係 S1／S2 已教過嘅 type）→ 已教波比例高。
+     池長度 17 → 16。完整數據同逐項理據見 PLAN.md #128。 */
   3: { pool: ['mt_s','mt_m','mt_l','g_l','g_m','g_xl','rg_m','rg_l','sp_s','sp_m','ai_s','dv_s','sp_2','ram_1','mix_sp_ram','tu_1'] },
   /* v0.34.0 #128：S4 移除 bm_1（bomber）/ md_gr（醫護）/ ch_1（追蹤撞）/ ch_2（追蹤）
      → 呢三種都係「冇 telegraph 或零戰術價值」嘅新敵，延後到 S5 終關先教
@@ -2841,6 +2813,9 @@ const CHASER_TURN     = 0.035;  /* 追蹤型每幀最大轉向（rad） */
 const BOMBER_TRIGGER_R = 24;     /* 自爆觸發距離 */
 const BOMBER_RING_N   = 10;     /* 自爆環形彈數量 */
 const BOMBER_RING_SPD = 0.085;  /* 自爆環形彈速 */
+/* v0.36.0 #140：chaser / bomber 嘅時間性 telegraph（review §4 + §11 項 #9） */
+const CHASER_LOCK_MS  = 600;    /* 追蹤型鎖定期：頭 600ms 唔修正方向（預警期） */
+const BOMBER_FUSE_MS  = 500;    /* 自爆型引信：入觸發圈後停低 500ms 先爆 */
 const TURRET_HOLD_Y   = 82;     /* 炮台落到呢個高度就定住 */
 const TURRET_SHIELD    = 14;     /* 炮台護盾值（先食傷害，打穿先入肉） */
 const RAMMER_ACCEL = 0.055;        /* 每 ms 加速（明顯比雜魚快） */
@@ -3036,7 +3011,7 @@ function spawnGruntFormation(opt) {
       mini,
       score,
       affix: elite ? (opt.affix || ELITE_AFFIX[i % ELITE_AFFIX.length]) : '',
-      t: i * 120,
+      t: chaser ? 0 : i * 120,   /* #140：chaser 由 0 起算 → 鎖定期完整 600ms */
       sway: (diving || sniper || rammer || lancer || chaser || turret) ? 0 : 0.022 + (i % 3) * 0.008,
       fireCD: (sniper ? 2200 : shield ? 2000
                : lancer ? 2600
@@ -4994,17 +4969,13 @@ function spawnPlayerShot() {
       vx = Math.cos(a) * formSpd;
       vy = Math.sin(a) * formSpd;
       /* v0.33.0 #123：導彈生命期要夠飛到 boss ——
-         導彈初速跟機體 bulletSpd（A 0.44 · B 0.26 · C 0.30 · D 0.40 · E 0.28），
-         鎖定期（400ms）過後巡航速 = 初速 × 1.15（鎖定期只減速一次，之後恢復），
-         由機身 y=412 飛到 boss y=50–110 要 302–362px：
-           A 機 1367ms · B 機 2317ms · C 機 2000ms · D 機 1502ms · E 機 2147ms
+         初速跟機體 bulletSpd，鎖定期（400ms）後巡航速 = 初速 × 1.15；
+         由機身 y=412 飛到 boss y=50–110 要 1367–2317ms（慢機體最久），
          但 `life` 原本寫死 2200ms → **B 機物理上飛唔到 boss**（要 2717ms）。
-         ⚠️ 實測（12 秒 boss 窗口）：B 機導彈 12 秒得 0.44 次命中（DPS = 無卡嘅
-            **0.06×**）、C 機 0.18×、E 機 0.11× → 校準要 32× 傷害乘數先夠 1.5×，
-            而且加咗 32× 之後 B / C / E 仍然係 **0.000×**（根本未到，加幾多傷都冇用）。
-            v0.28.0 嘅修正只做咗「巡航期恢復速度」，冇檢查生命期夠唔夠飛到。
-         → 生命期按實際飛行時間計（最少 2200ms）。⚠️ **只延長生命期、唔改速度** →
-            「慢但追」嘅手感不變；MISSILE_CAP = 8 唔受影響（B 機 0.5/s × 2.8s ≈ 1.4 發在場）。 */
+         ⚠️ 實測（12 秒 boss 窗口）：B 機導彈 12 秒得 0.44 次命中（DPS = 無卡嘅 **0.06×**），
+            校準要 32× 傷害乘數先夠 1.5×，加咗之後 B/C/E 仍然 **0.000×**（根本未到）。
+         → 生命期按實際飛行時間計（最少 2200ms），只延長生命期、唔改速度（「慢但追」手感不變）。
+         完整數據同理據見 PLAN.md #111 / #112。 */
       const cruise = formSpd * 1.15;
       const needMs = MISSILE_LOCK_MS + 400 / Math.max(0.02, cruise);
       life = maxLife = Math.max(2200, Math.ceil(needMs));
@@ -5944,9 +5915,9 @@ function tick(dtMs) {
           }
         }
       }
-      /* 追蹤型：每幀修正方向追玩家（轉向速率有限，唔會瞬移追）。
-         轉向用「最短角差」，唔會喺 ±180° 位置卡住。 */
-      if (e.chaser && ship) {
+      /* 追蹤型：每幀修正方向追玩家（轉向速率有限，唔會瞬移追；轉向用最短角差）。
+         v0.36.0 #140：頭 CHASER_LOCK_MS 唔追（鎖定期，預警期直落）→ 學生預先走位。 */
+      if (e.chaser && ship && e.t > CHASER_LOCK_MS) {
         const want = Math.atan2(ship.y - e.y, ship.x - e.x);
         const cur = Math.atan2(e.vy, e.vx);
         let diff = want - cur;
@@ -5958,9 +5929,18 @@ function tick(dtMs) {
         e.vx = Math.cos(na) * sp;
         e.vy = Math.sin(na) * sp;
       }
-      /* 自爆型：接近玩家就爆開環形彈，自己消失（唔會再撞到玩家扣血） */
+      /* 自爆型：接近玩家就爆開環形彈，自己消失（唔會再撞到玩家扣血 · 引信期亦唔撞）。
+         v0.36.0 #140：入觸發圈後停低起引信 → 學生有 500ms 走位。 */
       if (e.bomber && ship) {
-        if (Math.hypot(ship.x - e.x, ship.y - e.y) < BOMBER_TRIGGER_R) {
+        const bd = Math.hypot(ship.x - e.x, ship.y - e.y);
+        if (e.fuse == null && bd < BOMBER_TRIGGER_R) e.fuse = BOMBER_FUSE_MS;
+        let boom = false;
+        if (e.fuse != null) {
+          e.fuse -= dtMs;
+          e.vx = 0; e.vy = 0;                /* 引信期停低（唔郁，畀玩家睇清楚） */
+          boom = e.fuse <= 0;
+        } else boom = bd < BOMBER_TRIGGER_R;
+        if (boom) {
           for (let i = 0; i < BOMBER_RING_N; i++) {
             const a = (i / BOMBER_RING_N) * Math.PI * 2;
             enemies.push({
@@ -6125,7 +6105,10 @@ function tick(dtMs) {
        「擊殺雜魚」變成冇誘因，等 P1-5 個設計目標失效。 */
     const isBody = (e.kind === 'grunt');
     const r = isBody ? 9 : 4;
-    if (Math.abs(e.x - ship.x) < 6 + r && Math.abs(e.y - ship.y) < 6 + r) {
+    /* v0.36.0 #140：引信期嘅 bomber 唔撞人（保住「自爆型唔會撞到玩家扣血」invariant）。
+       ⚠️ 唔可以淨係靠 bomber 停喺 24px：玩家行埋去一樣會撞到 → 引信期撞人要扣血，
+       變成「預警＝罚玩家」→ 公平性交換會反轉。e.fuse == null 對非 bomber 係 true（undefined）。 */
+    if (e.fuse == null && Math.abs(e.x - ship.x) < 6 + r && Math.abs(e.y - ship.y) < 6 + r) {
       /* PLAN v2 #7：炸彈無敵時段 —— 施放後 1.5 秒內唔受傷。
          視覺上仍然清走嗰粒彈，等玩家見到擋成功咗。 */
       if (isIFramed() || GOD) {
@@ -6452,7 +6435,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.35.0 · 敵配修正 · 強化池死卡', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.36.0 · 敵人預警 · 追蹤自爆', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -7312,23 +7295,31 @@ function render() {
           ctx.stroke();
         }
       }
-      /* 追蹤：指向玩家嘅虛線（見到就知佢一直喺度追你） */
+      /* 追蹤：指向玩家嘅虛線（見到就知佢喺度追你）
+         v0.36.0 #140：鎖定期（頭 600ms）改用**閃爍粗橙實線** = 「佢仲未追我，即刻鎖定」 */
       if (e.chaser && ship) {
-        ctx.strokeStyle = 'rgba(255,90,90,0.35)';
-        ctx.lineWidth = 1;
-        ctx.setLineDash([2, 5]);
+        const lk = e.t < CHASER_LOCK_MS;
+        ctx.strokeStyle = lk
+          ? 'rgba(255,150,60,' + (0.55 + 0.45 * Math.abs(Math.sin(performance.now() / 90))).toFixed(2) + ')'
+          : 'rgba(255,90,90,0.35)';
+        ctx.lineWidth = lk ? 2 : 1;
+        ctx.setLineDash(lk ? [] : [2, 5]);
         ctx.beginPath();
         ctx.moveTo(e.x, e.y);
         ctx.lineTo(ship.x, ship.y);
         ctx.stroke();
         ctx.setLineDash([]);
       }
-      /* 自爆：越接近玩家，警告圈越亮越大（公平提示：走位就避得開） */
+      /* 自爆：越接近玩家，警告圈越亮越大（公平提示：走位就避得開）
+         v0.36.0 #140：引信期（停低嗰 500ms）警告圈**急閃** = 「就嚟爆，嗰邊走」 */
       if (e.bomber && ship) {
         const d = Math.hypot(ship.x - e.x, ship.y - e.y);
-        const near = clamp(1 - (d - BOMBER_TRIGGER_R) / 60, 0, 1);
+        const fu = e.fuse != null && e.fuse > 0;
+        const near = fu ? 1 : clamp(1 - (d - BOMBER_TRIGGER_R) / 60, 0, 1);
         if (near > 0.02) {
-          const pulse = 0.35 + 0.65 * Math.abs(Math.sin(performance.now() / (60 + near * 90)));
+          const pulse = fu
+            ? (0.6 + 0.4 * Math.abs(Math.sin(performance.now() / 55)))
+            : (0.35 + 0.65 * Math.abs(Math.sin(performance.now() / (60 + near * 90))));
           ctx.strokeStyle = 'rgba(255,90,40,' + (near * pulse).toFixed(2) + ')';
           ctx.lineWidth = 1.5 + near * 2;
           ctx.beginPath();
@@ -7624,7 +7615,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.35.0 已載入');
+console.log('[啟動] 末日救未來 v0.36.0 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */

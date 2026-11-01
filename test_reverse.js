@@ -37,7 +37,7 @@ check('候選不重複（同一次三選一內）', (() => {
 /* ⚠️ v0.33.0 #124：傳說級形態卡 = **零效果死卡**（mod 寫死 s.shotForm = X，
    再行一次都係同一個值）→ owned / rest / 保底三處都要排除 form_*。 */
 /* v0.35.0 #133：傳說級候選要排除**所有零效果卡** —— form_*（mod 寫死 shotForm）
-   同 gun_2 / gun_3（絕對賦值）→ 再行一次 mod 值一樣。
+   同 gun_2 / gun_3（加法型 + 封頂 → 傳說級疊加到 2 級就撞正上限 = 飽和風險）。
    ⚠️ 改成行為斷言（行真 buildReverseOffer 抽 1000 次），唔再數字串出現次數。 */
 {
   const UPGRADES = new Function('return ' + grab(/const UPGRADES = \[[\s\S]*?\n\];/).replace('const UPGRADES =', ''))();

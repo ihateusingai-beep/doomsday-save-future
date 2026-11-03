@@ -19,14 +19,21 @@ const VOL_STEPS = 5, MAX_VOICES = 12, SFX_THROTTLE_MS = 70;
 const BGM_BPM = 128, BGM_STEPS = 64;
 
 console.log('=== 1. 音效掣幾何：同暫停掣 / 護盾 icon 唔重疊 ===');
+/* v0.37.0 #148：音效掣由 56 → 44（暫停掣先係主行動，音效掣使用頻率低好多）。
+   ⚠️ 44 邏輯 px 喺 iPad（scale 2.606）= 115 物理 px、4K 白板（scale 4.5）= 198 物理 px
+      → 仍然遠高過 64px 觸控門檻。 */
+const AUDIO_BTN_S = 44;
 const pauseRect = { x: VIEW_W - 56 - 6, y: 6, w: 56, h: 56 };
-const audioTitle = { x: VIEW_W - 56 - 6, y: 6, w: 56, h: 56 };
-const audioStage = { x: VIEW_W - 56 - 6, y: 68, w: 56, h: 56 };
+const audioTitle = { x: VIEW_W - AUDIO_BTN_S - 6, y: 6, w: AUDIO_BTN_S, h: AUDIO_BTN_S };
+const audioStage = { x: VIEW_W - AUDIO_BTN_S - 6, y: 68, w: AUDIO_BTN_S, h: AUDIO_BTN_S };
 const overlap = (a, b) => !(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y);
 check('戰鬥中音效掣(y=68) 唔撞暫停掣(y=6)', !overlap(audioStage, pauseRect));
-check('音效掣 y=68..124 低於護盾 icon 行(y≈14..26)', audioStage.y >= 30);
+check('音效掣 y=68..112 低於護盾 icon 行(y≈14..26)', audioStage.y >= 30);
 /* 標題畫面冇暫停掣，同位置都得 */
-check('標題畫面音效掣 y=6（暫停掣唔畫，唔撞）', audioTitle.y === 6 && audioTitle.w === 56);
+check('標題畫面音效掣 y=6（暫停掣唔畫，唔撞）', audioTitle.y === 6 && audioTitle.w === AUDIO_BTN_S);
+check('★ 音效掣細過暫停掣（視覺權重降級 · #148）', audioStage.w < pauseRect.w);
+check('★ 音效掣仍然 ≥64 物理 px（iPad scale 2.606）', AUDIO_BTN_S * (834 / 320) >= 64,
+  (AUDIO_BTN_S * (834 / 320)).toFixed(0) + 'px');
 
 console.log('\n=== 2. 面板按鈕全部 ≥56px（智慧白板觸控）===');
 const pw = 252, ph = 248;

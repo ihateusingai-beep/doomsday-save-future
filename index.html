@@ -1905,22 +1905,13 @@ let stylePicked = -1;
    冇經 STYLE 直接入關就係 false → 清走舊風格。 */
 let stylePending = false;
 
-/* ---------- v0.28.0 強化卡池抽法（PLAN v3.18）----------
- *
- * 問題（100 萬局蒙地卡羅實測）：原本 `generateChoiceOffer()` 係**全池純隨機**、逐張抽、可重複
- * → 一局 12 個卡位只見到 **10.08 / 26 張卡**，**6.87% 嘅局一張形態卡都見唔到** ——
- * 呢個就係用戶講「好似無 build concept」嘅真正量化原因。
- *
- * 新抽法（三個規則疊埋，數據全部有實測支撐）：
- * ① **只抽本局未見過嘅卡** → 一局見卡 10.08 → **12.00**（⚠️ 代價：同一張卡唔會喺同一局
- *    出現兩次 → 「疊加」大幅削弱，係**刻意接受**嘅取捨）。
- * ② **玩法卡加權**（玩法卡 = 5 形態 + 4 tag + 5 生存 = 14 張；權重 3/3/2，純數值 1）
- *    → 玩法卡 6.46 → 8.45 張／局，零形態卡 3.06% → 0.20%。
- * ③ **保底：每次 boss 3 張卡至少 1 張玩法卡** → 零形態卡 0.16%、零 tag 0.74%（零成本防護網）。
- *
- * ⚠️ 「玩法卡」定義必須係**單一真實來源**（下面 isPlayStyleCard）—— 加權同保底都靠佢。
- * 完整數據見 PLAN.md v3.18。
- */
+/* ---------- v0.28.0 強化卡池抽法（PLAN v3.18 · #109）----------
+三個規則疊埋（數據全部有實測支撐）：① **只抽本局未見過嘅卡** → 一局 12 個卡位全部唔同
+（⚠️ 代價：同一張卡唔會喺同一局出現兩次 → 「疊加」削弱，係**刻意接受**嘅取捨）
+② **玩法卡加權**（5 形態 + 4 tag + 5 生存 = 14 張；權重 3/3/2，純數值 1）
+③ **保底：每次 boss 3 張卡至少 1 張玩法卡**（零成本防護網）。
+⚠️ 「玩法卡」定義必須係**單一真實來源**（isPlayStyleCard）—— 加權同保底都靠佢。
+完整數據見 PLAN.md #109。 */
 let seenUpgradeIds = new Set();   /* 本局已出現過嘅強化卡 id（唔跨局） */
 
 /** 攻擊向玩法卡（5 張形態 + 4 張 tag = 9 張）—— **前綴規則嘅唯一真實來源**
@@ -2398,15 +2389,13 @@ const AFFIX_DEFS = [
   { id:'glass',    name:'玻璃', icon:'icon_glass',   desc:'生命−1｜分×1.6',    score:1.6,  hpDelta:-1 },
   { id:'static',   name:'靜電', icon:'icon_static',   desc:'敵彈−18%｜分×1.2',  score:1.2,  bulletSpd:0.82 },
 ];
-/* v0.31.0 #116/#117：詞綴橫幅時長 + 停電暗幕 alpha（兩個數值都係實測調校出嚟，唔係估）
-   ① 橫幅閱讀時間：認 icon 0.3s + 讀名 0.4s + 讀 2 個數值 1.6s + 理解 0.5s ≈ **3.6s**。
-      原本總長 2.6s 而且 fade 由 2.0s 就開始 → **完整可讀時間只有 2.0s**（唔夠）。
-      修正：總長 2600 → **4200ms**、fade 2000 → **3600ms**（即前 3.6s 完全唔淡）。
-   ② 停電暗幕：alpha 0.42 → 雜魚對比跌到 **3.01:1**（零餘量，啱啱卡喺 WCAG 非文字 3:1 門檻）。
-      降到 **0.22** → 雜魚 **4.60:1** / 玩家子彈 **5.13:1**（兩樣都過 AA 4.5:1），
-      同時「畫面暗」嘅訊號保留：全畫面平均亮度跌 14.7%、背景像素跌 18.3%、89% 像素有變化。
-      ⚠️ 五關 sky 本身已經近黑（S1 #030814→#0a1a3a · S4 #000000→#101820 …），
-         所以暗幕由 0.42 減到 0.22 對「暗」嘅感覺影響極細，但對比度差咗一個級別 —— 呢個係取捨嘅重點。 */
+/* v0.31.0 #116/#117：詞綴橫幅時長 + 停電暗幕 alpha（實測調校，唔係估）
+① 橫幅：讀完（認 icon 0.3 + 讀名 0.4 + 讀 2 個數值 1.6 + 理解 0.5）≈ 3.6s → 總長 2600 → **4200ms**、
+   fade 2000 → **3600ms**（原本完整可讀只剩 2.0s，唔夠）。
+② 停電暗幕：alpha 0.42 → 雜魚對比跌到 3.01:1（零餘量，卡喺 WCAG 3:1 門檻）→ 降到 **0.22**
+   → 雜魚 **4.60:1** / 玩家子彈 **5.13:1**（兩樣都過 AA），「畫面暗」訊號保留（亮度跌 14.7%）。
+⚠️ 五關 sky 本身已近黑 → 暗幕調淡對「暗」嘅感覺影響極細，但對比度升咗一個級別。
+完整數據見 PLAN.md #116/#117。 */
 const AFFIX_BANNER_MS       = 4200;  /* 橫幅總顯示時間 */
 const AFFIX_BANNER_FADE_MS  = 3600;  /* 由呢一刻開始淡出（之前 3.6s = 完整閱讀） */
 const AFFIX_BANNER_FADE_SPAN = 600;  /* 淡出長度 */
@@ -2816,6 +2805,10 @@ const BOMBER_RING_SPD = 0.085;  /* 自爆環形彈速 */
 /* v0.36.0 #140：chaser / bomber 嘅時間性 telegraph（review §4 + §11 項 #9） */
 const CHASER_LOCK_MS  = 600;    /* 追蹤型鎖定期：頭 600ms 唔修正方向（預警期） */
 const BOMBER_FUSE_MS  = 500;    /* 自爆型引信：入觸發圈後停低 500ms 先爆 */
+/* v0.37.0 #141：玩家自己嘅子彈「視覺退後」—— 實測視覺質量比 9.1:1（玩家彈佔畫面
+   4.92% vs 敵方威脅 0.54%），學生第一眼望到嘅係自己嘅彈而唔係要避嘅威脅。
+   alpha 0.45 → 玩家彈對比度 3.4:1，低過敵彈 5.9:1（眼自動偏向危險物體）。 */
+const PLAYER_BULLET_ALPHA = 0.45;
 const TURRET_HOLD_Y   = 82;     /* 炮台落到呢個高度就定住 */
 const TURRET_SHIELD    = 14;     /* 炮台護盾值（先食傷害，打穿先入肉） */
 const RAMMER_ACCEL = 0.055;        /* 每 ms 加速（明顯比雜魚快） */
@@ -6185,12 +6178,11 @@ function tick(dtMs) {
 }
 
 /* ---------- 音效掣 + 音量面板（PLAN v3.9 #52）---------- */
-/* 位置：暫停掣下面（右上 y=68）。⚠️ 唔可以放 y=6 —— 護盾 icon 由 VIEW_W-16
-   向左排 5 個，佔 y≈14–26，會同右上角掣重疊（暫停掣本身已經喺嗰區，
-   屬 v3.3 既有情況，今次唔擴大）。 */
+/* 位置：暫停掣下面（右上 y=68）。⚠️ 唔可以放 y=6 —— 護盾 icon 佔 y≈14–26 會重疊。
+   v0.37.0 #148：掣由 56 → 44（暫停掣先係主行動），邊框轉淡。 */
 let audioPanelOpen = false;
 function audioBtnRect() {
-  const s = 56;
+  const s = 44;
   return { x: VIEW_W - s - 6, y: isStage(fsm.cur) ? 68 : 6, w: s, h: s };
 }
 function audioPanelRect() {
@@ -6232,8 +6224,7 @@ function handleAudioPanelTap(px, py) {
 }
 
 /* 細喇叭（唔用 emoji，各平台先一致）。
-   ⚠️ 關閉狀態唔可以用太深嘅灰 —— 之前用 #556，深色底上智慧白板根本睇唔到，
-   學生會以為冇呢個掣。改 #9bb。 */
+   ⚠️ 關閉態唔可以用太深嘅灰（#556 喺深色底／智慧白板根本睇唔到，學生以為冇呢個掣），改 #9bb。 */
 function drawSpeakerIcon(cx, cy, on) {
   ctx.fillStyle = on ? '#0ff' : '#9bb';
   ctx.beginPath();
@@ -6256,7 +6247,7 @@ function drawAudioUi() {
   const r = audioBtnRect();
   ctx.fillStyle = 'rgba(0,20,40,0.72)';
   ctx.fillRect(r.x, r.y, r.w, r.h);
-  ctx.strokeStyle = audioPanelOpen ? '#ff5e8a' : 'rgba(0,255,255,0.55)';
+  ctx.strokeStyle = audioPanelOpen ? '#ff5e8a' : 'rgba(0,255,255,0.35)';
   ctx.lineWidth = 2;
   ctx.strokeRect(r.x, r.y, r.w, r.h);
   drawSpeakerIcon(r.x + r.w / 2, r.y + r.h / 2, audioOn);
@@ -6435,7 +6426,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.36.0 · 敵人預警 · 追蹤自爆', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.37.0 · 教學可讀性 · 彈道清晰', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -6453,7 +6444,7 @@ function render() {
       ctx.font = '12px monospace';
       ctx.fillText('暫無紀錄：挑戰第一次！', VIEW_W/2, VIEW_H/2 + 18);
     }
-    const pulse = 0.55 + 0.45 * Math.sin(performance.now() / 320);
+    const pulse = 0.72 + 0.28 * Math.sin(performance.now() / 320);
     ctx.fillStyle = 'rgba(255,220,80,' + pulse.toFixed(2) + ')';
     ctx.font = 'bold 14px monospace';
     ctx.fillText('→ 點擊選擇難度 ←', VIEW_W/2, VIEW_H - 56);
@@ -7084,6 +7075,8 @@ function render() {
   for (const b of bullets) {
     if (b.owner === 'player') {
       const f = b.form || 'bolt';
+      /* v0.37.0 #141：玩家子彈退後（光束類唔減 —— 畫面一兩條、係瞄準用嘅資訊） */
+      ctx.globalAlpha = (f === 'rail' || f === 'laser') ? 1 : PLAYER_BULLET_ALPHA;
       if (f === 'rail') {
         ctx.strokeStyle = 'rgba(180,255,255,0.85)';
         ctx.lineWidth = 2;
@@ -7150,6 +7143,7 @@ function render() {
       }
     }
   }
+  ctx.globalAlpha = 1;   /* v0.37.0 #141：還原（玩家子彈退後嘅 alpha） */
   for (const e of enemies) {
     if (e._dead) continue;
     if (e.kind === 'grunt') {
@@ -7402,9 +7396,12 @@ function render() {
       } else if (e.sniperShot) {
         ctx.fillStyle = '#8ff';
         ctx.fillRect(e.x - 1.5, e.y - 3, 3, 6);
-      } else if (!drawSpriteAnim('anim_bullet_e', 'bullet_e', e.x, e.y, 1.2, animT)) {
-        ctx.fillStyle = '#f6c';
-        ctx.fillRect(e.x - 2, e.y - 2, 4, 4);
+      } else {
+        const drew = drawSpriteAnim('anim_bullet_e', 'bullet_e', e.x, e.y, 1.2, animT);
+        if (!drew) { ctx.fillStyle = '#f6c'; ctx.fillRect(e.x - 2, e.y - 2, 4, 4); }
+        /* v0.37.0 #141：敵方彈幕加白色描邊 —— 危險物體有輪廓，玩家自己嘅彈冇 */
+        ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(e.x, e.y, 6, 0, Math.PI * 2); ctx.stroke();
       }
     } else if (e.kind === 'spiral') {
       if (!drawSpriteAnim('anim_boss', 'boss', e.x, e.y, 2.6, animT)) {
@@ -7615,7 +7612,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.36.0 已載入');
+console.log('[啟動] 末日救未來 v0.37.0 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */

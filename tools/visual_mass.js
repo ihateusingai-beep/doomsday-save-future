@@ -1,11 +1,15 @@
-/* tools/visual_mass.js — 教學可讀性核心量測：畫面「視覺質量」分配
+/* tools/visual_mass.js — 教學可讀性核心量測：玩家自己嘅彈 vs 敵方威脅
  *
- * 量度玩家自己嘅子彈 vs 敵方彈幕，喺實際渲染出嚟嘅畫面入面佔幾多像素、對比度幾多。
+ * 量度玩家自己嘅子彈 vs 敵方彈幕，喺實際渲染出來嘅畫面入面幾搶眼。
  * ⚠️ 呢個工具係 `MECHANICS_REVIEW_v036.md` §3 嘅證據來源（2026-11-03）。
  *
- * 方法：真實 canvas getImageData → 色相分割（青綠 = 玩家彈 / 洋紅 = 敵彈）
- *       → 面積加權平均色 → WCAG 相對亮度對比度 vs 背景。
- * ⚠️ 關閉元素 tint（ship.elementA = ''）先量 —— 否則「暗」元素會把玩家彈染成洋紅，污染分割。
+ * ⚠️ **方法學（v0.37.0 修正）**：第一版用「整屏色相分割」→ **量測工具自己嘅噪音
+ *    比真 bug 更大**：青色 HUD（頂欄文字、按鈕邊框）會被當成「玩家彈」混入平均色，
+ *    令改動前後嘅差異被稀釋（實測：alpha 0.55 應該令對比度跌到 2.7:1，
+ *    但整屏分割只量到 6.06:1）。
+ *    ⇒ 而家改成**逐粒子彈取樣**：由 `window.__dsf` 攞每粒子彈嘅座標，
+ *    只喺佢自己嘅 bbox 內取「本體色」像素（排除低飽和嘅白色核心同背景），
+ *    背景色由全畫面暗像素嘅中位數估。
  *
  * 用法：node tools/visual_mass.js <index.html 路徑>
  */
@@ -36,66 +40,82 @@ const cr = (a, b) => { const l1 = Math.max(L(a), L(b)), l2 = Math.min(L(a), L(b)
 
   const r = await page.evaluate(async () => {
     const d0 = window.__dsf;
-    d0.ship.elementA = '';                       /* 閂咗元素 tint，先量乾淨基準 */
+    d0.ship.elementA = '';                 /* 閂咗元素 tint，先量乾淨基準 */
     const cv = document.querySelector('canvas');
     const c2 = document.createElement('canvas'); c2.width = cv.width; c2.height = cv.height;
     const g = c2.getContext('2d');
     const frame = () => new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
-    const out = [];
+    const samples = [];
     for (let k = 0; k < 90; k++) {
       await frame();
       await new Promise(res => setTimeout(res, 60));
       g.clearRect(0, 0, cv.width, cv.height);
       g.drawImage(cv, 0, 0);
       const d = g.getImageData(0, 0, cv.width, cv.height).data;
-      let teal = 0, mag = 0, white = 0;
-      let tealSum = [0, 0, 0], magSum = [0, 0, 0];
+      const px = (x, y) => {
+        const i = (y * cv.width + x) * 4;
+        return [d[i], d[i + 1], d[i + 2]];
+      };
+      /* 背景：全畫面暗像素嘅中位數（每通道） */
+      const darks = [];
       for (let i = 0; i < d.length; i += 4) {
-        const R = d[i], G = d[i + 1], B = d[i + 2], A = d[i + 3];
-        if (A < 100) continue;
-        const mx = Math.max(R, G, B), mn = Math.min(R, G, B);
-        if (mx < 90) continue;                       /* 背景太暗，唔算 */
-        const sat = mx === 0 ? 0 : (mx - mn) / mx;
-        if (sat < 0.30) continue;                    /* 灰階（背景/塔）唔算 */
-        if (R > 190 && G > 190 && B > 190) { white++; continue; }
-        if (G > R * 1.15 && B > R * 1.15) { teal++; tealSum[0] += R; tealSum[1] += G; tealSum[2] += B; }
-        else if (R > G * 1.35) { mag++; magSum[0] += R; magSum[1] += G; magSum[2] += B; }
+        const mx = Math.max(d[i], d[i + 1], d[i + 2]);
+        if (mx < 45) darks.push([d[i], d[i + 1], d[i + 2]]);
       }
-      out.push({
-        teal, mag, white,
-        tealC: teal ? tealSum.map(v => Math.round(v / teal)) : null,
-        magC: mag ? magSum.map(v => Math.round(v / mag)) : null,
-        pb: d0.bullets.length, eb: d0.enemies.filter(e => e.kind === 'bullet').length,
+      darks.sort((a, b) => (a[0] + a[1] + a[2]) - (b[0] + b[1] + b[2]));
+      const med = darks.length ? darks[Math.floor(darks.length / 2)] : [6, 23, 45];
+
+      /* 逐粒取樣：只喺自己嘅 bbox 內取「本體色」（排除低飽和嘅白色核心） */
+      const bodyOf = (bx, by, rx, ry) => {
+        let sum = [0, 0, 0], n = 0;
+        for (let y = Math.round(by - ry); y <= Math.round(by + ry); y++) {
+          for (let x = Math.round(bx - rx); x <= Math.round(bx + rx); x++) {
+            if (x < 0 || y < 0 || x >= cv.width || y >= cv.height) continue;
+            const c = px(x, y);
+            const mx = Math.max(c[0], c[1], c[2]), mn = Math.min(c[0], c[1], c[2]);
+            if (mx < 90) continue;                       /* 太暗 = 背景 */
+            const sat = mx === 0 ? 0 : (mx - mn) / mx;
+            if (sat < 0.30) continue;                    /* 低飽和 = 白色核心／灰階 */
+            sum[0] += c[0]; sum[1] += c[1]; sum[2] += c[2]; n++;
+          }
+        }
+        return n >= 3 ? sum.map(v => Math.round(v / n)) : null;
+      };
+
+      const pbs = d0.bullets.filter(b => b.y > 6 && b.y < 474).map(b => bodyOf(b.x, b.y, 5, 8)).filter(Boolean);
+      const ebs = d0.enemies.filter(e => e.kind === 'bullet').map(e => bodyOf(e.x, e.y, 5, 5)).filter(Boolean);
+      samples.push({
+        med,
+        pBody: pbs.length ? pbs.reduce((a, c) => [a[0] + c[0] / pbs.length, a[1] + c[1] / pbs.length, a[2] + c[2] / pbs.length], [0, 0, 0]).map(v => Math.round(v)) : null,
+        eBody: ebs.length ? ebs.reduce((a, c) => [a[0] + c[0] / ebs.length, a[1] + c[1] / ebs.length, a[2] + c[2] / ebs.length], [0, 0, 0]).map(v => Math.round(v)) : null,
+        pN: d0.bullets.length, eN: ebs.length,
       });
     }
-    return { out, canvas: [cv.width, cv.height], total: cv.width * cv.height };
+    return { samples, canvas: [cv.width, cv.height] };
   });
 
-  const withE = r.out.filter(x => x.eb > 0);
+  const S = r.samples;
+  const withE = S.filter(x => x.eBody);
   const avg = (arr, f) => arr.reduce((a, x) => a + f(x), 0) / arr.length;
-  const tealArea = avg(r.out, x => x.teal);
-  const magArea = avg(withE.length ? withE : r.out, x => x.mag);
-  const bg = [6, 23, 45];
+  const med = S.map(x => x.med);
+  const bg = [0, 1, 2].map(i => Math.round(avg(S, x => x.med[i])));
+  const pC = withE.length ? [0, 1, 2].map(i => Math.round(avg(withE, x => x.pBody[i]))) : null;
+  const eC = withE.length ? [0, 1, 2].map(i => Math.round(avg(withE, x => x.eBody[i]))) : null;
 
-  console.log(`canvas ${r.canvas.join('×')} = ${r.total} px`);
-  console.log(`採樣 ${r.out.length} 點（有敵彈嘅 ${withE.length} 點）`);
+  console.log(`canvas ${r.canvas.join('×')} · 採樣 ${S.length} 點（有敵彈 ${withE.length} 點）`);
+  console.log(`背景（暗像素中位數）rgb(${bg.join(',')})`);
   console.log('');
-  console.log('  分類                 平均像素數    佔畫面%    平均色');
-  console.log(`  玩家自己嘅彈（青綠）  ${tealArea.toFixed(0).padStart(6)} px    ${(tealArea / r.total * 100).toFixed(2).padStart(5)}%   rgb(${avg(r.out, x => x.tealC[0])},${avg(r.out, x => x.tealC[1])},${avg(r.out, x => x.tealC[2])})`);
-  console.log(`  敵方彈幕（洋紅）      ${magArea.toFixed(0).padStart(6)} px    ${(magArea / r.total * 100).toFixed(2).padStart(5)}%   rgb(${avg(withE, x => x.magC[0])},${avg(withE, x => x.magC[1])},${avg(withE, x => x.magC[2])})`);
+  console.log('  對象            實渲本體色        vs 背景對比度');
+  console.log(`  玩家自己嘅彈    rgb(${pC.join(',')})`.padEnd(30) + cr(pC, bg).toFixed(2) + ':1');
+  console.log(`  敵方彈幕        rgb(${eC.join(',')})`.padEnd(30) + cr(eC, bg).toFixed(2) + ':1');
   console.log('');
-  const pC = [Math.round(avg(r.out, x => x.tealC[0])), Math.round(avg(r.out, x => x.tealC[1])), Math.round(avg(r.out, x => x.tealC[2]))];
-  const eC = [Math.round(avg(withE, x => x.magC[0])), Math.round(avg(withE, x => x.magC[1])), Math.round(avg(withE, x => x.magC[2]))];
-  console.log(`  玩家彈 vs 背景對比度：${cr(pC, bg).toFixed(2)}:1`);
-  console.log(`  敵方彈 vs 背景對比度：${cr(eC, bg).toFixed(2)}:1`);
-  console.log(`  ➜ 玩家彈比敵彈搶眼 ${(cr(pC, bg) / cr(eC, bg)).toFixed(2)} 倍`);
-  console.log(`  ➜ 視覺質量比（玩家 : 敵方）= ${(tealArea / magArea).toFixed(1)} : 1`);
+  const pr = cr(pC, bg), er = cr(eC, bg);
+  console.log(`  ➜ 玩家彈比敵彈搶眼 ${(pr / er).toFixed(2)} 倍`);
+  console.log(`  ➜ 玩家彈 / 敵彈 對比度比 = ${(pr / er).toFixed(2)}  ${pr < er ? '✅ 敵彈搶眼（期望）' : '❌ 玩家彈仲搶過敵彈'}`);
+  console.log(`  ➜ 玩家彈對比度 ≤ 4.0:1 ? ${pr <= 4.0 ? '✅' : '❌'}（${pr.toFixed(2)}）`);
+  console.log(`  ➜ 敵彈對比度 ≥ 5.2:1 ? ${er >= 5.2 ? '✅' : '❌'}（${er.toFixed(2)}）`);
+  console.log(`  ➜ 兩者對比度比 ≥ 1.4:1（敵明顯搶眼）? ${(pr / er) <= 1 / 1.4 ? '✅' : '❌'}（敵/玩家 = ${(er / pr).toFixed(2)}）`);
   console.log('');
-  /* 目標：玩家彈降到 ≤3.5:1 會點 */
-  console.log('  目標演算法（背景 rgb(6,23,45)）：');
-  for (const a of [0.7, 0.55, 0.45, 0.4, 0.3]) {
-    const c = pC.map((v, i) => Math.round(a * v + (1 - a) * bg[i]));
-    console.log(`    玩家彈 alpha ${a.toFixed(2)} → rgb(${c.join(',')}) → 對比度 ${cr(c, bg).toFixed(2)}:1  ${cr(c, bg) < cr(eC, bg) ? '✅ 低過敵彈' : '❌ 仲搶過敵彈'}`);
-  }
+  console.log(`  數量比（玩家彈 : 敵彈）= ${(avg(S, x => x.pN) / Math.max(0.1, avg(S, x => x.eN))).toFixed(1)} : 1`);
   await b.close();
 })();

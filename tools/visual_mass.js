@@ -27,7 +27,7 @@ const cr = (a, b) => { const l1 = Math.max(L(a), L(b)), l2 = Math.min(L(a), L(b)
   await page.goto('file://' + HTML + '?seed=7&god=1');
   await page.waitForTimeout(1200);
   const tapC = async (fx, fy) => {
-    const bb = await page.locator('canvas').boundingBox();
+    const bb = await page.locator('#game').boundingBox();
     await page.touchscreen.tap(bb.x + bb.width * fx, bb.y + bb.height * fy);
     await page.waitForTimeout(450);
   };
@@ -41,7 +41,7 @@ const cr = (a, b) => { const l1 = Math.max(L(a), L(b)), l2 = Math.min(L(a), L(b)
   const r = await page.evaluate(async () => {
     const d0 = window.__dsf;
     d0.ship.elementA = '';                 /* 閂咗元素 tint，先量乾淨基準 */
-    const cv = document.querySelector('canvas');
+    const cv = document.querySelector('#game');
     const c2 = document.createElement('canvas'); c2.width = cv.width; c2.height = cv.height;
     const g = c2.getContext('2d');
     const frame = () => new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));

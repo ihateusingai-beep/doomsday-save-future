@@ -47,7 +47,20 @@ const pickChunkId = eval('(' + grab(/function pickChunkId\([\s\S]*?\n\}/) + ')')
 /* stylePool() 會讀本關風格；本工具唔模擬風格（null = 唔加權，同 stylePool 嘅預設路徑一致） */
 let stageStyle = null;
 const stylePool   = eval('(' + grab(/function stylePool\([\s\S]*?\n\}/) + ')');
+/* 敵配 roll（計每波真實雜魚數用） */
+const ENEMY_ROLL     = obj(/const ENEMY_ROLL = \{[\s\S]*?\n\};/, 'ENEMY_ROLL');
+const SPECIAL_TYPES  = eval('(' + stripSemi(grab(/const SPECIAL_TYPES = \[[^\]]*\];/).replace(/const\s+SPECIAL_TYPES\s*=\s*/, '')) + ')');
+let runSeed = 0;
+let enemyRoll = Object.create(null);
+const poolEnemyTypes = eval('(' + grab(/function poolEnemyTypes\([\s\S]*?\n\}/) + ')');
+const rollEnemyRoles = eval('(' + grab(/function rollEnemyRoles\([\s\S]*?\n\}/) + ')');
+/* 身體敵（會生成 grunt 實體）嘅 spawn type；其餘（spray/aim/ring/meteor）只出彈幕 */
+const BODY_TYPES = new Set(['grunt','dive','elite','sniper','shield','swarm','medic','chaser',
+  'bomber','turret','splitter','rammer','lancer']);
 
+/* 段目標池（有身體敵 / 純彈幕段）—— 由真 source 抽 */
+const SEG_POOL_BODY   = eval('(' + grab(/const SEG_POOL_BODY\s*=\s*\[[^\]]*\]/).replace(/const\s+SEG_POOL_BODY\s*=\s*/, '') + ')');
+const SEG_POOL_BULLET = eval('(' + grab(/const SEG_POOL_BULLET\s*=\s*\[[^\]]*\]/).replace(/const\s+SEG_POOL_BULLET\s*=\s*/, '') + ')');
 const SEG_T     = Number(cap(/const SEG_T\s*=\s*(\d+)/));
 const VIEW_H    = Number(cap(/const VIEW_H\s*=\s*(\d+)/));
 const SEG_KEYS  = eval('(' + grab(/const SEG_KEYS\s*=\s*\[[^\]]*\]/).replace(/const\s+SEG_KEYS\s*=\s*/, '') + ')');
@@ -55,9 +68,9 @@ const SEG_KEYS  = eval('(' + grab(/const SEG_KEYS\s*=\s*\[[^\]]*\]/).replace(/co
 const sm = h.match(/stageRngFor\(runSeed,\s*(\d+)\s*\+\s*lastStage\s*\*\s*(\d+)\s*\+\s*segIndex\)/);
 if (!sm) throw new Error('抽唔到段目標 rng stream 公式');
 const SEG_BASE = Number(sm[1]), SEG_STAGE_MUL = Number(sm[2]);
-/* need 曲線：min(7, 3 + segIndex) */
-const NEED_CAP = Number(cap(/need:\s*Math\.min\((\d+),\s*(\d+)\s*\+\s*segIndex\)/, 1));
-const NEED_BASE = Number(cap(/need:\s*Math\.min\((\d+),\s*(\d+)\s*\+\s*segIndex\)/, 2));
+/* need 曲線：min(4, 3 + segIndex, 本段第一波身體敵數) */
+const NEED_CAP = Number(cap(/Math\.min\((\d+),\s*(\d+)\s*\+\s*segIndex/, 1));
+const NEED_BASE = Number(cap(/Math\.min\((\d+),\s*(\d+)\s*\+\s*segIndex/, 2));
 
 /* STAGE_ATS（真 code 係由 WAVE_TEMPLATES 推） */
 const STAGE_ATS = {};
@@ -115,6 +128,37 @@ const minAffEnemySpd = Math.min.apply(null, AFFIX_DEFS.map(d => (d.enemySpd == n
 const minMinorSpd = 0.7;
 const slowestGruntMs = (VIEW_H + 20 - (-14)) / (minGruntVy * minFallMul * minAffEnemySpd * minMinorSpd);
 
+/* ---------- 所有段（真波次 + 真 roll + 時間制段界） ---------- */
+function allSegments() {
+  const out = [];
+  for (let seed = 1; seed <= SEEDS; seed++) {
+    runSeed = seed;
+    for (let sid = 1; sid <= 5; sid++) {
+      const waves = assembleWaves(sid, seed);
+      const rolls = rollEnemyRoles(sid, waves) || {};
+      const perWave = waves.map((w, wi) => {
+        const r = rolls[wi];
+        let n = 0;
+        for (const s of w.spawn) {
+          if (!BODY_TYPES.has(s.type)) continue;
+          n += Math.max(1, (s.count || 1) + (r ? r.add : 0));
+        }
+        return n;
+      });
+      let segStart = null, acc = 0, first = 0, segIdx = -1;
+      for (let i = 0; i < waves.length; i++) {
+        if (segStart === null || waves[i].at - segStart > SEG_T) {
+          if (segStart !== null) out.push({ seed, sid, segIdx, firstBody: first, totalBody: acc });
+          segStart = waves[i].at; acc = 0; first = perWave[i]; segIdx++;
+        }
+        acc += perWave[i];
+      }
+      if (segStart !== null) out.push({ seed, sid, segIdx, firstBody: first, totalBody: acc });
+    }
+  }
+  return out;
+}
+
 /* ================= ① 段間隔 ================= */
 console.log('=== ① 段間隔（每關）· 驗收線 ≤ 9000ms ===');
 /* 段界規則（真 code）：關卡時間超過 SEG_T 就喺嗰個波次開新段 */
@@ -166,18 +210,18 @@ console.log('  各關長（秒）：' + stageLens.map(v => v.toFixed(1)).join(' 
 
 /* ================= ③ 目標分佈 ================= */
 console.log('\n=== ③ 段目標分佈（' + SEEDS + ' seeds × 5 關）===');
+const realLog = console.log;
+console.log = () => {};   /* rollEnemyRoles 會 console.log 敵配 → 收埋 */
+const SEGS = allSegments();
+console.log = realLog;
 const cnt = Object.create(null);
 for (const k of SEG_KEYS) cnt[k] = 0;
 let totalSeg = 0;
-for (let seed = 1; seed <= SEEDS; seed++) {
-  for (let sid = 1; sid <= 5; sid++) {
-    const nSeg = stageInfo[sid].segCount;
-    for (let si = 0; si < nSeg; si++) {
-      const rng = stageRngFor(seed, SEG_BASE + sid * SEG_STAGE_MUL + si);
-      cnt[SEG_KEYS[Math.floor(rng() * SEG_KEYS.length)]]++;
-      totalSeg++;
-    }
-  }
+for (const sg of SEGS) {
+  const rng = stageRngFor(sg.seed, SEG_BASE + sg.sid * SEG_STAGE_MUL + sg.segIdx);
+  const pool = sg.firstBody > 0 ? SEG_POOL_BODY : SEG_POOL_BULLET;
+  cnt[pool[Math.floor(rng() * pool.length)]]++;
+  totalSeg++;
 }
 for (const k of SEG_KEYS) {
   const pct = cnt[k] / totalSeg * 100;
@@ -185,8 +229,9 @@ for (const k of SEG_KEYS) {
     (pct >= 25 && pct <= 45 ? '✓ 均衡' : '✗ 失衡'));
 }
 console.log('  → 總段數 ' + totalSeg + '（每局約 ' + (totalSeg / SEEDS).toFixed(1) + ' 段）');
-console.log('  need 曲線：' + Array.from({ length: 8 }, (_, i) => Math.min(NEED_CAP, NEED_BASE + i)).join('/') +
-  '（第 N 段要 ' + NEED_BASE + '+N 次擦彈，上限 ' + NEED_CAP + '）');
+const noBody = SEGS.filter(sg => sg.firstBody === 0).length / SEGS.length * 100;
+console.log('  → ' + noBody.toFixed(1) + '% 嘅段第一波冇身體敵（純彈幕波）→ 派 {清場, 零傷}，唔派「擊殺」');
+console.log('  need 曲線：min(' + NEED_CAP + ', ' + NEED_BASE + '+段序, 本段第一波敵人數)');
 
 /* ================= ④ 清場可達性 ================= */
 console.log('\n=== ④ 「清場」判定可達性（真波次 + 真速度推算）===');
@@ -252,6 +297,37 @@ console.log('  中位 ' + (segLens[Math.floor(segLens.length / 2)] / 1000).toFix
 console.log('  尾段（最後一段，開到 boss 出場）：' +
   [1, 2, 3, 4, 5].map(s => 'S' + s + ' ' + (stageInfo[s].tailMin / 1000).toFixed(1) + '~' +
     (stageInfo[s].tailMax / 1000).toFixed(1)).join(' · ') + ' 秒');
+
+/* ================= ⑥ 段內身體敵數分佈（決定「擊殺 N 隻」嘅 N） ================= */
+console.log('\n=== ⑥ 段內身體敵數分佈（決定「擊殺 N 隻」嘅 N · 真 roll jitter）===');
+const segEnemies = SEGS.map(sg => sg.totalBody);
+const sorted = segEnemies.slice().sort((a, b) => a - b);
+const pct = (p) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))];
+console.log('  樣本 ' + sorted.length + ' 段 · min ' + sorted[0] + ' · p5 ' + pct(0.05) +
+  ' · p25 ' + pct(0.25) + ' · 中位 ' + pct(0.5) + ' · p75 ' + pct(0.75) +
+  ' · p95 ' + pct(0.95) + ' · max ' + sorted[sorted.length - 1]);
+
+/* ---- ⑥b 「擊殺 N 隻」need 規則：need 用「本段第一波」嘅身體敵數做上限 ----
+   段界時 waveQueue 已經組好（入關時 assembleWaves）+ enemyRoll 已经 roll 咗
+   → 段界嗰刻已知第一波會有幾多隻身體敵 → need = min(曲線, 第一波敵人數) 保證可達。 */
+console.log('\n=== ⑥b「擊殺 N 隻」need 規則（第一波身體敵數做上限）===');
+const fSorted = SEGS.map(sg => sg.firstBody).sort((a, b) => a - b);
+console.log('  第一波身體敵數：min ' + fSorted[0] + ' · p25 ' + fSorted[Math.floor(fSorted.length * 0.25)] +
+  ' · 中位 ' + fSorted[Math.floor(fSorted.length * 0.5)] + ' · p75 ' + fSorted[Math.floor(fSorted.length * 0.75)] +
+  ' · max ' + fSorted[fSorted.length - 1]);
+const zeroFirst = fSorted.filter(v => v === 0).length / fSorted.length * 100;
+console.log('  → ' + zeroFirst.toFixed(1) + '% 嘅段第一波冇身體敵（純彈幕波）→ 呢啲段唔派「擊殺」目標');
+/* need = min(CAP, 3+段序, 第一波敵人數) → 分佈 */
+for (const CAP of [3, 4, 5]) {
+  const hist = { '0': 0, '1': 0, '2': 0, '3': 0, '4+': 0 };
+  for (const sg of SEGS) {
+    const need = Math.min(CAP, NEED_BASE + sg.segIdx, sg.firstBody);
+    if (need >= 4) hist['4+']++; else hist[String(need)]++;
+  }
+  const n = SEGS.length;
+  console.log('  need 上限 ' + CAP + '：' + Object.keys(hist).map(k =>
+    k + '→' + (hist[k] / n * 100).toFixed(1) + '%').join('  '));
+}
 
 /* ================= 總結 ================= */
 const okInterval = worstInterval <= 9000;

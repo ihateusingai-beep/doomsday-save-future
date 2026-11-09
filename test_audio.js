@@ -36,7 +36,10 @@ check('★ 音效掣仍然 ≥64 物理 px（iPad scale 2.606）', AUDIO_BTN_S *
   (AUDIO_BTN_S * (834 / 320)).toFixed(0) + 'px');
 
 console.log('\n=== 2. 面板按鈕全部 ≥56px（智慧白板觸控）===');
-const pw = 252, ph = 248;
+/* v0.41.0 #152：面板由 248 → 336（多咗一行「段目標難度」掣），新增 segMinus / segPlus。
+   ⚠️ 呢啲係**獨立寫死嘅期望值**（唔係由 source 抽）→ 故意同 index.html 分開兩份，
+      兩邊唔一致就會 fail（唔會變成 vacuous 守門）。 */
+const pw = 252, ph = 336;
 const px0 = (VIEW_W - pw) / 2, py0 = (VIEW_H - ph) / 2 - 24;
 const btns = {
   power:   { x: px0 + (pw - 184) / 2, y: py0 + 40,  w: 184, h: 56 },
@@ -44,6 +47,8 @@ const btns = {
   bgmPlus: { x: px0 + pw - 74, y: py0 + 108, w: 56, h: 56 },
   sfxMinus:{ x: px0 + 18,  y: py0 + 170, w: 56, h: 56 },
   sfxPlus: { x: px0 + pw - 74, y: py0 + 170, w: 56, h: 56 },
+  segMinus:{ x: px0 + 18,  y: py0 + 262, w: 56, h: 56 },
+  segPlus: { x: px0 + pw - 74, y: py0 + 262, w: 56, h: 56 },
 };
 for (const [k, b] of Object.entries(btns)) {
   check(k + ' ' + b.w + '×' + b.h, b.w >= 56 && b.h >= 56);
@@ -52,12 +57,22 @@ check('面板喺畫布內（唔會超出 320×480）',
   px0 >= 0 && py0 >= 0 && px0 + pw <= VIEW_W && py0 + ph <= VIEW_H,
   '(面板 ' + px0 + ',' + py0 + ' ' + pw + '×' + ph + ')');
 check('panel 底部 = ' + (py0 + ph) + ' < 畫布高 ' + VIEW_H, py0 + ph < VIEW_H);
-const btnsLastBottom = btns.sfxPlus.y + btns.sfxPlus.h;
+const btnsLastBottom = btns.segPlus.y + btns.segPlus.h;
 check('最後一列掣底部 ' + (btnsLastBottom) + ' ≤ 面板底部 ' + (py0 + ph) + '（唔會溢出）', btnsLastBottom <= py0 + ph);
 /* − / + 掣唔可以互相重疊 */
 check('音量 − 同 + 唔重疊', !overlap(btns.bgmMinus, btns.bgmPlus));
 check('兩行音量掣唔重疊（間距 ' + (btns.sfxMinus.y - (btns.bgmMinus.y + btns.bgmMinus.h)) + 'px）', !overlap(btns.bgmMinus, btns.sfxMinus));
+check('音量列同「段目標難度」列唔重疊（間距 ' + (btns.segMinus.y - (btns.sfxMinus.y + btns.sfxMinus.h)) + 'px）', !overlap(btns.sfxMinus, btns.segMinus));
 check('總開關掣唔撞第一行音量掣', !overlap(btns.power, btns.bgmMinus));
+/* v0.41.0 #152：段目標難度列嘅 [−]/[+] 係同一套觸控詞彙 */
+check('段目標難度 − 同 + 唔重疊', !overlap(btns.segMinus, btns.segPlus));
+check('★ 段目標難度掣 ≥56px（智慧白板要粗撳得中）', btns.segMinus.w >= 56 && btns.segMinus.h >= 56);
+/* source 嘅面板幾何必須同呢份期望值一致（唔一致 = 撞位） */
+check('★ source 面板高度 = ' + ph + '（同測試期望值一致）',
+  /const w = 252, h = 336;/.test(h));
+check('★ source 有 segMinus / segPlus 兩個掣',
+  /segMinus:\{ x: p\.x \+ 18,\s*y: p\.y \+ 262, w: 56, h: 56 \}/.test(h) &&
+  /segPlus: \{ x: p\.x \+ p\.w - 74, y: p\.y \+ 262, w: 56, h: 56 \}/.test(h));
 
 console.log('\n=== 3. 音量增益曲線（平方，感知平均）===');
 const volToGain = (v) => { const n = Math.max(0, Math.min(VOL_STEPS, v | 0)); return (n / VOL_STEPS) * (n / VOL_STEPS); };
@@ -101,12 +116,26 @@ check('和弦進行有 ' + chordCount + ' 個不同和弦（Am-F-C-G）', chordC
 check('lookahead 調度：25ms 心跳 + 100ms 前瞻', /setInterval\(\(\) => this\.sched\(\), 25\)/.test(h) && /currentTime \+ 0\.1/.test(h));
 check('唔用逐音 setTimeout（會飄）', !/setTimeout\(\(\) => this\.step_/.test(h));
 
-console.log('\n=== 7. 持久化 key（#52）===');
-for (const k of ['dsf.audio', 'dsf.vol.bgm', 'dsf.vol.sfx']) {
+console.log('\n=== 7. 持久化 key（#52 · #152）===');
+for (const k of ['dsf.audio', 'dsf.vol.bgm', 'dsf.vol.sfx', 'dsf.segDiff']) {
   check(k, h.includes("'" + k + "'"));
 }
 check('開機只讀數值、唔建立 AudioContext（#56）',
   /loadAudioPrefs\(\);/.test(h) && /function loadAudioPrefs\(\)[\s\S]*?lsRead/.test(h) && !/new AC\(\)/.test(h.split('function loadAudioPrefs')[1].split('function setAudioOn')[0]));
+check('★ 段目標難度開機都會讀（loadSegDiff）', /loadSegDiff\(\);/.test(h));
+
+console.log('\n=== 7b. 段目標難度掣（#152）===');
+check('★ 面板標題由「音效設定」改成「設定」（而家唔止音效）',
+  /ctx\.fillText\('設定', p\.x \+ p\.w \/ 2, p\.y \+ 22\)/.test(h));
+check('★ 有「段目標難度」列', /ctx\.fillText\('段目標難度'/.test(h));
+check('★ 顯示當前檔名（簡單／標準／硬）', /ctx\.fillText\(SEG_DIFFS\[segDiffIdx\]\.name/.test(h));
+check('★ 用同一套 [−]/[+] 掣（唔用滑條）',
+  /step\(b\.segMinus, '−'\); step\(b\.segPlus, '\+'\);/.test(h));
+check('★ 撳掣 → setSegDiff（−1 / +1）',
+  /setSegDiff\(segDiffIdx - 1\)/.test(h) && /setSegDiff\(segDiffIdx \+ 1\)/.test(h));
+check('★ 三檔循環切換（唔會越界）', /segDiffIdx = \(i \+ SEG_DIFFS\.length\) % SEG_DIFFS\.length;/.test(h));
+check('★ setSegDiff 會寫入 localStorage', /lsWrite\(LS_SEG_DIFF, segDiffIdx\)/.test(h));
+check('★ 玩家可見字串冇 em dash（—）', !/段目標難度[^\n]*—/.test(h));
 
 console.log('\n=== 8. 音效 UI 每個畫面都畫到（renderTail）===');
 const renderBody = h.match(/function render\(\)[\s\S]*?\n\}\n/)[0];

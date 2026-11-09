@@ -539,13 +539,9 @@ function drawIconWithText(iconName, text, cx, cy, iconScale, font, color, gap) {
 }
 
 /* 依實際像素寬度斷行（v3.13）。
-   ⚠️ 唔可以用「字元數」硬斷 —— 中文全形 ≈ 1em，而 emoji／全角標點
-   寬度唔同，靠字元數一定會溢出容器。用 measureText 逐字累加先準。
-   ⚠️ v0.27.2 修正：原本係**逐字**斷行，令「−25%」拆成「−」/「25%」、
-   「+20%」拆成「+2」/「0%」、「+50%」拆成「+」/「50%」——
-   符號同數字分咗兩行，低耐性學生會讀成「減 25」再搵「%」。
-   改成**原子**切法：符號(+ − × ÷) + 數字 + 小數 + 百分比 當成一個原子，
-   原子之間永遠唔會拆開。 */
+   ⚠️ 唔可以用「字元數」硬斷 —— 中文全形 ≈ 1em，emoji／全角標點寬度唔同 → 用 measureText 逐字累加。
+   ⚠️ v0.27.2：原本**逐字**斷行令「−25%」拆成「−」/「25%」→ 低耐性學生會讀成「減 25」再搵「%」。
+   改成**原子**切法：符號(+ − × ÷) + 數字 + 小數 + 百分比 當成一個原子，永遠唔拆開。 */
 function wrapText(ctx, text, maxWidth) {
   const lines = [];
   let line = '';
@@ -572,11 +568,9 @@ const STAGE_THEME = Object.freeze({
   5: { name:'逃逸門',   skyTop:'#000510', skyBot:'#001828', accent:'#3dff8a',  tint:'rgba(0,255,140,0.07)' },
 });
 /* ---------- v0.32.0 背景場景三層縱深（PLAN #120） ----------
-   ⚠️ 舊實作嘅根因：`baseY = VIEW_H - 10 = 470`，而能力掣區係 y 408–472
-      → S1/S2 嘅樓宇 100% 落喺掣區底下，玩家由頭到尾未見過（實測）。
+   ⚠️ 舊根因：`baseY = VIEW_H - 10 = 470`，而能力掣區係 y 408–472 → S1/S2 嘅樓宇 100% 落喺掣區底下。
    而家三層：遠景（細／淡／慢）、中景、近景（貼地線 = PLAY_BOTTOM = 396）。
-   ⚠️ 每關專屬 prop 家族 —— 唔可以跨關共用，否則 S5「逃逸門」會出現維港樓宇
-      （VISUAL_QUALITY_RUBRIC §V11 明寫「5 個關卡只換色」係常見 AI 失敗模式）。 */
+   ⚠️ 每關專屬 prop 家族 —— 唔可以跨關共用，否則 S5 會出現維港樓宇（§V11：「5 個關卡只換色」係 AI 失敗模式）。 */
 const BG_FLOOR = 396;   /* 近景貼地線 = 遊戲區底（PLAY_BOTTOM），唔可以再落喺能力掣區 */
 const BG_LAYERS = [
   { scale: 0.55, alpha: 0.40, sx: 0.06, n: 7 },   /* 遠景：細、淡、慢 */
@@ -604,12 +598,9 @@ let bgScroll = 0;
 let animT = 0;
 
 /* ---------- v0.29.0 gamedev-feel：trauma cam + hit-stop + ship pop ----------
-   規則（personal STG）：
-   1. 只震 **繪圖 offset**，唔改 ship.x/y／碰撞
-   2. trauma² + sin（唔好每 frame Math.random → buzz）
-   3. juice 分層：graze < grunt kill < elite < hurt < bomb < boss
-   4. hit-stop 用 real-time；sim 停、render 繼續
-   5. prefers-reduced-motion → 跳過 shake / hit-stop，保留色＋SFX */
+   規則：① 只震**繪圖 offset**，唔改 ship.x/y／碰撞 ② trauma² + sin（唔好每 frame Math.random）
+   ③ juice 分層：graze < grunt kill < elite < hurt < bomb < boss
+   ④ hit-stop 用 real-time；sim 停、render 繼續 ⑤ prefers-reduced-motion → 跳過 shake */
 const REDUCED_MOTION = (typeof matchMedia === 'function')
   && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const cam = { x: 0, y: 0, trauma: 0, decay: 2.2, max: 14 };
@@ -1030,6 +1021,9 @@ function tickVfx(dtMs) {
   /* P1-6 擦彈光環：每次擦彈重設為 1 再衰減到 0（密集擦彈唔會無限疊加光環，畫面唔會被洗白）。 */
   if (grazeRingT > 0) grazeRingT = Math.max(0, grazeRingT - dtMs * 0.0035);
   if (grazeFlash > 0) grazeFlash = Math.max(0, grazeFlash - dtMs * 0.002);
+  /* v0.39.0 #150：壓力段達標訊息 / 閃光衰減 */
+  if (segMsgT > 0) segMsgT = Math.max(0, segMsgT - dtMs / 1000);
+  if (segFlash > 0) segFlash = Math.max(0, segFlash - dtMs / 1200);
   if (screenFlash > 0) screenFlash = Math.max(0, screenFlash - dtMs * 0.0022);
   updateCam(dtMs);
   /* ship pop 回彈到 1 */
@@ -1068,12 +1062,9 @@ function tickVfx(dtMs) {
     if (s.y > VIEW_H + 4) { s.y = -4; s.x = (s.x + 47) % VIEW_W; }
   }
 }
-/* v0.31.0 效能：per-stage 快取 gradient 對象（每幀 0 次 gradient 配置）
-  原本 drawBackdrop() 每幀 2 次 gradient 配置 = 每幀 2 次 allocation（GC 來源）。
-  關卡主題 Object.freeze（唔會變）→ gradient 對象可以 per-stage 快取。
-  ⚠️ 離屏圖層烘焙試過 → 廢棄：逐像素比對有 146k/153k 像素差 1–2（alpha 精度損失），
-    為未證實收益引入視覺誤差 = 修錯邊 → 只保留「快取對象」（0 allocation、100% 像素精確）。
-  完整理據見 PLAN.md v0.31.0。 */
+/* v0.31.0 效能：per-stage 快取 gradient 對象（原本每幀 2 次 allocation = GC 來源）。
+  ⚠️ 離屏圖層烘焙試過 → 廢棄：逐像素差 146k/153k px（alpha 精度損失）→ 為未證實收益引入
+    視覺誤差 = 修錯邊 → 只保留「快取對象」（0 allocation、100% 像素精確）。詳見 PLAN.md v0.31.0。 */
 const bgGradCache = new Map();
 function bgGradient(stageId, kind) {
   let g = bgGradCache.get(stageId + '@' + kind);
@@ -1091,13 +1082,10 @@ function bgGradient(stageId, kind) {
   bgGradCache.set(stageId + '@' + kind, g);
   return g;
 }
-/* v0.32.0：背景場景三層縱深（PLAN #120）
-   遠景（scale 0.55 / alpha 0.40 / 慢）→ 中景（0.90 / 0.72）→ 近景（1.30 / 全亮 / 貼地）。
-   ⚠️ 貼地線 = BG_FLOOR = 396 = PLAY_BOTTOM —— 舊版用 VIEW_H - 10 = 470，
-      落喺能力掣區（y 408–472）底下，玩家由頭到尾未見過 S1/S2 嘅場景。
-   ⚠️ 每個 instance 速度唔同（0.78–1.22 變化），否則成層同一速度 = 機械感。
-   ⚠️ 背景值階梯刻意保留暗：樓宇主體對 sky 只有 ~1.85:1，遠低過 gameplay
-      元素嘅 4.6:1 → 玩家子彈（青）同雜魚（粉）照樣跳出，唔會被背景 camouflage。 */
+/* v0.32.0：背景三層縱深（PLAN #120）遠景（0.55/0.40/慢）→ 中景（0.90/0.72）→ 近景（1.30/全亮/貼地）。
+   ⚠️ 貼地線 = BG_FLOOR = 396 = PLAY_BOTTOM —— 舊版 VIEW_H-10 = 470 落喺能力掣區（y 408–472）底下，
+      玩家由頭到尾未見過 S1/S2 場景。⚠️ 每個 instance 速度唔同（0.78–1.22），否則成層同一速度 = 機械感。
+   ⚠️ 背景刻意保留暗：樓宇對 sky 只有 ~1.85:1 → 玩家彈（青）同雜魚（粉）照樣跳出。 */
 function drawScenery(stageId) {
   const sc = SCENERY[stageId] || SCENERY[1];
   for (let L = 0; L < BG_LAYERS.length; L++) {
@@ -1199,12 +1187,10 @@ function drawParticles() {
   ctx.globalAlpha = 1;
 }
 function drawScanlines() {
-  /* v0.32.0（PLAN #121）：backing-store 物理像素網格。
-     舊版喺「邏輯空間」每 3 px 畫 1 px 黑線 → DPR 2.4875（iPad 實測）= 7.46 物理 px（非整數）
-     → 實測 137 條線 out-of-grid、暗度離散 25.5% = 掃描線喺真機變雜訊網。
-     而家 setTransform(1,0,0,1,0,0) 直接喺 backing store 畫 → 每條線都落喺整數物理像素
-     （零反鋸齒、零格紋），亦離開 trauma shake 嘅 translate（掃描線係螢幕空間 CRT overlay）。
-     ⚠️ 週期用 round(3 × scale)、線高用 round(scale) → 密度跨 DPR 一致（1/2/2.4875/3 = 3/6/7/9）。 */
+  /* v0.32.0（PLAN #121）：backing-store 物理像素網格。舊版喺邏輯空間每 3px 畫 1px 黑線
+     → DPR 2.4875 = 7.46 物理 px（非整數）→ 實測 137 條線 out-of-grid、暗度離散 25.5%。
+     而家 setTransform(1,0,0,1,0,0) 喺 backing store 畫 → 每條線落喺整數物理像素（零反鋸齒），
+     亦離開 trauma shake 嘅 translate。⚠️ 週期 round(3×scale)、線高 round(scale) → 密度跨 DPR 一致。 */
   const scale = canvas.width / VIEW_W;           /* backing store 縮放 = dpr */
   const period = Math.max(2, Math.round(3 * scale));
   const lineH = Math.max(1, Math.round(scale));
@@ -1252,13 +1238,9 @@ function drawHudChips() {
     ctx.textAlign = 'left';
     ctx.fillText('+' + (ids.length - 5), 12 + 5 * 17, 41);
   }
-  /* v0.25.0 #90：機體節奏狀態。
-     v0.26.0 #95：位置由「畫面底部中央」搬到「**頂部中央**」——
-     底部中央而家俾**中下通用技能掣**（x 128–192, y 408–472）霸咗，
-     節奏 chip 擺喺底部會被掣蓋住（v0.25.0 已經撞過一次「暫停」掣）。
-     v0.30.0 #113：**同關卡 chip 合併成一行**（原本行 26–39）。
-     頂部由上而下：關卡+節奏 合併行（y 3–15）→ 擦彈文字（baseline 24）+ 條（y 27–31）。
-     ⚠️ 頂部中央帶而家只到 **y 31**，boss 本體（y 37 起）同血條（y 32 起）完全離開。 */
+  /* v0.25.0 #90：機體節奏狀態。v0.26.0 #95：位置由底部中央搬到**頂部中央**（底部俾通用技能掣霸咗）。
+     v0.30.0 #113：**同關卡 chip 合併成一行**（y 3–15）→ 擦彈文字（baseline 24）+ 條（y 27–31）。
+     ⚠️ 頂部中央帶只到 **y 31**，boss 本體（y 37 起）同血條（y 32 起）完全離開。 */
   /* v0.30.0 #113：關卡 chip + 節奏 chip 合併成**一行**（y 3–15）。原本係三行（y 6–67）——
      而 boss 本體（y 37–123）同血條（y 26–91）全部喺呢個範圍，學生睇唔到 boss 血量變化（PLAN #113）。
      壓成兩行後頂部中央 HUD 帶 = y 3–31，boss + 血條完全離開。
@@ -1346,13 +1328,9 @@ function drawHudChips() {
     }
     ctx.textAlign = 'left';
   }
-  /* ⚠️ v0.27.2 搬走：裝備掉落橫幅原本喺呢度（戰鬥 HUD）畫，但——
-     ① 掉落發生喺 boss 死嗰刻，而 boss 死即刻跳去 CHOICE 呢個 modal，
-        所以呢個「只喺戰鬥畫面畫 + 2.6 秒」嘅橫幅，正常節奏下玩家**根本睇唔到**
-        （要 2.6 秒內走完 2–3 個選單先返到戰鬥畫面）。
-     ② 就算睇到，佢 y 82–104 同詞綴橫幅 y 74–118 完全重疊，兩段文字互相蓋死。
-     現在改喺 CHOICE 畫面（boss 死之後嗰個 modal）畫 —— 一定見到，唔會撞位。
-     見 drawLootBanner()。 */
+  /* ⚠️ v0.27.2 搬走：裝備掉落橫幅原本喺戰鬥 HUD 畫，但 boss 死即刻跳 CHOICE modal
+     → 正常節奏下玩家**根本睇唔到**；而且佢 y 82–104 同詞綴橫幅 y 74–118 完全重疊。
+     現在改喺 CHOICE 畫面畫 —— 一定見到，唔會撞位。見 drawLootBanner()。 */
 }
 
 /* ---------- 2. 輸入層（PLAN v2 #15、#18-19） ---------- */
@@ -1512,6 +1490,10 @@ function onStateEnter(s, from) {
        令每關有「雜魚 → boss」嘅正確節奏。 */
     bossSpawned = false;
     waveQueueDoneAt = null;
+    /* v0.39.0 #150：壓力段狀態重置（每關重新開始計段） */
+    segIndex = -1; segGoal = null; segHurt = false;
+    segActiveHp = 1; segActiveSpd = 1; segNextHp = 1; segNextSpd = 1;
+    segChain = 0; segFlash = 0; segMsg = ''; segMsgT = 0;
     /* 關卡鐘每次重置；run 鐘只喺新開局重置（全程 count-up） */
     endFreezeClocks();                 /* absorb CHOICE/PAUSED gap before anchors */
     stageStartMs = performance.now();
@@ -1728,13 +1710,10 @@ function applyPickedReverse(idx) {
 }
 
 /* ---------- 7. 實體 ---------- */
-let ship = null;            /* { chassis, x, y, hp, maxHp, shield, speed, fireRate, fireCD,
-                                 bulletCount, bulletDmg, bulletSpd, bombCD,
-                                 skillId, skillCdBase, skillCdMul,
-                                 _holdMs, _ramp, _lastFireAt,
-                                 _burstCount, _burstReady,
-                                 _bulSpdMul, _bulSpdMulUntil,
-                                 pierce, resurrect, grazeMult, masterStacks } */
+/* ship 欄位：chassis/x/y/hp/maxHp/shield/speed/fireRate/fireCD/bulletCount/bulletDmg/
+   bulletSpd/bombCD/skillId/skillCdBase/skillCdMul/_holdMs/_ramp/_lastFireAt/_burstCount/
+   _burstReady/_bulSpdMul/_bulSpdMulUntil/pierce/resurrect/grazeMult/masterStacks */
+let ship = null;
 let bullets = [];           /* { x, y, vx, vy, owner:'player' } */
 let enemies = [];           /* spiral(=boss) | grunt(=雜魚) | bullet | laser */
 
@@ -1896,12 +1875,9 @@ let stylePicked = -1;
 let stylePending = false;
 
 /* ---------- v0.28.0 強化卡池抽法（PLAN v3.18 · #109）----------
-三個規則疊埋（數據全部有實測支撐）：① **只抽本局未見過嘅卡** → 一局 12 個卡位全部唔同
-（⚠️ 代價：同一張卡唔會喺同一局出現兩次 → 「疊加」削弱，係**刻意接受**嘅取捨）
-② **玩法卡加權**（5 形態 + 4 tag + 5 生存 = 14 張；權重 3/3/2，純數值 1）
-③ **保底：每次 boss 3 張卡至少 1 張玩法卡**（零成本防護網）。
-⚠️ 「玩法卡」定義必須係**單一真實來源**（isPlayStyleCard）—— 加權同保底都靠佢。
-完整數據見 PLAN.md #109。 */
+① **只抽本局未見過嘅卡**（一局 12 個卡位全部唔同；⚠️ 同一張卡唔會喺同一局出現兩次 → 疊加削弱，
+   係**刻意接受**嘅取捨）② **玩法卡加權**（14 張；權重 3/3/2，純數值 1）
+③ **保底：每次 boss 3 張卡至少 1 張玩法卡**。⚠️「玩法卡」定義必須係**單一真實來源**（isPlayStyleCard）。 */
 let seenUpgradeIds = new Set();   /* 本局已出現過嘅強化卡 id（唔跨局） */
 
 /** 攻擊向玩法卡（5 張形態 + 4 張 tag = 9 張）—— **前綴規則嘅唯一真實來源**
@@ -2047,63 +2023,67 @@ const STAGE_TABLE = {
 
 /* 每個波次 = {at（毫秒）, spawn:[{type, ...}]}。彈幕型：spray / aim(+warn) / ring / meteor；
    敵機型：grunt / dive / elite / sniper / shield / swarm */
+/* WAVE_TEMPLATES：每關嘅**波次時間軸**（at = 毫秒）。
+   ⚠️ 內容（敵種／數量）由 WAVE_CHUNKS 決定 —— 呢度淨係時間軸（assembleWaves 唔讀 spawn[]）。
+   ⚠️ 舊版呢度仲抄咗一份 spawn[]，但佢係死數據而且已過期（S1 波 3/5/7 嘅 count／hp
+      同 WAVE_CHUNKS 唔一致）→ v0.39.0 #150 移除，避免誤導。 */
 const WAVE_TEMPLATES = {
   1: [   /* 維港起飛 — 教學關：單排雜魚 + 輕量彈幕 */
-    { at: 1500, spawn: [{ type:'grunt', count: 3, hp: 8 }] },
-    { at: 4500, spawn: [{ type:'spray', count: 6, spread: 0.4, speed: 0.07 }] },
-    { at: 7500, spawn: [{ type:'grunt', count: 4, hp: 8 }] },
-    { at:11000, spawn: [{ type:'aim',   count: 3, speed: 0.10 }] },
-    { at:15000, spawn: [{ type:'grunt', count: 5, hp: 8 }] },
-    { at:19000, spawn: [{ type:'spray', count: 8, spread: 0.5, speed: 0.08 }] },
-    { at:23000, spawn: [{ type:'grunt', count: 4, hp: 8 }] },
+    { at: 1500},
+    { at: 4500},
+    { at: 7500},
+    { at:11000},
+    { at:15000},
+    { at:19000},
+    { at:23000},
   ],
   2: [   /* 九龍煙柱 — 扇形 + 短預警 */
-    { at: 1500, spawn: [{ type:'grunt', count: 4, hp: 9 }] },
-    { at: 5000, spawn: [{ type:'spray', count: 9, spread: 0.6, speed: 0.07 }] },
-    { at: 9000, spawn: [{ type:'grunt', count: 5, hp: 9 }] },
-    { at:13000, spawn: [{ type:'spray', count: 9, spread: 0.6, speed: 0.09, warn:true }] },
-    { at:17000, spawn: [{ type:'grunt', count: 4, hp: 9 }] },
-    { at:21000, spawn: [{ type:'aim',   count: 3, speed: 0.11, warn:true }] },
-    { at:25000, spawn: [{ type:'grunt', count: 6, hp: 9 }] },
+    { at: 1500},
+    { at: 5000},
+    { at: 9000},
+    { at:13000},
+    { at:17000},
+    { at:21000},
+    { at:25000},
   ],
   3: [   /* 大氣層 — dive + sniper */
-    { at: 1200, spawn: [{ type:'meteor', count: 4, speed: 0.13 }] },
-    { at: 5000, spawn: [{ type:'grunt', count: 4, hp: 10 }] },
-    { at: 8500, spawn: [{ type:'dive',  count: 4, hp: 8 }] },
-    { at:12500, spawn: [{ type:'ring',  count: 8, speed: 0.07 }] },
-    { at:16000, spawn: [{ type:'sniper', count: 2 }] },
-    { at:20000, spawn: [{ type:'dive',  count: 5, hp: 8 }] },
-    { at:24000, spawn: [{ type:'meteor', count: 6, speed: 0.14 }] },
-    { at:28000, spawn: [{ type:'sniper', count: 1 }, { type:'grunt', count: 3, hp: 10 }] },
+    { at: 1200},
+    { at: 5000},
+    { at: 8500},
+    { at:12500},
+    { at:16000},
+    { at:20000},
+    { at:24000},
+    { at:28000},
   ],
   4: [   /* 軌道殘骸 — elite + shield */
-    { at: 1200, spawn: [{ type:'ring',  count: 8, speed: 0.09 }] },
-    { at: 4500, spawn: [{ type:'grunt', count: 5, hp: 10 }] },
-    { at: 8500, spawn: [{ type:'shield', count: 1 }] },
-    { at:13000, spawn: [{ type:'elite', count: 1, hp: 24, affix:'重裝' }] },
-    { at:18000, spawn: [{ type:'dive',  count: 5, hp: 9 }] },
-    { at:22000, spawn: [{ type:'ring',  count: 8, speed: 0.10 }] },
-    { at:26000, spawn: [{ type:'shield', count: 1 }, { type:'grunt', count: 4, hp: 10 }] },
-    { at:30000, spawn: [{ type:'elite', count: 1, hp: 24, affix:'狙擊' }] },
+    { at: 1200},
+    { at: 4500},
+    { at: 8500},
+    { at:13000},
+    { at:18000},
+    { at:22000},
+    { at:26000},
+    { at:30000},
   ],
   5: [   /* 逃逸門 — swarm + 全開 */
-    { at: 1200, spawn: [{ type:'meteor', count: 5, speed: 0.13 }] },
-    { at: 4200, spawn: [{ type:'grunt', count: 6, hp: 11 }] },
-    { at: 7500, spawn: [{ type:'ring',  count: 8, speed: 0.10 }] },
-    { at:11000, spawn: [{ type:'dive',  count: 6, hp: 9 }] },
-    { at:14500, spawn: [{ type:'elite', count: 2, hp: 26, affix:'重裝' }] },
-    { at:19000, spawn: [{ type:'swarm', count: 3 }] },
-    { at:23000, spawn: [{ type:'spray', count: 8, spread: 0.5, speed: 0.11, warn:true }] },
-    { at:27000, spawn: [{ type:'dive',  count: 6, hp: 9 }] },
-    { at:31000, spawn: [{ type:'elite', count: 2, hp: 26, affix:'狙擊' }] },
-    { at:35000, spawn: [{ type:'swarm', count: 4 }, { type:'sniper', count: 1 }] },
-    { at:39000, spawn: [{ type:'shield', count: 1 }, { type:'grunt', count: 5, hp: 11 }] },
+    { at: 1200},
+    { at: 4200},
+    { at: 7500},
+    { at:11000},
+    { at:14500},
+    { at:19000},
+    { at:23000},
+    { at:27000},
+    { at:31000},
+    { at:35000},
+    { at:39000},
   ],
 };
 
 /* ---------- 8b. 隨機波次（PLAN v3.7 #34–#35；S1 內容 roll 見 v3.8 #49） ----------
    1) at[] 由 WAVE_TEMPLATES 抽出 → 「waveCount === ats.length === STAGE_TABLE.waveCount」自動成立（#33）。
-   2) WAVE_CHUNKS[].spawn 欄位同舊 WAVE_TEMPLATES 一致 → game logic 一行唔使改。
+   2) 內容由 WAVE_CHUNKS 決定 → game logic 一行唔使改。
    3) 玩法 random 全部走 seed，tick() 內唔准用 Math.random()（RNG 規則 4）。 */
 /* mulberry32：32 位種子 → [0,1) 序列。同 seed 必出完全相同序列。 */
 function mulberry32(a) {
@@ -2123,10 +2103,9 @@ function stageRngFor(seed, stageId) {
 }
 
 /* ---------- 敵人 roll（PLAN v3.7 #36 / P1）----------
-chunk 抽出之後再 roll 敵配。**殼固定**（#33）：關名 / timeline / waveCount 全部唔變。
+chunk 抽出之後再 roll 敵配（**殼固定**：關名 / timeline / waveCount 唔變）。
 ⚠️ 同 assembleWaves 分開獨立 stream（11000 + stageId）→ 改敵配唔會打亂波次序列。
-⚠️ **喺 chunk 層級 roll 一次**（唔係逐個 spawn 項各自 roll）—— 一個 chunk 可能有多個 spawn 項，
-逐項 roll 會令同一波互相矛盾。⚠️ 每關只 roll 一次（入關時），唔係每隻敵都 roll。 */
+⚠️ **喺 chunk 層級 roll 一次**（唔係逐個 spawn 項）→ 唔會令同一波互相矛盾。每關只 roll 一次。 */
 const ENEMY_ROLL = {
   /* escape 基準，按關遞增（#36）：elitePct = 機率變精英，specialPct = 機率變特殊角色 */
   1: { elitePct: 0.00, specialPct: 0.00, jitter: 0 },   /* S1 教學關：零 roll */
@@ -2284,11 +2263,9 @@ const STAGE_RAND = {
 俯衝只留 dv_s；保留 sp_2/ram_1/mix_sp_ram（常駐強可視特徵）同 tu_1（#97 invariant）。
 池 17 → 16。完整逐項理據見 PLAN.md #128。 */
   3: { pool: ['mt_s','mt_m','mt_l','g_l','g_m','g_xl','rg_m','rg_l','sp_s','sp_m','ai_s','dv_s','sp_2','ram_1','mix_sp_ram','tu_1'] },
-  /* v0.34.0 #128：S4 移除 bm_1（bomber）/ md_gr（醫護）/ ch_1 / ch_2 → 呢三種都係「冇 telegraph 或零戰術價值」
-     嘅新敵，延後到 S5 終關先教。⚠️ 移除 ln_1（雷射，同 S4「軌道殘骸」主題唔配）同 sn_1/sn_2（狙擊核心
-     S1 已經用 `aim` 教過）→ 延後到 S5。
-     ⇒ S4 只教 elite（重裝精英）+ shield（護盾）兩種新敵 → S4 變成「複習 + 精英化」關卡，
-        符合「軌道殘骸」嘅防禦型主題。完整逐項理據見 PLAN.md #128。 */
+  /* v0.34.0 #128：S4 移除 bm_1 / md_gr / ch_1 / ch_2（「冇 telegraph 或零戰術價值」嘅新敵）、
+     ln_1（同主題唔配）、sn_1/sn_2（狙擊核心 S1 已教過）→ 全部延後到 S5。
+     ⇒ S4 只教 elite + shield → 變成「複習 + 精英化」關卡，符合「軌道殘骸」防禦型主題。 */
   4: { pool: ['rg_m','rg_l','g_l','g_xl','dv_m','sh_1','el_1','el_2','mix_sh_gr','sp_2','ram_2','mix_sp_ram','tu_1','tu_gr'] },
   5: { pool: ['mt_m','mt_l','g_xl','dv_l','el_1','el_2','sw_2','sw_3','sp_w','rg_l','mix_sw_sn','mix_sh_gr','sp_2','ram_2','ln_1','mix_sp_ram','md_gr','ch_2','bm_2','tu_1','tu_gr'] },
 };
@@ -2350,11 +2327,9 @@ const AFFIX_DEFS = [
   { id:'glass',    name:'玻璃', icon:'icon_glass',   desc:'生命−1｜分×1.6',    score:1.6,  hpDelta:-1 },
   { id:'static',   name:'靜電', icon:'icon_static',   desc:'敵彈−18%｜分×1.2',  score:1.2,  bulletSpd:0.82 },
 ];
-/* v0.31.0 #116/#117：詞綴橫幅時長 + 停電暗幕 alpha（實測調校，唔係估）
-① 橫幅：閱讀（認 icon 0.3 + 讀名 0.4 + 讀 2 個數值 1.6 + 理解 0.5）≈ 3.6s → 總長 2600 → **4200ms**、
-   fade 2000 → **3600ms**（原本完整可讀只剩 2.0s，唔夠）。
-② 停電暗幕：alpha 0.42 → 雜魚對比跌到 3.01:1（零餘量）→ 降到 **0.22** → 雜魚 **4.60:1** /
-   玩家子彈 **5.13:1**（兩樣都過 AA），「畫面暗」訊號保留。完整數據見 PLAN.md #116/#117。 */
+/* v0.31.0 #116/#117：詞綴橫幅時長 + 停電暗幕 alpha（實測調校）
+① 閱讀（認 icon 0.3 + 讀名 0.4 + 讀 2 個數值 1.6 + 理解 0.5）≈ 3.6s → 總長 2600 → **4200ms**、fade → **3600ms**。
+② 停電 alpha 0.42 → 雜魚對比 3.01:1（零餘量）→ 降到 **0.22** → 雜魚 **4.60:1** / 玩家彈 **5.13:1**（過 AA）。 */
 const AFFIX_BANNER_MS       = 4200;  /* 橫幅總顯示時間 */
 const AFFIX_BANNER_FADE_MS  = 3600;  /* 由呢一刻開始淡出（之前 3.6s = 完整閱讀） */
 const AFFIX_BANNER_FADE_SPAN = 600;  /* 淡出長度 */
@@ -2395,7 +2370,8 @@ function resetAffix() {
   affGrazeBonus = 0; affDark = 0; affHpDelta = 0;
 }
 /* 敵方彈速單一來源：難度乘數 × 詞綴乘數。之前散落 6 個 d.bulletSpdMul。 */
-function bulletSpeedMul() { return D().bulletSpdMul * affBulletSpd; }
+/* v0.39.0 #150：壓力段「擦彈達標」→ 下一段敵彈速度 ×0.8 */
+function bulletSpeedMul() { return D().bulletSpdMul * affBulletSpd * segActiveSpd; }
 /* 擦彈半徑：基礎 20 + 詞綴加成 */
 function grazeRadius() { return GRAZE_RADIUS + affGrazeBonus; }
 
@@ -2722,6 +2698,86 @@ function rollMinorAffix(rng, isMini) {
 /* 波次產生佇列（隨關卡時間推進而消耗） */
 let waveQueue = [];
 let waveCursor = 0;       /* index into waveQueue */
+/* ---------- v0.39.0 #150：壓力段（每 4.5–8 秒一組，平均 ≈7 秒）----------
+   ⚠️ 目的：批判分析實測「有意義嘅能力提升平均 51 秒一次、各關平均長 80 秒」
+      → 玩家喺一關之內只改變得自己一次，「等待」被當成「遊玩」。
+   ⚠️ 三種段目標嘅**行為要求互相衝突** → 玩家每段都要做真取捨：
+      擦彈（要主動靠近）· 清場（要壓前清埋）· 零傷（要保守）。
+   ⚠️ 回饋只作用於**下一段**（段結束即清）→ 唔會累積失控。
+   ⚠️ 失敗**唔懲罰**（冇扣血扣分，只係冇回饋 + chip 轉暗）
+      → 受眾係低耐性學生，懲罰只會令佢哋放棄。 */
+const SEG_T = 4000;         /* 段界 = 關卡時間超過 SEG_T 嘅嗰個波次（保證段長 ≤ 4s + 最長波間隔） */
+const SEG_KEYS    = ['graze', 'clear', 'safe'];
+let segIndex      = -1;      /* 當前段序（-1 = 未開始） */
+let segStartAt    = 0;       /* 當前段開始時嘅關卡時間（ms） */
+let segGoal       = null;    /* {key, need} */
+let segGrazeBase  = 0;       /* 段開始時嘅 grazeCount */
+let segHurt       = false;   /* 段內有冇真扣血 */
+let segActiveHp   = 1;       /* 當前段生效：敵血乘數 */
+let segActiveSpd  = 1;       /* 當前段生效：敵彈速度乘數 */
+let segNextHp     = 1;       /* 下一段生效 */
+let segNextSpd    = 1;
+let segChain      = 0;       /* 連續達標次數 → 分數倍率 */
+let segFlash      = 0;       /* 達標閃光 */
+let segMsg        = '';      /* 上浮訊息 */
+let segMsgT       = 0;
+/* 「清場」只計雜魚（⚠️ enemies 陣亦收敵彈，彈幕 3.6–10.4 秒先離場，
+   但段邊界只喺上一波後 3–4 秒 → 用 enemies.length 永遠達唔到）。 */
+function segGruntCount() { return enemies.filter(e => e.kind === 'grunt' && !e._dead).length; }
+
+/* 開新段：抽目標 + 記錄段起點 + 掛上上一段嘅回饋乘數 */
+function startSegment(nowMs) {
+  segIndex++;
+  segStartAt = nowMs;
+  /* ⚠️ 本關 seeded rng（RNG 規則 1）· stream 用獨立 13000 區段，唔撞詞綴 9000 / roll 11000 */
+  const rng = stageRngFor(runSeed, 13000 + lastStage * 10 + segIndex);
+  const key = SEG_KEYS[Math.floor(rng() * SEG_KEYS.length)];
+  segGoal = { key, need: Math.min(7, 3 + segIndex) };
+  segGrazeBase = grazeCount;
+  segHurt = false;
+  segActiveHp = segNextHp;  segNextHp = 1;
+  segActiveSpd = segNextSpd; segNextSpd = 1;
+  segFlash = 0;
+  console.log('[段] S' + lastStage + ' 段' + (segIndex + 1) + ' · 目標 ' + key + ' · 需 ' + segGoal.need);
+}
+
+/* 結算上一段：達標 → 派發**下一段**嘅回饋（唔等 boss，即刻改變戰鬥條件） */
+function settleSegment() {
+  if (!segGoal) return;
+  const g = segGoal;
+  let ok = false, why = '';
+  if (g.key === 'graze') {
+    const got = grazeCount - segGrazeBase;
+    ok = got >= g.need; why = got + '/' + g.need;
+  } else if (g.key === 'safe') {
+    ok = !segHurt; why = segHurt ? '受傷' : '冇受傷';
+  } else {
+    const gr = segGruntCount();
+    ok = gr === 0; why = ok ? '清場' : ('剩 ' + gr);
+  }
+  if (ok) {
+    if (g.key === 'graze') segNextSpd = 0.8;         /* 下一段敵彈慢 20% */
+    else if (g.key === 'clear') segNextHp = 0.8;      /* 下一段敵血薄 20% */
+    /* ⚠️ 零傷獎勵嘅盾要封頂（5）—— 唔封頂的話連續達標可以無限疊盾，
+       而「擋盾唔算受傷」令有盾玩家可以無成本刷零傷 → 死循環。 */
+    else if (g.key === 'safe' && ship && ship.shield < 5) ship.shield += 1;
+    segChain++;
+    const gain = Math.round(300 * segChain * (affScore || 1) * (styScore || 1));
+    runScore += gain;
+    segFlash = 1;
+    segMsg = '達標 +' + gain + ' · ' + (g.key === 'graze' ? '下段敵彈慢啲'
+      : g.key === 'clear' ? '下段敵人血薄啲' : '加 1 盾');
+    segMsgT = 1.4;
+    sfx('pick');
+    console.log('[段] 達標 ·', segMsg);
+  } else {
+    segChain = 0;
+    segNextHp = 1; segNextSpd = 1;
+    segMsg = '未達標（' + why + '）';
+    segMsgT = 1.0;
+    console.log('[段] 未達標 ·', why);
+  }
+}
 /* P1-5：boss 等波次打完先召喚（唔再一入關就出現）。舊做法令第一關 boss 4 秒就死、第二波 6 秒先出 → 玩家根本睇唔到 WAVE_TEMPLATES 內容。 */
 let bossSpawned = false;      /* 本關 boss 已召喚？ */
 let waveQueueDoneAt = null;   /* 佇列清空嘅時間戳，用嚟做保險超時 */
@@ -2772,15 +2828,9 @@ const SHIELD_ON_MS = 1800;
 const SHIELD_OFF_MS = 700;
 
 /* ---------- 擦彈（P1-6） ----------
-   STG 個核心：「擦住彈走」要比重彈更有回饋。之前呢個遊戲完全冇擦彈，
-   走位只有懲冇獎 —— 令 P1-5 加入嘅雜魚彈幕變成純粹嘅威脅。
-   設計三層：
-     1. 每粒彈只可以擦一次（_grazed 旗標）—— 否則一粒子彈喺判定圈內
-        停留 20–40 幀，會被重複計幾十次
-     2. 每次擦彈加分（可被 graze_s 強化乘大）
-     3. 每次擦彈累加能量，集齊就回充聚焦／炸彈冷卻 —— 令「主動靠近彈幕」
-        變成一種資源策略，而唔只係搏命
-*/
+   核心：「擦住彈走」要比重彈更有回饋（之前走位只有懲冇獎）。
+   三層：① 每粒彈只可擦一次（_grazed）—— 否則停留 20–40 幀會被重複計幾十次
+   ② 每次擦彈加分 ③ 累加能量集齊回充技能／炸彈冷卻 → 令「主動靠近彈幕」變成資源策略。 */
 const GRAZE_RADIUS   = 20;    /* 擦彈判定圈半徑（像素） */
 const GRAZE_SCORE    = 5;     /* 每次擦彈分數（PLAN v2 §計分） */
 const GRAZE_ENERGY_NEED = 10; /* 集幾多次回充一次 */
@@ -2898,7 +2948,8 @@ function spawnGruntFormation(opt) {
   else { baseHp = opt.hp || GRUNT_HP; score = GRUNT_SCORE; }
   /* 雜魚小詞綴（#45）：用同一關嘅 rng stream，唔影響波次組波 */
   const minor = rollMinorAffix(stageRngFor(runSeed, 7000 + lastStage), mini);
-  const hpRaw = baseHp * d.hpMul * affEnemyHp * styEnemyHp * (minor ? minor.hp : 1);
+  /* v0.39.0 #150：壓力段「清場達標」→ 下一段敵人血量 ×0.8 */
+  const hpRaw = baseHp * d.hpMul * affEnemyHp * styEnemyHp * (minor ? minor.hp : 1) * segActiveHp;
   const hp = Math.max(1, Math.round(hpRaw));
   for (let i = 0; i < n; i++) {
     /* 一排平均分佈喺畫面寬度中央 80% 範圍內 */
@@ -3028,11 +3079,9 @@ function emitWaveType(s, stageId, waveIdx) {
     case 'chaser':
     case 'bomber':
     case 'turret':
-/* v0.34.0 #126：splitter / rammer / lancer —— v3.11 #71 引入呢三種敵人時，
-只加咗 spawnGruntFormation() 嘅 hp/score/落速/role 旗標 + tick 行為 + 繪製 + sprite，
-但**漏咗 emitWaveType() 嘅 case** → switch 冇 default → 三種 type 落入空檔乜都唔做
-→ 嗰啲波次生成 0 隻敵人（實測 S3 17.2% / S4 18.7% / S5 18.3% 嘅波係空波）。
-⚠️ 呢度只係補返入口，行為邏輯零改動。完整理據見 PLAN.md #126。 */
+/* v0.34.0 #126：splitter / rammer / lancer —— #71 引入時只加咗 spawnGruntFormation() 嘅 hp/score/
+落速/role 旗標 + tick 行為 + 繪製 + sprite，但**漏咗 emitWaveType() 嘅 case** → switch 冇 default
+→ 三種 type 落入空檔乜都唔做 → 嗰啲波次生成 0 隻敵人（實測 S3 17.2% / S4 18.7% / S5 18.3% 空波）。 */
     case 'splitter':
     case 'rammer':
     case 'lancer': {
@@ -3612,12 +3661,10 @@ function hitStyleCard(px, py) {
 }
 
 function shipCardsLayout() {
-  /* v0.21.2：卡加大 + 垂直帶加闊，智慧白板手指易撳
-     v0.24.0：卡高 128 → 84（原本只用咗上面 65px，下面 63px 係空嘅，睇落似未填完嘅卡）。
-     觸控目標仍 96×84（遠高於 PLAN #20 要求嘅 64×64）。
-     v0.25.0 #90：卡高 84 → 96，多咗一行擺「節奏 / 專屬技能 / 被動」→ 學生 3 秒認得出三架機嘅分別。
-     v0.26.0 #96：機體由 3 架加到 5 架，1 行擺唔落 → 改成 **2 行 × 3 列** 網格，第 6 格留空。
-     ⚠️ 卡內容唔縮 —— 每張卡仍然要見到 sprite / 機名 / 節奏 / 專屬技能 icon+名 / 被動（#90）。 */
+  /* v0.21.2：卡加大 + 垂直帶加闊，智慧白板手指易撳。v0.24.0：卡高 128 → 84（原本只用咗上面 65px）。
+     v0.25.0 #90：卡高 84 → 96，多咗一行擺「節奏 / 專屬技能 / 被動」→ 3 秒認得出三架機嘅分別。
+     v0.26.0 #96：機體 3 → 5 架，1 行擺唔落 → 改成 **2 行 × 3 列** 網格，第 6 格留空。
+     ⚠️ 卡內容唔縮（sprite / 機名 / 節奏 / 專屬技能 icon+名 / 被動）。觸控目標仍 ≥64px。 */
   const w = 96, h = 96, gap = 10;
   const total = w * 3 + gap * 2;          /* 3 列 */
   const startX = (VIEW_W - total) / 2;
@@ -3964,10 +4011,8 @@ let isNewBest = false;          /* set on VICTORY entry, displayed on render */
 
 /* ---------- 專屬主動技能 + 炸彈（v0.25.0 · PLAN #87/#88）----------
    ⚠️ v0.24.0 之前左掣係「聚焦」（全機共用，零 per-ship 差異），v0.25.0 起改成**每架機專屬技能**：
-     A 衝刺 dash（向前突進 + 短暫無敵 + 彈速提升）· B 護盾 bulwark（補護盾 + 暫時唔會被打穿）
-     C 過熱 overheat（壓上：射速倍增 + 移速下降）
-   **右掣「炸彈」三架機共用** —— 炸彈係「萬能安全感」，唔應該因機體而變，
-   否則白板學生要學三套唔同嘅「救命掣」。三個技能施放瞬間都有**短暫慢動作**做共通回饋。 */
+     A 衝刺 dash（突進 + 無敵 + 彈速提升）· B 護盾 bulwark · C 過熱 overheat（射速倍增 + 移速下降）
+   **右掣「炸彈」三架機共用**（萬能安全感唔應該因機體而變）。三個技能施放都有**短暫慢動作**做回饋。 */
 const BOMB_IFRAME_MS = 1500;
 let skillActiveUntil   = 0;    /* 技能效果結束 */
 let skillCdUntil       = 0;    /* 技能冷卻完 */
@@ -4352,12 +4397,10 @@ const MISSILE_BURST_N = 3;
 const MISSILE_BURST_DMG = 0.4;   /* 相對母彈 dmg */
 const MISSILE_BURST_CAP = 6;     /* 爆散小彈同時存在上限，避免爆版 */
 
-/* v0.33.0 #123：形態卡 DPS 帶 —— 每張形態卡 × 每架機體嘅「每發傷害」乘數。
-⚠️ **點解唔改射速、改傷害？** 每種形態嘅「節奏」就係佢嘅玩法身份（導彈要慢 / 迴力鏢要往返 /
-軌道炮一發一線）→ 改射速會令手感完全唔同；而 DPS 對「每發傷害」係線性 → 用傷害乘數校準，
-節奏特徵全部保留。⚠️ **laser 特別注意**：佢嘅 DPS 由光束 tick 率（90ms → 11.1 次/秒）主導，
-**完全唔受 fireRate 影響** → 必須用傷害乘數（用射速乘數會 100% 冇效果 = 死卡）。
-凍結驗收線（PLAN #123）：每張卡 5 架機全部 ≥1.5×，同一張卡 max ÷ min ≤2×。表外一律 1。完整數據見 PLAN.md #123。 */
+/* v0.33.0 #123：形態卡 DPS 帶 —— 形態卡 × 機體嘅「每發傷害」乘數。
+⚠️ **唔改射速**：每種形態嘅「節奏」就係佢嘅玩法身份；而 DPS 對「每發傷害」係線性 → 用傷害乘數校準，
+節奏特徵全部保留。⚠️ **laser**：DPS 由光束 tick 率（11.1/s）主導，完全唔受 fireRate 影響
+→ 用射速乘數 = 100% 冇效果 = 死卡。驗收線（每卡 5 機 ≥1.5×、max÷min ≤2×）見 PLAN.md #123。 */
 const FORM_DPS_MUL = {
   /* 激光：光束 tick 率固定（11.1/s），傷害 = 機體子彈傷害 × 0.35 */
   laser:     { A:   1.1149, B:   0.7619, C:   0.1651, D:   0.5736, E:   1.2345 },
@@ -4383,11 +4426,10 @@ function applyShotFormCosts(s) {
     const m = row[s.chassis];
     if (typeof m === 'number' && isFinite(m) && m > 0) s.formDmgMul = m;
   }
-/* v0.28.0：呢兩個射速乘數原本係「對住壞咗嘅行為」訂嘅（迴力鏢／導彈當時打 boss 係 0 傷害 = 死卡）。
-修正後佢哋必定命中 boss（16.94 / 18.48 HP/s），比其他形態卡強 5–6 倍 → 變必揀卡 → 要重訂代價。
-⚠️ v0.33.0 #123：**呢啲乘數刻意保留唔改** —— 佢哋定嘅係每種形態嘅「節奏身份」；
-v0.28.0 嘅真正問題唔係「有冇射速代價」，係用絕對乘數對付差 3.75 倍嘅機體基礎射速
-→ 而家改用**傷害乘數（FORM_DPS_MUL）**校正，節奏不變。完整數據見 PLAN.md v0.28.0。 */
+/* v0.28.0：呢兩個射速乘數原本訂喺「壞咗嘅行為」上（迴力鏢／導彈打 boss 0 傷害 = 死卡），
+修正後強過其他形態卡 5–6 倍 → 變必揀卡。⚠️ v0.33.0 #123：**呢啲乘數刻意保留唔改** ——
+佢哋定嘅係每種形態嘅「節奏身份」；真正問題係用絕對乘數對付差 3.75 倍嘅機體射速
+→ 而家改用**傷害乘數（FORM_DPS_MUL）**校正，節奏不變。 */
   if (f === 'boomerang') s.fireRate *= 0.15;
   else if (f === 'missile') s.fireRate *= 0.07;
   else if (f === 'rail') s.fireRate *= 0.35;
@@ -4597,13 +4639,8 @@ function shipRampFactor() {
   return Math.min(RAMP_MAX, 1 + (ship._ramp || 0) * RAMP_GAIN);
 }
 /* 每幀更新 A 機嘅連射計數：停手超過 0.4 秒就回落
-   ⚠️ 連續性用「遊戲時間」（gameClockMs，固定時間步累加器）判定，
-      **唔用 wall-clock**：主迴圈用固定步累加器（見 loop()），
-      掉幀時遊戲時間會慢過真實時間，但至少**唔會**因為一次長停頓
-      就誤判成「玩家停手」而清走連射累積。
-      實機驗證發現過：內建瀏覽器將背景分頁節流到低 FPS 時，
-      wall-clock 400ms 判定會令 A 機永遠升唔到 ×1.6（招牌機制失效）。
-      改用遊戲時間後，低 FPS 裝置都照計。 */
+   ⚠️ 連續性用**遊戲時間**（gameClockMs）判定，**唔用 wall-clock**：掉幀時 wall-clock 400ms
+   會誤判成「玩家停手」→ 內建瀏覽器節流到低 FPS 時 A 機永遠升唔到 ×1.6（招牌機制失效）。 */
 function tickShipRhythm(dtMs) {
   if (!ship || ship.chassis !== 'A') return;
   if (ship._lastFireGameMs && (gameClockMs - ship._lastFireGameMs) <= RAMP_STEP_MS) {
@@ -4981,11 +5018,10 @@ function tickPlayerBullets(dtMs) {
             b.vx = (b.vx / cur) * s2;
             b.vy = (b.vy / cur) * s2;
           }
-          /* v0.28.0 死卡修正（巡航期加速）：v3.11 #70 寫「① 鎖定期慢速微追 ② **巡航期加速**」，
-             但巡航期**加返速度**嗰半從來冇實作 —— `_lockSpd` 只降一次就永久停喺 45%
-             （0.44 × 0.55 × 0.45 = 0.109 px/ms）→ 飛到 boss（388 → 80 = 308px）要 2826ms，
-             但導彈 `life` 只有 2200ms → **物理上飛唔到 boss**（實機 boss 血量 92 秒一啲都冇跌）。
-             而家鎖定期一過就恢復速度（再 ×1.15 加速，符合「巡航期加速」）。 */
+          /* v0.28.0 死卡修正（巡航期加速）：#70 寫「巡航期加速」但嗰半從來冇實作 ——
+             `_lockSpd` 只降一次就永久停喺 45%（0.109 px/ms）→ 飛到 boss 要 2826ms，
+             但導彈 `life` 只有 2200ms → **物理上飛唔到 boss**（實機 92 秒 boss 血量一啲都冇跌）。
+             而家鎖定期一過就恢復速度（再 ×1.15）。 */
           if (!locked && b._lockSpd != null && !b._lockRestored) {
             b._lockRestored = true;
             const cur = Math.hypot(b.vx, b.vy) || 1;
@@ -5309,13 +5345,9 @@ function killEnemy(e, opts) {
   if (tier.flash) screenFlash = Math.max(screenFlash, tier.flash);
   addTrauma(tier.trauma);
   hitStop(tier.stop);
-  /* ⚠️ v0.27.2：boss 都要 set _dead。
-     原本 boss 喺 `return 'boss'` 之前就 return 咗，所以 e._dead 永遠唔會 set
-     —— 死咗嘅 boss 仲留喺 enemies 入面當「仲生存」：
-     ① 同一幀如果第二個傷害源（激光 + 子彈）再打中，就會叫第二次 onBossDown
-        → 掉兩件裝備 + 分數雙計（激光路徑原本完全冇經 killEnemy，最易撞）。
-     ② 渲染同 tick 都會繼續當佢存在。
-     set 咗之後，tick 尾段嘅 cull 迴圈會統一 splice 走。 */
+  /* ⚠️ v0.27.2：boss 都要 set _dead。原本 boss 喺 `return 'boss'` 前就 return，
+     → 死咗嘅 boss 仲留喺 enemies 入面：① 同一幀第二個傷害源再打中 → 第二次 onBossDown
+     → 掉兩件裝備 + 分數雙計 ② 渲染同 tick 繼續當佢存在。set 咗之後 tick 尾段 cull 會 splice 走。 */
   e._dead = true;
   if (isBoss) return 'boss';   /* boss 死亡流程特別，caller 處理 */
   if (!skipScore) {
@@ -5354,11 +5386,9 @@ function bulletSurvivesHit(b) {
 }
 
 /* 玩家子彈 vs 敵人：命中判定（抽出嚟方便做行為測試）。
-⚠️ v0.28.0 **死卡修正**：form_rail 光束喺畫面畫到頂，但命中判定用 `|b.y - e.y| < hh`，
-而 **rail 子彈唔會郁**（b.y 永遠停喺機身）→ 實際只打中貼住機身嗰十幾像素 = **死卡**
-（揀咗 form_rail 幾乎打唔到嘢 → boss 永遠唔死 → **死鎖**，STAGE_3 卡死 200+ 秒）。
-修正：rail 判定改成**一整條直欄**，同畫面見到嘅光束一致。
-⚠️ laser 唔喺呢度判（laserTick 自己處理）。詳見 PLAN.md v0.28.0。 */
+⚠️ v0.28.0 **死卡修正**：form_rail 光束畫到頂，但判定用 `|b.y - e.y| < hh` 而 rail 子彈唔郁
+→ 只打中貼住機身嗰十幾像素 = **死卡**（boss 永遠唔死 → STAGE_3 卡死 200+ 秒）。
+修正：rail 判定改成**一整條直欄**。⚠️ laser 唔喺呢度判（laserTick 自己處理）。 */
 function playerBulletHits(b, e, halfW) {
   if (b.form === 'rail') {
     if (Math.abs(b.x - e.x) >= 11) return false;   /* 柱闊（同原本 hw 一致） */
@@ -5421,6 +5451,8 @@ function damageShip(n) {
     return false;
   }
   ship.hp -= (n || 1);
+  /* v0.39.0 #150：段目標「零傷」判定（只喺真扣血嗰刻；擋盾唔算） */
+  segHurt = true;
   /* v0.26.0 #94 通用技能「過載護盾」：真係扣到血嗰刻清走所有敵彈 + 立即 +3 盾。
      ⚠️ 用 `_dead` 旗標而唔係 splice —— 呢段係喺「敵方彈幕 vs 戰機」碰撞迴圈
         內部執行，直接 splice 會令外層迴圈索引錯位（漏檢一粒子彈）。
@@ -5485,6 +5517,10 @@ function tick(dtMs) {
     const stageMs = performance.now() - stageStartMs;
     while (waveCursor < waveQueue.length && waveQueue[waveCursor].at <= stageMs) {
       const w = waveQueue[waveCursor];
+      /* v0.39.0 #150：段邊界 —— 關卡時間超過 SEG_T 就開新段（實測段長 4.5–8 秒）
+         → 先結算上一段（派發下一段回饋），再開新段（掛上回饋乘數）。
+         ⚠️ 順序：settle 要喺 spawn 之前（clear 目標要睇上一段有冇殘留敵人）。 */
+      if (!segGoal || stageMs - segStartAt > SEG_T) { settleSegment(); startSegment(stageMs); }
       /* v0.35.0 #131：傳 wave index（必須喺 waveCursor++ 之前傳，否則 index 錯位） */
       for (const s of w.spawn) emitWaveType(s, lastStage, waveCursor);
       waveCursor++;
@@ -5510,6 +5546,9 @@ function tick(dtMs) {
       if (waveQueueDoneAt === null) waveQueueDoneAt = performance.now();
       const noGrunts = !enemies.some(e => e.kind === 'grunt' && !e._dead);
       if (noGrunts || performance.now() - waveQueueDoneAt > 8000) {
+        /* v0.39.0 #150：boss 前結算最後一段（尾段波數為奇數 → 冇新波觸發段邊界） */
+        settleSegment();
+        segGoal = null;
         /* #46 單次逆轉：S5 boss 出場前攔截一次，一局只有一次。
            喺 spawnBossFor 之前 return，等玩家揀完先出 boss。 */
         if (!reverseUsed && lastStage === REVERSE_STAGE) {
@@ -6317,7 +6356,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.38.0 · 智慧白板 · 橫向側欄', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.39.0 · 壓力段 · 每 7 秒一個目標', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -7418,15 +7457,54 @@ function drawGrazeFx() {
   }
 }
 
+/* v0.39.0 #150：壓力段目標 chip（左上角）
+ * ⚠️ 字級 12px（UI_STYLE_GUIDE 7 級）—— 唔可以用 9px：批判分析點名
+ *    「擦彈 0 10 次回充」用 9px = 有目標但睇唔見（4K 白板距離冇人讀到）。
+ * ⚠️ 位置 x 6 · y 34 —— 唔會撞 boss 血條（中央 x 78–242, y 32–87）。 */
+function drawSegmentChip() {
+  if (!ship || !isStage(fsm.cur) || !segGoal) return;
+  const x = 6, y = 34, w = 92, h = 18;
+  ctx.fillStyle = 'rgba(0,18,30,0.5)';
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = segFlash > 0 ? 'rgba(255,255,255,0.7)' : 'rgba(77,245,208,0.4)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x, y, w, h);
+  const g = segGoal;
+  let label = '', prog = -1;
+  if (g.key === 'graze') {
+    const got = Math.min(g.need, grazeCount - segGrazeBase);
+    label = '擦彈 ' + got + '/' + g.need;
+    prog = got / g.need;
+  } else if (g.key === 'safe') {
+    label = segHurt ? '零傷（已受傷）' : '零傷';
+  } else {
+    const gr = segGruntCount();
+    label = gr ? '清場 剩' + gr : '清場';
+  }
+  ctx.textAlign = 'left';
+  ctx.font = '12px monospace';
+  ctx.fillStyle = segFlash > 0 ? '#ffffff' : (segHurt ? '#f88' : '#8ff');
+  ctx.fillText(label, x + 4, y + 13);
+  if (prog >= 0) {
+    ctx.fillStyle = 'rgba(77,245,208,0.85)';
+    ctx.fillRect(x + 62, y + 14, 26 * prog, 3);
+  }
+  /* 達標／未達標上浮訊息（中央，1 秒內读完） */
+  if (segMsgT > 0) {
+    ctx.textAlign = 'center';
+    ctx.font = '14px monospace';
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillText(segMsg, VIEW_W / 2 + 1, 202);
+    ctx.fillStyle = segFlash > 0 ? '#fff' : '#fa6';
+    ctx.fillText(segMsg, VIEW_W / 2, 201);
+  }
+}
+
 function drawGrazeMeter() {
   if (!ship || !isStage(fsm.cur)) return;
-  /* v0.26.0 #95：能量條由**底部中央搬到頂部**——
-     底部中央而家俾「中下通用技能掣」（x 128–192, y 408–472）霸咗，
-     條擺喺底部會被掣蓋住。
-     新位置：頂部中央，喺「關卡+節奏」合併行（y 3–15）之下。
-     v0.30.0 #113：條由 y 62 → **y 27**、文字 baseline 由 58 → **24** ——
-     原本條頂到 y 67，而 boss 血條最低去到 y 26，兩者會撞
-     （HUD 蓋住 boss 血量，學生睇唔到 boss 點死）。而家頂部中央帶只到 y 31。 */
+  /* v0.26.0 #95：能量條由**底部中央搬到頂部**（底部俾通用技能掣霸咗）。
+     v0.30.0 #113：條 y 62 → **27**、文字 baseline 58 → **24** —— 原本條頂到 y 67 而 boss 血條
+     低到 y 26 → 相撞（學生睇唔到 boss 點死）。而家頂部中央帶只到 y 31。 */
   const w = 84, h = 5;
   const x = (VIEW_W - w) / 2, y = 27;
   ctx.fillStyle = 'rgba(0,0,0,0.55)';
@@ -7449,6 +7527,7 @@ function drawGrazeMeter() {
   drawHudChips();
   drawGrazeFx();
   drawGrazeMeter();
+  drawSegmentChip();
   drawPauseBtn();
   /* v0.30.0 #113：關卡名標籤**搬咗入 drawHudChips()**，同節奏狀態合併成一行
      （原本喺呢度獨立畫 y 6–22，令頂部中央蓋到 y 67，boss + 血條喺底下睇唔到）。
@@ -7492,7 +7571,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.38.0 已載入');
+console.log('[啟動] 末日救未來 v0.39.0 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */

@@ -38,7 +38,7 @@
   }
   /* v0.38.0 #143：智慧白板橫向側欄（canvas 零改動 → 縱向行為完全不變）。
      ⚠️ 字級用 vh：4K 白板睇得遠，固定 14px CSS px 會睇唔清。
-     ⚠️ 側欄係獨立 DOM → 唔會攞走觸控（遊戲只 listen canvas）。 */
+*/
   .wb-side{display:none;flex:1 1 0;min-width:0;height:100%;overflow:hidden;
     padding:2vh 16px;color:#8ac;flex-direction:column;gap:.5em;
     font:clamp(13px,2vh,34px)/1.35 ui-monospace,Menlo,monospace}
@@ -86,6 +86,7 @@
     <div class="row" id="hud-paused"></div>
     <div class="row accent" id="hud-tip">點擊畫面開始</div>
   </div>
+<script src="questions.js" onerror="window.__DSF_QUIZ_MISSING=1"></script>
 <script>
 'use strict';
 /* 末日救未來 — S0 scaffold：畫布 320×480 · 凍結狀態機 · 戰機 · 敵機 · 分頁可見度暫停（PLAN v2 #11/#13/#15/#16/#17） */
@@ -102,7 +103,7 @@ const PLAY_BOTTOM = 396;
 
 /* P0-4：拖曳跟手速度 = ship.speed × 呢個係數。
    ⚠️ 舊代碼 x += (target-x)*0.30 瞬移 → spd_s / spd_l 速度卡喺純拖曳裝置（iPad / 白板）完全無效 = 假卡。
-   改成受速度限制後移動有慣性：要預判，唔可以瞬移 dodging。 */
+*/
 const DRAG_SPEED_MULT = 2.4;
 
 /* 狀態機列舉（PLAN v2 #16） */
@@ -153,9 +154,8 @@ const stateLabel = (s) => STATE_LABEL[s] || s;
 
 /* SHIPS（PLAN #1：A速/B盾/C火 — 移速·子彈數·傷害·彈速·射速·盾 六軸） */
 /* ---------- 戰機（v0.25.0：純數值 → 機制差異，PLAN #87–#92）----------
-   三架機各 = 六軸 + 1 條攻擊節奏 + 1 條被動 + 1 個專屬主動技能。
    ⚠️ 右掣「炸彈」三架機共用；左掣係每架機專屬技能。
-   ⚠️ 節奏／被動／技能全部要一句話講得清（白板學生 3 秒讀得明）。零新卡、零新配色。 */
+*/
 const SHIPS = Object.freeze({
   A: {
     id:'A', name:'游隼', tag:'速',
@@ -199,9 +199,8 @@ const SHIPS = Object.freeze({
 const SHIP_IDS = Object.freeze(['A', 'B', 'C', 'D', 'E']);
 
 /* ---------- 通用技能（v0.26.0 · PLAN #94）----------
-   揀完機之後再 3 選 1：**跨機體通用**、**每局只揀一次**、揀完鎖死成局。
    ⚠️ **唔係強化卡** —— 唔經 UPGRADES 池，所以強化池仍然 26 張、零新卡。
-   ⚠️ 三個都要一句話講得清（延續 #90 可讀性規則）。 */
+*/
 const UNIVERSAL_SKILLS = Object.freeze({
   magnet: {
     id:'magnet', name:'磁力場', role:'控場', icon:'icon_magnet',
@@ -219,8 +218,8 @@ const UNIVERSAL_SKILLS = Object.freeze({
 const UNIVERSAL_IDS = Object.freeze(['magnet', 'recover', 'overload']);
 
 /* 元素層（#100–#101）· 元素 = 命中後發生咩事，形態 = 彈點樣飛 → 兩層完全正交，
-   所以 5 形態 × 5 元素 = 25 種配對**唔使任何配對特判**。
-   ⚠️ 每個元素每級一句話講得清（#90 可讀性規則）。⚠️ 顏色全部喺 pal() 24 色內。 */
+   ⚠️ 每個元素每級一句話講得清（#90 可讀性規則）。⚠️ 顏色全部喺 pal() 24 色內。 
+*/
 const ELEMENTS = Object.freeze({
   fire: {
     id:'fire', name:'火', tag:'打中會燒起',
@@ -448,7 +447,7 @@ function drawIcon(name, cx, cy, scale) {
 }
 /* v0.27.0 #105：彈藥染色 + 拖尾（元素色疊喺形態彈道上面 → 一眼認得出 build）。
    ⚠️ 染色用 offscreen canvas + `source-atop`，**唔用 ctx.filter**（低 FPS 白板裝置 filter 好慢）。
-   ⚠️ 結果按 `spriteName|tint` 快存 —— 唔好每幀重建 canvas。 */
+*/
 const tintCache = new Map();
 function getTintedSprite(name, tint) {
   const key = name + '|' + tint;
@@ -506,7 +505,7 @@ function drawIconPair(name, name2, cx, cy, scale) {
 
 /* 圖集 icon + 文字並排，整組水平置中於 cx。
    ⚠️ 唔可以 fillText(iconKey + ' ' + name) —— iconKey 係內部 sprite key → 玩家會見到
-      「icon_wind 逆風」呢類變數名。一律用 drawIcon 畫圖，文字淨係得個名。 */
+*/
 function drawIconWithText(iconName, text, cx, cy, iconScale, font, color, gap) {
   const prevFont = ctx.font, prevFill = ctx.fillStyle, prevAlign = ctx.textAlign;
   ctx.font = font;
@@ -524,7 +523,7 @@ function drawIconWithText(iconName, text, cx, cy, iconScale, font, color, gap) {
 
 /* 依實際像素寬度斷行（v3.13）· ⚠️ 唔可以用「字元數」硬斷（中文全形 ≈ 1em，emoji／全角標點寬度唔同）。
    ⚠️ v0.27.2：逐字斷行令「−25%」拆成「−」/「25%」→ 低耐性學生會讀錯。
-   改成**原子**切法：符號(+ − × ÷) + 數字 + 小數 + 百分比 當成一個原子，永遠唔拆開。 */
+*/
 function wrapText(ctx, text, maxWidth) {
   const lines = [];
   let line = '';
@@ -552,7 +551,7 @@ const STAGE_THEME = Object.freeze({
 });
 /* v0.32.0 背景場景三層縱深（#120）· 遠景（細/淡/慢）、中景、近景（貼地線 PLAY_BOTTOM = 396）。
    ⚠️ 舊 baseY = VIEW_H-10 = 470 落喺能力掣區（y 408–472）底下 → S1/S2 樓宇 100% 睇唔到。
-   ⚠️ 每關專屬 prop 家族，**唔可以跨關共用**（否則 S5 會出現維港樓宇 = §V11 AI 失敗模式）。 */
+*/
 const BG_FLOOR = 396;   /* 近景貼地線 = 遊戲區底（PLAY_BOTTOM），唔可以再落喺能力掣區 */
 const BG_LAYERS = [
   { scale: 0.55, alpha: 0.40, sx: 0.06, n: 7 },   /* 遠景：細、淡、慢 */
@@ -580,9 +579,7 @@ let bgScroll = 0;
 let animT = 0;
 
 /* ---------- v0.29.0 gamedev-feel：trauma cam + hit-stop + ship pop ----------
-   規則：① 只震**繪圖 offset**，唔改 ship.x/y／碰撞 ② trauma² + sin（唔好每 frame Math.random）
-   ③ juice 分層：graze < grunt kill < elite < hurt < bomb < boss
-   ④ hit-stop 用 real-time；sim 停、render 繼續 ⑤ prefers-reduced-motion → 跳過 shake */
+*/
 const REDUCED_MOTION = (typeof matchMedia === 'function')
   && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const cam = { x: 0, y: 0, trauma: 0, decay: 2.2, max: 14 };
@@ -653,10 +650,8 @@ function spawnBoom(x, y, power) {
 }
 
 /* ---------- v0.27.0 #105：元素粒子 + 屏幕效果 ----------
-   原本所有武器／所有敵人共用 spark + boom 兩種特效，所以畫面「唔華麗」。
-   而家每種元素有自己嘅命中特效：火焰上升、冰晶碎裂、電弧閃、光點擴散、暗影收縮。
    ⚠️ **粒子總量有上限** —— 智慧白板低 FPS 裝置唔可以被粒子拖死。
-   ⚠️ 每種粒子都有程序化 fallback（sprite 未就緒 / 名錯都唔會靜靜咩都冇）。 */
+*/
 const PARTICLE_CAP = 260;
 function pushParticle(p) {
   if (particles.length >= PARTICLE_CAP) return false;
@@ -1060,7 +1055,7 @@ function tickVfx(dtMs) {
 }
 /* v0.31.0 效能：per-stage 快取 gradient 對象（原本每幀 2 次 allocation = GC 來源）。
   ⚠️ 離屏圖層烘焙試過 → 廢棄：逐像素差 146k/153k px（alpha 精度損失）→ 為未證實收益引入視覺誤差。
-    只保留「快取對象」（0 allocation、100% 像素精確）。 */
+*/
 const bgGradCache = new Map();
 function bgGradient(stageId, kind) {
   let g = bgGradCache.get(stageId + '@' + kind);
@@ -1080,8 +1075,7 @@ function bgGradient(stageId, kind) {
 }
 /* v0.32.0 背景三層縱深（#120）· 定義見 L570。
    ⚠️ 貼地線 BG_FLOOR = 396 = PLAY_BOTTOM（VIEW_H-10 = 470 落喺能力掣區底下，玩家從未見過場景）。
-   ⚠️ 每 instance 速度唔同（0.78–1.22），否則成層同一速度 = 機械感。
-   ⚠️ 背景刻意暗：樓宇對 sky ~1.85:1 → 玩家彈（青）同雜魚（粉）照樣跳出。 */
+*/
 function drawScenery(stageId) {
   const sc = SCENERY[stageId] || SCENERY[1];
   for (let L = 0; L < BG_LAYERS.length; L++) {
@@ -1202,9 +1196,7 @@ function drawFlash() {
 function drawHudChips() {
   if (!ship || !isStage(fsm.cur)) return;
   /* P0-4：血心 / 護盾由畫面底部移去頂部。舊位置 y=VIEW_H-18 啱啱落喺
-     FOCUS / BOMB 按鈕（y 408–472）入面，實機截圖見到紅心壓住
-     "READY" 字樣、盾 icon 壓住炸彈按鈕。頂部兩邊本身係空嘅
-     （關卡名 chip 喺正中間 x 100–220）。 */
+*/
   for (let i = 0; i < ship.maxHp; i++) {
     const on = i < ship.hp;
     ctx.globalAlpha = on ? 1 : 0.28;
@@ -1233,8 +1225,8 @@ function drawHudChips() {
     ctx.fillText('+' + (ids.length - 5), 12 + 5 * 17, 41);
   }
   /* v0.25.0 #90：機體節奏狀態。#95：位置搬到**頂部中央**。#113：同關卡 chip 合併成一行（y 3–15）
-     → 擦彈文字（baseline 24）+ 條（y 27–31）。
-     ⚠️ 頂部中央帶只到 **y 31**，boss 本體（y 37 起）同血條（y 32 起）完全離開。 */
+     ⚠️ 頂部中央帶只到 **y 31**，boss 本體（y 37 起）同血條（y 32 起）完全離開。 
+*/
   /* #113：關卡 chip + 節奏 chip 合併成**一行**（y 3–15）→ boss 本體同血條完全離開呢個範圍。
      ⚠️ 放唔落就淨係畫節奏狀態（動態資訊比靜態關卡名更紧要）。 */
   if (ship && isStage(fsm.cur) && SHIPS[ship.chassis]) {
@@ -1286,8 +1278,7 @@ function drawHudChips() {
   }
   /* v0.27.0 #100：元素 chip（左上角）· 玩家要一眼見到 build 身份。
      ⚠️ 位置避開右上（暫停+喇叭）、頂部中央（關卡／節奏／擦彈條）、底部 y 408+（三個能力掣）
-        → 淨係左上 y 50–64 空著。
-     ⚠️ 所以「裝備掉落橫幅」由 y 56 下移到 y 82，唔好撞。 */
+*/
   if (ship.elementA) {
     const ea = ELEMENTS[ship.elementA];
     const eb = ship.elementB ? ELEMENTS[ship.elementB] : null;
@@ -1318,8 +1309,7 @@ function drawHudChips() {
     ctx.textAlign = 'left';
   }
   /* ⚠️ v0.27.2 搬走：裝備掉落橫幅原本喺戰鬥 HUD 畫，但 boss 死即刻跳 CHOICE modal
-     → 正常節奏下玩家**根本睇唔到**；而且佢 y 82–104 同詞綴橫幅 y 74–118 完全重疊。
-     現在改喺 CHOICE 畫面畫 —— 一定見到，唔會撞位。見 drawLootBanner()。 */
+*/
 }
 
 /* ---------- 2. 輸入層（PLAN v2 #15、#18-19） ---------- */
@@ -1481,6 +1471,8 @@ function onStateEnter(s, from) {
     waveQueueDoneAt = null;
     /* v0.39.0 #150：壓力段狀態重置（每關重新開始計段） */
     segIndex = -1; segGoal = null; segHurt = false;
+    /* v0.42.0 #153：答題計數每關重置（每關上限 5 次） */
+    quizCount = 0; quizStreak = 0;
     segActiveHp = 1; segActiveSpd = 1; segNextHp = 1; segNextSpd = 1;
     segChain = 0; segFlash = 0; segMsg = ''; segMsgT = 0;
     /* 關卡鐘每次重置；run 鐘只喺新開局重置（全程 count-up） */
@@ -1583,8 +1575,7 @@ function onStateEnter(s, from) {
 const UPGRADES = [
   /* cat 分類標籤（PLAN v3.8 #40）：只做顯示，唔限制揀卡。
      ⚠️ 原設計係「每類最多持有 1 件」，已廢除——4 類 × 每局 4 次強化會令
-     第 4 次抽卡只得一個選項（冇得揀），而且每局必然集齊 4 類，
-     build 每次一樣，同「每局唔同」嘅目標相反。見 PLAN #40。 */
+*/
   { id:'spd_s',   cat:'靈活', nameZh:'速度+',    icon:'icon_speed',   desc:'移動速度 +15%',          mod:(s,n)=>{ s.speed *= Math.pow(1.15, n); } },
   { id:'spd_l',   cat:'靈活', nameZh:'速度++',   icon:'icon_speed', icon2:'icon_speed',  desc:'移速 +30%｜炸彈冷卻 +20%',
               mod:(s,n)=>{ s.speed *= Math.pow(1.30, n); },
@@ -1606,9 +1597,7 @@ const UPGRADES = [
   { id:'dmg_s',   cat:'火力', nameZh:'火力+',    icon:'icon_damage',   desc:'子彈傷害 +1',            mod:(s,n)=>{ s.bulletDmg = (s.bulletDmg||1) + n; } },
   { id:'bomb_cd', cat:'輔助', nameZh:'炸彈冷卻-',icon:'icon_bomb',   desc:'炸彈冷卻 -25%',          mod:(s,n)=>{ s.bombCD *= Math.pow(0.75, n); } },
   /* v0.25.0 #89：原本係「聚焦+」（全機共用嘅減速）。機制差異化之後「聚焦」冇咗，
-     呢張卡嘅語意改成**專屬技能冷卻 −25%**——三架機都有專屬技能，所以呢張卡
-     對三架機都仍然有意義（id 保持 focus_d，強化池仍然 26 張、零新卡）。
-     skillCdMul 係純乘數（<1 = 快啲），下限 0.4，唔會變成無限連環。 */
+*/
   { id:'focus_d', cat:'輔助', nameZh:'技能快', icon:'icon_focus', desc:'專屬技能冷卻 −25%',
     mod:(s,n)=>{ s.skillCdMul = Math.max(0.4, (s.skillCdMul||1) * Math.pow(0.75, n)); } },
   { id:'pierce',  cat:'火力', nameZh:'貫穿',     icon:'icon_pierce',    desc:'子彈多穿過一個敵人',   mod:(s,n)=>{ s.pierce += n; } },
@@ -1644,9 +1633,8 @@ const CAT_COLOR = { '防禦':'#7fe', '火力':'#fa7', '靈活':'#af7', '輔助':
 let playerStacks = Object.create(null);
 
 /* ---------- 單次逆轉（PLAN v3.8 #46）----------
-   **一局只有一次**，喺 S5 boss 出場前 3 選 1：將一件現有強化升級為傳說級
-   （= 該強化額外多行一次 mod）。製造記憶點。
-   ⚠️ PLAN 明文：唔使玩家自己判斷邊件最弱——由系統直接挑 3 個候選畀玩家揀。 */
+   ⚠️ PLAN 明文：唔使玩家自己判斷邊件最弱——由系統直接挑 3 個候選畀玩家揀。 
+*/
 let legendary = Object.create(null);   /* id → true（傳說級） */
 let reverseOffer  = [];                 /* 3 個候選強化 def */
 let reversePicked = -1;
@@ -1656,8 +1644,7 @@ let reverseUsed   = false;             /* 一局只有一次 */
    唔夠就補未持有嘅（至少有得揀，唔會開天窗）。 */
 function buildReverseOffer() {
   /* ⚠️ v0.33.0 #124：排除全部 form_* ——
-     傳說級形態卡嘅 `mod` 係寫死 `s.shotForm = X`（再行一次都係同一個值）→ 升級完機體行為一模一樣 = 零效果死卡。
-     連**未持有嘅**形態卡都要排除（否則玩家會揀到「升級咗但完全冇變化」嘅卡）。 */
+*/
   /* v0.35.0 #133：加排 gun_2 / gun_3 —— 加法型+封頂 → 傳說級疊到 2 級撞正上限（飽和風險）。 */
   const deadLegendary = (u) => u.id.indexOf('form_') === 0 || u.id === 'gun_2' || u.id === 'gun_3';
   const owned = UPGRADES.filter(u => (playerStacks[u.id] || 0) > 0 && !legendary[u.id] && !deadLegendary(u));
@@ -1695,8 +1682,7 @@ function applyPickedReverse(idx) {
 
 /* ---------- 7. 實體 ---------- */
 /* ship 欄位：chassis/x/y/hp/maxHp/shield/speed/fireRate/fireCD/bulletCount/bulletDmg/
-   bulletSpd/bombCD/skillId/skillCdBase/skillCdMul/_holdMs/_ramp/_lastFireAt/_burstCount/
-   _burstReady/_bulSpdMul/_bulSpdMulUntil/pierce/resurrect/grazeMult/masterStacks */
+*/
 let ship = null;
 let bullets = [];           /* { x, y, vx, vy, owner:'player' } */
 let enemies = [];           /* spiral(=boss) | grunt(=雜魚) | bullet | laser */
@@ -1721,8 +1707,7 @@ function pickShip(id) {
     bulletSpd: c.bulletSpd,
     bombCD: 12000 * d.bombCdMul,
     /* v0.25.0 專屬主動技能（#87/#88）。原本嘅 focusFactor/focusDuration/focusCD
-       係「全機共用嘅聚焦」欄位，機制差異化之後**全部清走**——
-       留低冇 game logic 讀嘅欄位就係死代碼（強化池驗收守則）。 */
+*/
     skillId: c.skill,
     skillCdBase: c.skillCD,
     skillCdMul: 1,
@@ -1817,7 +1802,7 @@ function applyUpgrades() {
   }
   /* PLAN v3.8 #46 單次逆轉：被升級成傳說級嘅強化，額外多行一次 mod(s, 1)。
      ⚠️ 擺喺普通 mod 之後、cost 之前——傳說級係「額外一份」，唔係取代原本嗰份，
-        所以原卡嘅代價照計（fr_l 傳說級 = 射速 ×1.5 ×1.5，護盾照樣 −1）。 */
+*/
   for (const up of UPGRADES) {
     if (legendary[up.id]) up.mod(ship, 1);
   }
@@ -1859,8 +1844,8 @@ let stylePicked = -1;
 let stylePending = false;
 
 /* v0.28.0 強化卡池抽法（#109）① **只抽本局未見過嘅卡**（同一張唔會喺同一局出現兩次 → 疊加削弱，刻意接受嘅取捨）
-   ② **玩法卡加權**（14 張；權重 3/3/2，純數值 1）③ **保底：每次 boss 3 張至少 1 張玩法卡**。
-   ⚠️「玩法卡」定義必須係**單一真實來源**（isPlayStyleCard）。 */
+   ⚠️「玩法卡」定義必須係**單一真實來源**（isPlayStyleCard）。 
+*/
 let seenUpgradeIds = new Set();   /* 本局已出現過嘅強化卡 id（唔跨局） */
 
 /** 攻擊向玩法卡（5 張形態 + 4 張 tag = 9 張）—— **前綴規則嘅唯一真實來源**
@@ -1897,7 +1882,7 @@ function pickWeightedIndex(list, wf) {
 }
 /** 玩家係咪已經持有形態卡？（v0.33.0 #124 變體 D：**一局只出一次形態卡**）
  *  ⚠️ #124 之後「轉職」標籤係死代碼已移除；`applyPickedUpgrade()` 嘅形態互斥清走
- *     變成唔可能觸發，但仍保留做安全網（將來加卡池入口都唔會兩張形態卡同時生效）。 */
+*/
 function hasFormCard() {
   for (const id of Object.keys(playerStacks)) {
     if (id.indexOf('form_') === 0) return true;
@@ -1907,9 +1892,8 @@ function hasFormCard() {
 function generateChoiceOffer() {
   /* v0.28.0：只抽本局**未見過**嘅卡（12 個卡位全部唔同） */
   /* ⚠️ v0.33.0 #124 變體 D：玩家一局只出**一次**形態卡 ——
-     持有形態卡之後，之後嘅 boss 唔再出任何 form_*（卡池層面，唔係「唔揀就唔算」）。
      ⚠️ **四條路徑要一齊過濾**（只改一條會漏）：
-        ① 主池（未見過）② 池抽乾 fallback（由全池補）③ 全池用盡嘅最後防線 ④ 保底玩法卡 fallback。 */
+*/
   const formUsed = hasFormCard();
   const isBlockedForm = (u) => formUsed && u.id && u.id.indexOf('form_') === 0;
   /* v0.35.0 #135：激光唔產生子彈實體 → 4 張 tag 喺雷射形態冇作用對象（實機 0 粒子彈）→ 互斥。
@@ -1966,7 +1950,7 @@ function applyPickedUpgrade(idx) {
   const up = choiceOffer[idx];
   /* v3.10：主彈形態互斥（揀新形態就清走其他 form_* 疊加）。
      ⚠️ #124 變體 D（一局只出一次形態卡）之下呢段唔可能觸發 → 保留做安全網。
-        applyUpgrades() 係逐個 UPGRADES 行 mod → 後寫嗰張贏，唔係玩家揀嗰張贏 = 靜靜讀錯值。 */
+*/
   if (up.id && up.id.indexOf('form_') === 0) {
     for (const id of Object.keys(playerStacks)) {
       if (id.indexOf('form_') === 0 && id !== up.id) delete playerStacks[id];
@@ -2081,7 +2065,7 @@ function stageRngFor(seed, stageId) {
 
 /* 敵人 roll（#36）· chunk 抽出之後再 roll 敵配（殼固定：關名/timeline/waveCount 唔變）。
    ⚠️ 獨立 stream（11000 + stageId）→ 改敵配唔會打亂波次序列。
-   ⚠️ **喺 chunk 層級 roll 一次**（唔係逐個 spawn 項）→ 同一波唔會互相矛盾。每關只 roll 一次。 */
+*/
 const ENEMY_ROLL = {
   /* escape 基準，按關遞增（#36）：elitePct = 機率變精英，specialPct = 機率變特殊角色 */
   1: { elitePct: 0.00, specialPct: 0.00, jitter: 0 },   /* S1 教學關：零 roll */
@@ -2097,7 +2081,7 @@ let enemyRoll = Object.create(null);
 
 /* v0.34.0 #127：本關 pool 出現過嘅敵人 type 集合（教學閘依據）。
    ⚠️ **唔可以用 chunk id 前綴推斷家族**（`sp_2` 前綴 sp_ = spray 但 type = splitter）
-      → 必須攤平 `WAVE_CHUNKS[id].spawn[].type`。 */
+*/
 function poolEnemyTypes(stageId) {
   const cfg = STAGE_RAND[stageId] || {};
   const ids = cfg.slots ? cfg.slots.flat() : (cfg.pool || []);
@@ -2285,9 +2269,8 @@ function assembleWaves(stageId, seed) {
 }
 
 /* ---------- 本局詞綴（PLAN v3.8 #43）----------
-   入關 roll 1 個：影響本關、**零選擇**（只顯示）、**零持久**（唔入 localStorage）。
-   文案 ≤12 字 + 一個 icon（#48）。
-   ⚠️ 每個欄位都必須有 game logic 讀，否則就係死卡（項目驗收標準）。 */
+   ⚠️ 每個欄位都必須有 game logic 讀，否則就係死卡（項目驗收標準）。 
+*/
 const AFFIX_DEFS = [
   /* #48：desc ≤12 字，一個 icon + 一個數字，唔解釋機制。橫幅位闊度有限，唔加空格。 */
   { id:'headwind', name:'逆風', icon:'icon_wind', desc:'敵速+25%｜分×1.3',  score:1.3,  enemySpd:1.25 },
@@ -2298,8 +2281,7 @@ const AFFIX_DEFS = [
   { id:'static',   name:'靜電', icon:'icon_static',   desc:'敵彈−18%｜分×1.2',  score:1.2,  bulletSpd:0.82 },
 ];
 /* v0.31.0 #116/#117：詞綴橫幅 + 停電暗幕（實測調校）。
-   ① 閱讀 ≈3.6s → 橫幅總長 **4200ms**、fade **3600ms**。
-   ② 停電 alpha 0.42 → 雜魚對比 3.01:1（零餘量）→ **0.22** → 雜魚 **4.60:1** / 玩家彈 **5.13:1**（過 AA）。 */
+*/
 const AFFIX_BANNER_MS       = 4200;  /* 橫幅總顯示時間 */
 const AFFIX_BANNER_FADE_MS  = 3600;  /* 由呢一刻開始淡出（之前 3.6s = 完整閱讀） */
 const AFFIX_BANNER_FADE_SPAN = 600;  /* 淡出長度 */
@@ -2346,9 +2328,7 @@ function bulletSpeedMul() { return D().bulletSpdMul * affBulletSpd * segActiveSp
 function grazeRadius() { return GRAZE_RADIUS + affGrazeBonus; }
 
 /* ---------- 本關風格（PLAN v3.8 #41）----------
-   boss 後、下一關前 3 選 1，決定本關偏向。**只喺 S2 同 S4 出現**（#47 排程）。
-   實作上唔係新系統：只係改 assembleWaves() 嘅 pool 組成 + 幾個乘數。
-   每個風格都係「有代價、有回報」，冇單方面加難（驗收標準，同 #43 一致）。 */
+*/
 const STAGE_STYLES = [
   /* 彈幕關：偏彈幕家族（spray/aim/ranger），雜魚少但擦彈賺。
      代價 = 擊殺分少（打得慢）。 */
@@ -2360,7 +2340,7 @@ const STAGE_STYLES = [
     prefer:{ g:3, mt:2, mix:2 }, count:1.4, enemyHp:0.75, score:1.3 },
   /* 精英關：偏精英家族（elite/mortar/dive/snake），血厚但 boss 射速慢 → 代價 = 場面慢、打得耐。
    ⚠️ S2 未解鎖任何精英家族（pool 只有 g/sp/ai/rg）→ 精英關喺 S2 退化成「純血厚 + boss 慢」。
-   呢個係設計現實：風格唔可以越關 intro 新敵人，寧願降級都唔偷新怪。 */
+*/
   { id:'elite',   name:'精英關', icon:'icon_iron', desc:'敵血+35%｜boss慢',
     prefer:{ el:3, mt:2, dv:2, sn:2, sh:2 }, count:0.9, enemyHp:1.35, bossFire:0.75, score:1.15 },
 ];
@@ -2383,7 +2363,7 @@ function resetStyle() {
 }
 /* 風格改變本關組波 pool（#41：唔係新系統，係改 roll 參數）。
    ⚠️ 只喺關卡**自己嘅 pool** 入面加權，唔 intro 越關 chunk，且保證每個 id 至少出現一次 → 冇「死格」。
-   ⚠️ 唔可以用「寫死 chunk 清單再取交集」（實測 S2×精英 / S5×彈幕 / S5×雜兵 交集 < 4 會 fallback 返原 pool = 揀咗冇效果）。 */
+*/
 function stylePool(stageId, basePool) {
   if (!stageStyle || !stageStyle.prefer) return basePool;
   if (stageId === 1) return basePool;      /* S1 教學關：風格唔准介入 */
@@ -2416,9 +2396,8 @@ function styleHasMatch(stageId, style) {
 }
 
 /* ---------- Boss 裝備（PLAN v3.8 #44）----------
-   boss 死後必掉 1 件**被動裝備**：唔佔卡位、**零選擇**（只顯示）。
-   裝備欄顯示於機體狀態列（HUD 血心嗰行下面）。
-   ⚠️ 每個欄位都必須有 game logic 讀，否則就係死卡（項目驗收標準）。 */
+   ⚠️ 每個欄位都必須有 game logic 讀，否則就係死卡（項目驗收標準）。 
+*/
 const LOOT_DEFS = [
   /* 穿甲彈：子彈傷害 +1。⚠️ 原案寫「子彈破精英護盾」但查證：shield 同 elite 係唔同 type，
      遊戲內冇「護盾擋傷害」機制 → 照原案會變零效果死卡。改為純傷害加值。 */
@@ -2438,8 +2417,7 @@ const LOOT_DEFS = [
 let loots = Object.create(null);
 let lootShownAt = 0;          /* 裝備掉落橫幅時間戳（v0.27.2 起只做記錄，橫幅改喺 CHOICE 畫面畫） */
 /* v0.27.2：最近一件裝備（用嚟畫 CHOICE 畫面嘅掉落提示）。
-   原本橫幅靠 lootShownAt + isStage() 判斷要唔要畫，但 boss 死即刻跳去
-   CHOICE 呢個 modal，所以正常節奏下玩家根本睇唔到（見 drawHudChips 嘅註解）。 */
+*/
 let lootBanner = null;
 let armorUsed = false;        /* 「保險」用咗未（一次性） */
 
@@ -2607,9 +2585,8 @@ function eventGamble() {
 }
 
 /* ---------- 中斷事件（PLAN v3.8 #42）----------
-   關卡中途一次，3 選 1 即時生效。只喺 S3 出現（#47 排程）。
    ⚠️ 關卡中途暫停 → 用同 resumePause() 一樣嘅「繞過 fsm.set()」機制恢復，
-      否則 onStateEnter 會重置場上實體（清子彈／敵機／重新入關），玩家會死無辜。 */
+*/
 const EVENT_DEFS = [
   /* 搶救物資：即時 +800 分，下關雜魚血 +30%（即時獎勵 vs 長線代價）。#48：desc ≤12 字、數字前後唔加空格、縮寫受詞。 */
   { id:'salvage', name:'搶救物資', icon:'icon_supply', desc:'+800｜下關血+30%',
@@ -2666,20 +2643,10 @@ let waveQueue = [];
 let waveCursor = 0;       /* index into waveQueue */
 /* ---------- v0.40.0 #151：壓力段（段界 = 關卡時間制，段長同 need 上限由難度檔決定）----------
    ⚠️ 目的：批判分析實測「有意義嘅能力提升平均 51 秒一次、各關平均長 80 秒」
-      → 玩家喺一關之內只改變得自己一次，「等待」被當成「遊玩」。
-   ⚠️ 三種段目標嘅**行為要求互相衝突** → 玩家每段都要做真取捨：
-      擊殺（要壓前進攻）· 清場（要清埋殘留）· 零傷（要保守）。
-   ⚠️ v0.40.0：段目標「擦彈」→ **「擊殺 N 隻」** —— 用戶實測回饋「擦彈對學生太難」：
-      擦彈要主動靠近子彈 20px（貼彈會死），對低耐性學生係反直覺 + N 曲線（3→7）超出能力。
-      擦彈本身**功能不變**（分數 + 技能/炸彈 CD 回充），只係唔再當段目標。
-   ⚠️ 回饋只作用於**下一段**（段結束即清）→ 唔會累積失控。
-   ⚠️ 失敗**唔懲罰**（冇扣血扣分，只係冇回饋 + chip 轉暗）
-      → 受眾係低耐性學生，懲罰只會令佢哋放棄。 */
+*/
 /* ---------- v0.41.0 #152：段目標難度三檔（老師按學生能力揀 · 數值全部實測）----------
-   簡單 segT 8000 / cap 2 → 段 11.1 秒 · 平均打 1.8 隻 · 每隻 6.4 秒
-   標準 segT 8000 / cap 4 → 段 11.1 秒 · 平均打 2.5 隻 · 每隻 5.8 秒
-   硬   segT 5000 / cap 6 → 段  7.7 秒 · 平均打 2.9 隻 · 每隻 3.6 秒
-   ⚠️ 簡單檔刻意**唔**靠加時間做難度 —— 加時間會令「零傷」目標更難（同「簡單」相反）。 */
+   ⚠️ 簡單檔刻意**唔**靠加時間做難度 —— 加時間會令「零傷」目標更難（同「簡單」相反）。 
+*/
 const SEG_DIFFS = [
   { name:'簡單', segT:8000, cap:2 },
   { name:'標準', segT:8000, cap:4 },
@@ -2710,7 +2677,7 @@ let segMsgT       = 0;
 function segGruntCount() { return enemies.filter(e => e.kind === 'grunt' && !e._dead).length; }
 /* 本段第一波嘅身體敵數 —— waveQueue 入關時已組好 + 敵配 roll 已抽 → 段界時已知。
    ⚠️ 身體敵 = 冇 speed 嘅 spawn（13 種身體敵 vs 4 種純彈幕，真資料驗證過）。
-   用嚟做「擊殺 N 隻」嘅 need 上限 → **保證可達**（第一波打晒就達標），唔會製造死目標。 */
+*/
 function segBodyN(waveIdx) {
   const w = waveQueue[waveIdx];
   if (!w) return 0;
@@ -2775,6 +2742,216 @@ function settleSegment() {
     console.log('[段] 未達標 ·', why);
   }
 }
+
+/* ---------- v0.42.0 #153：答題系統（quizOpen flag · 唔經狀態機）----------
+ * ⚠️ 唔可以用 STATE.PAUSED 做答題：PAUSED 分支喺繪製場景之前 return → 暫停時場景全部唔畫。
+*/
+const QUIZ_LS        = 'dsf.quizBank';
+const QUIZ_EVERY     = 3;      /* 每 3 段彈一條 */
+const QUIZ_MAX       = 5;      /* 每關上限 */
+const QUIZ_GRACE_MS  = 800;    /* 恢復後無敵（抖返） */
+const QUIZ_COUNTDOWN = 1200;   /* 3-2-1 倒數 */
+const QUIZ_SCORE     = 300;    /* 答對 base 分 */
+const QUIZ_PANEL     = { x:16, y:60, w:288, h:360 };   /* 結果階段（多咗結果行 + 解說 + 掣） */
+const QUIZ_PANEL_Q   = { x:16, y:60, w:288, h:300 };   /* 問題階段（淨題目 + 選項 + 提示） */
+let quizBank = [], quizOpen = false, quizPhase = 0, quizQ = null;
+let quizPick = -1, quizOk = false, quizStartedAtMs = 0;
+let quizGraceUntil = 0, quizStreak = 0, quizCount = 0, quizLastId = '';
+let quizPending = false, quizCdUntil = 0;
+
+/* 讀字串（lsRead 係數字版 · parseFloat(null)=NaN → 返 0，讀唔到 JSON） */
+function lsReadStr(key) {
+  try { return localStorage.getItem(key); } catch (e) { return null; }
+}
+/* 逐條驗證（PLAN #153 R8）· 壞題丟棄（id 缺／重複 / a 出界 / opts 重複） */
+function validateQuizBank(arr) {
+  const good = [], seen = {};
+  if (!Array.isArray(arr)) return { good: good, bad: 0 };
+  for (const q of arr) {
+    if (!q || typeof q.id !== 'string' || !q.id || seen[q.id]) continue;
+    if (q.subj !== 'math' && q.subj !== 'chinese') continue;
+    if (!Array.isArray(q.opts) || q.opts.length < 2 || q.opts.length > 4) continue;
+    if (typeof q.a !== 'number' || q.a < 0 || q.a >= q.opts.length) continue;
+    const set = {};
+    let dup = false;
+    for (const o of q.opts) { if (typeof o !== 'string' || !o || set[o]) dup = true; set[o] = 1; }
+    if (dup) continue;
+    seen[q.id] = 1;
+    good.push({ id:q.id, subj:q.subj, level:q.level|0, q:String(q.q||''),
+                opts:q.opts.map(String), a:q.a, why:String(q.why||''), tags:(q.tags||[]).slice(0,6) });
+  }
+  return { good: good, bad: arr.length - good.length };
+}
+/* 題庫載入：老師貼上（localStorage JSON）優先 → 內置 questions.js → 都冇就提示 */
+function loadQuizBank() {
+  let src = null;
+  const raw = lsReadStr(QUIZ_LS);
+  if (raw) { try { src = JSON.parse(raw); } catch (e) { console.log('[答題] 貼上嘅題庫 JSON 解析失敗'); } }
+  if (!src && window.DSF_QUIZ_BANK) src = window.DSF_QUIZ_BANK;
+  const v = validateQuizBank(src || []);
+  quizBank = v.good;
+  console.log('[答題] 題庫 ' + quizBank.length + ' 條'
+    + (v.bad ? '（丟棄 ' + v.bad + ' 條壞題）' : '')
+    + (quizBank.length ? '' : (window.__DSF_QUIZ_MISSING ? ' · questions.js 載入失敗' : ' · 冇題目')));
+  return quizBank.length;
+}
+/* 抽題：seeded rng（RNG 規則 4 · 唔准 Math.random）+ 唔連續出同一條 */
+function pickQuizQuestion() {
+  if (!quizBank.length) return null;
+  const rng = stageRngFor(runSeed, 14000 + lastStage * 10 + segIndex);
+  let i = Math.floor(rng() * quizBank.length) % quizBank.length;
+  for (let k = 0; k < quizBank.length && quizBank[i].id === quizLastId; k++) i = (i + 1) % quizBank.length;
+  quizLastId = quizBank[i].id;
+  return quizBank[i];
+}
+/* 段界觸發：每 3 段彈一條（segIndex % 3 === 2）· 每關上限 5 次 · 冇題庫就唔彈 */
+function maybeQuiz() {
+  if (segIndex % QUIZ_EVERY !== QUIZ_EVERY - 1) return false;
+  if (quizCount >= QUIZ_MAX) return false;
+  if (!quizBank.length) { segMsg = '題庫未載入'; segMsgT = 1.6; return false; }
+  quizPending = true;
+  return true;
+}
+function openQuiz() {
+  quizPending = false;
+  const q = pickQuizQuestion();
+  if (!q) { segMsg = '題庫未載入'; segMsgT = 1.6; return false; }
+  quizQ = q; quizPick = -1; quizOk = false; quizPhase = 1;
+  quizOpen = true; quizCount++;
+  quizStartedAtMs = performance.now();
+  console.log('[答題] 第 ' + quizCount + ' 條 · ' + q.id + ' · ' + q.q);
+  return true;
+}
+/* 答完 → 倒數 → 關閉：時間唔推走段計時 + 0.8 秒無敵（抖返三層） */
+function closeQuiz() {
+  const elapsed = performance.now() - quizStartedAtMs;
+  if (stageStartMs !== null) stageStartMs += elapsed;
+  if (runStartMs !== null) runStartMs += elapsed;
+  quizGraceUntil = performance.now() + QUIZ_GRACE_MS;
+  quizOpen = false; quizPhase = 0; quizQ = null; quizPick = -1;
+  console.log('[答題] 結束 · 凍結 ' + Math.round(elapsed) + 'ms');
+}
+function answerQuiz(i) {
+  if (quizPhase !== 1 || !quizQ) return;
+  quizPick = i; quizOk = (i === quizQ.a); quizPhase = 2;
+  if (quizOk) {
+    quizStreak++;
+    const gain = Math.round(QUIZ_SCORE * quizStreak * (affScore || 1) * (styScore || 1));
+    runScore += gain;
+    /* ⚠️ 唔派盾 —— 擋盾唔算受傷（segHurt 只喺真扣血嗰刻 set）⇒ 派盾會令「零傷」段目標變易 */
+    skillCdUntil = 0; bombCDUntil = 0;
+    segMsg = '答對 +' + gain; segMsgT = 1.4; sfx('pick');
+  } else {
+    quizStreak = 0;
+    segMsg = '答錯（睇答案）'; segMsgT = 1.4; sfx('hit');
+  }
+}
+function retryQuiz() { if (quizPhase === 2 && !quizOk) { quizPick = -1; quizOk = false; quizPhase = 1; } }
+function nextQuiz()  { if (quizPhase === 2) { quizPhase = 3; quizCdUntil = performance.now() + QUIZ_COUNTDOWN; } }
+
+/* 答題 UI 幾何（320×480 座標 · 觸控目標 ≥64×64） */
+function quizGeom() {
+  const p = (quizPhase >= 2 ? QUIZ_PANEL : QUIZ_PANEL_Q), cw = 120, ch = 72, gap = 16, bw = 120;
+  return { p: p, cw: cw, ch: ch, gap: gap,
+           gx: p.x + (p.w - (cw * 2 + gap)) / 2, oy: p.y + 82,
+           bx: p.x + (p.w - (bw * 2 + gap)) / 2, by: p.y + 292, bw: bw, bh: 64 };
+}
+function quizOptRect(g, i) {
+  return { x: g.gx + (i % 2) * (g.cw + g.gap), y: g.oy + Math.floor(i / 2) * (g.ch + g.gap), w: g.cw, h: g.ch };
+}
+function quizBtnRect(g, i) {
+  /* 答對（得「繼續」）→ 置中；答錯（兩個掣）→ 左右並排 */
+  const x = quizOk ? g.p.x + (g.p.w - g.bw) / 2 : g.bx + i * (g.bw + g.gap);
+  return { x: x, y: g.by, w: g.bw, h: g.bh };
+}
+/* 答題期間只處理答題掣，其餘撳觸一律吞掉（唔准移機／開火） */
+function handleQuizTap(px, py) {
+  if (!quizOpen || !quizQ) return false;
+  const g = quizGeom();
+  if (quizPhase === 1) {
+    for (let i = 0; i < quizQ.opts.length; i++) {
+      const r = quizOptRect(g, i);
+      if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) { answerQuiz(i); return true; }
+    }
+    return true;
+  }
+  if (quizPhase === 2) {
+    const c = quizBtnRect(g, 1);
+    if (px >= c.x && px <= c.x + c.w && py >= c.y && py <= c.y + c.h) { nextQuiz(); return true; }
+    if (!quizOk) {
+      const r = quizBtnRect(g, 0);
+      if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) { retryQuiz(); return true; }
+    }
+  }
+  return true;
+}
+function drawQuizBtn(r, label, col) {
+  ctx.fillStyle = 'rgba(0,50,70,0.95)'; ctx.fillRect(r.x, r.y, r.w, r.h);
+  ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.strokeRect(r.x, r.y, r.w, r.h);
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 16px monospace';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(label, r.x + r.w / 2, r.y + r.h / 2);
+}
+function drawQuiz() {
+  if (!quizOpen || !quizQ) return;
+  if (fsm.cur === STATE.PAUSED) return;   /* 分頁暫停唔畫（睇唔到都唔緊要） */
+  const g = quizGeom(), p = g.p;
+  ctx.save();
+  /* 壓暗但唔黑屏 —— 場景照畫（敵彈／血條／段目標 chip 全部可見） */
+  ctx.fillStyle = 'rgba(2,10,20,0.82)';
+  ctx.fillRect(-24, -24, VIEW_W + 48, VIEW_H + 48);
+  ctx.fillStyle = 'rgba(4,18,30,0.96)';
+  ctx.fillRect(p.x, p.y, p.w, p.h);
+  ctx.strokeStyle = 'rgba(77,245,208,0.75)'; ctx.lineWidth = 2;
+  ctx.strokeRect(p.x, p.y, p.w, p.h);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = 'bold 12px monospace'; ctx.fillStyle = '#4df5d0';
+  ctx.fillText(quizQ.subj === 'math' ? '數學' : '語文', p.x + p.w / 2, p.y + 18);
+  ctx.font = '14px monospace'; ctx.fillStyle = '#eaf6ff';
+  const ql = wrapText(ctx, quizQ.q, p.w - 32).slice(0, 3);
+  for (let i = 0; i < ql.length; i++) ctx.fillText(ql[i], p.x + p.w / 2, p.y + 42 + i * 16);
+  const n = quizQ.opts.length;
+  for (let i = 0; i < n; i++) {
+    const r = quizOptRect(g, i);
+    const right = quizPhase >= 2 && i === quizQ.a;
+    const picked = i === quizPick;
+    let bg = 'rgba(0,40,60,0.92)', bd = 'rgba(77,245,208,0.55)', fg = '#dff';
+    if (right) { bg = 'rgba(0,90,60,0.95)'; bd = '#4df5d0'; fg = '#fff'; }
+    else if (picked) { bg = 'rgba(95,22,32,0.95)'; bd = '#f88'; fg = '#fff'; }
+    ctx.fillStyle = bg; ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.strokeStyle = bd; ctx.lineWidth = 2; ctx.strokeRect(r.x, r.y, r.w, r.h);
+    ctx.fillStyle = fg; ctx.font = '12px monospace';
+    const ol = wrapText(ctx, quizQ.opts[i], r.w - 12).slice(0, 3);
+    const oy = r.y + r.h / 2 - (ol.length - 1) * 8;
+    for (let k = 0; k < ol.length; k++) ctx.fillText(ol[k], r.x + r.w / 2, oy + k * 16);
+  }
+  if (quizPhase === 1) {
+    ctx.font = '14px monospace'; ctx.fillStyle = '#8ff';
+    ctx.fillText('撳選項作答', p.x + p.w / 2, p.y + 256);
+    ctx.font = '12px monospace'; ctx.fillStyle = '#89a';
+    ctx.fillText('第 ' + quizCount + ' / ' + QUIZ_MAX + ' 條 · 連續答對 ' + quizStreak + ' 次',
+                 p.x + p.w / 2, p.y + 280);
+  }
+  if (quizPhase >= 2) {
+    ctx.font = 'bold 14px monospace';
+    ctx.fillStyle = quizOk ? '#4df5d0' : '#f88';
+    ctx.fillText((quizOk ? '✓ 答對' : '✗ 答錯') + '　' + quizQ.opts[quizQ.a], p.x + p.w / 2, p.y + 256);
+    ctx.font = '12px monospace'; ctx.fillStyle = '#cde';
+    const wl = wrapText(ctx, quizQ.why || '', p.w - 32).slice(0, 2);
+    for (let i = 0; i < wl.length; i++) ctx.fillText(wl[i], p.x + p.w / 2, p.y + 270 + i * 13);
+    drawQuizBtn(quizBtnRect(g, 1), '繼續', '#4df5d0');
+    if (!quizOk) drawQuizBtn(quizBtnRect(g, 0), '再試', '#ffd166');
+  }
+  if (quizPhase === 3) {
+    const left = Math.max(0, quizCdUntil - performance.now());
+    const num = Math.min(3, Math.ceil(left / (QUIZ_COUNTDOWN / 3)));
+    ctx.fillStyle = 'rgba(2,10,20,0.92)';
+    ctx.fillRect(VIEW_W / 2 - 44, VIEW_H / 2 - 44, 88, 88);
+    ctx.font = 'bold 32px monospace'; ctx.fillStyle = '#fff';
+    ctx.fillText(String(num), VIEW_W / 2, VIEW_H / 2);
+  }
+  ctx.restore();
+}
 /* P1-5：boss 等波次打完先召喚（唔再一入關就出現）。舊做法令第一關 boss 4 秒就死、第二波 6 秒先出 → 玩家根本睇唔到 WAVE_TEMPLATES 內容。 */
 let bossSpawned = false;      /* 本關 boss 已召喚？ */
 let waveQueueDoneAt = null;   /* 佇列清空嘅時間戳，用嚟做保險超時 */
@@ -2806,8 +2983,7 @@ const BOMBER_RING_SPD = 0.085;  /* 自爆環形彈速 */
 const CHASER_LOCK_MS  = 600;    /* 追蹤型鎖定期：頭 600ms 唔修正方向（預警期） */
 const BOMBER_FUSE_MS  = 500;    /* 自爆型引信：入觸發圈後停低 500ms 先爆 */
 /* v0.37.0 #141：玩家自己嘅子彈「視覺退後」—— 實測視覺質量比 9.1:1（玩家彈佔畫面
-   4.92% vs 敵方威脅 0.54%），學生第一眼望到嘅係自己嘅彈而唔係要避嘅威脅。
-   alpha 0.45 → 玩家彈對比度 3.4:1，低過敵彈 5.9:1（眼自動偏向危險物體）。 */
+*/
 const PLAYER_BULLET_ALPHA = 0.45;
 const TURRET_HOLD_Y   = 82;     /* 炮台落到呢個高度就定住 */
 const TURRET_SHIELD    = 14;     /* 炮台護盾值（先食傷害，打穿先入肉） */
@@ -2825,9 +3001,7 @@ const SHIELD_ON_MS = 1800;
 const SHIELD_OFF_MS = 700;
 
 /* ---------- 擦彈（P1-6） ----------
-   核心：「擦住彈走」要比重彈更有回饋（之前走位只有懲冇獎）。
-   三層：① 每粒彈只可擦一次（_grazed）—— 否則停留 20–40 幀會被重複計幾十次
-   ② 每次擦彈加分 ③ 累加能量集齊回充技能／炸彈冷卻 → 令「主動靠近彈幕」變成資源策略。 */
+*/
 const GRAZE_RADIUS   = 20;    /* 擦彈判定圈半徑（像素） */
 const GRAZE_SCORE    = 5;     /* 每次擦彈分數（PLAN v2 §計分） */
 const GRAZE_ENERGY_NEED = 10; /* 集幾多次回充一次 */
@@ -2849,8 +3023,7 @@ function doGraze(ex, ey) {
   grazeEnergy++;
   addTrauma(FEEL.graze.trauma);
   /* 集滿一次就回充兩個技能嘅冷卻，令走位可以「賺」返炸彈
-     v0.25.0：回充目標由「聚焦」改成**專屬技能**（#88）。
-     A 機被動 = 擦彈回充 ×2（靠貼彈賺返技能 CD）。 */
+*/
   if (grazeEnergy >= GRAZE_ENERGY_NEED) {
     grazeEnergy -= GRAZE_ENERGY_NEED;
     /* A 機「靈活」被動：擦彈回充速度 ×2 */
@@ -2904,9 +3077,7 @@ function spawnBossFor(stageId) {
 }
 
 /* P1-5：雜魚編隊產生器。
-   P1-5 之前場上只有 boss一種可擊殺目標，所以「貫穿」呢類需要多目標嘅
-   強化根本無處生效（見 UPGRADES 註釋）。加入雜魚之後先有東西可以貫穿。
-   v0.11：+sniper / shield / swarm（仍 kind=grunt，用 role 旗標） */
+*/
 function spawnGruntFormation(opt) {
   /* 詞綴數量加成（#43）+ 風格數量加成（#41）：Math.ceil 確保最少 +1，
      唔會有「加成咗但一件都冇多」嘅情況 */
@@ -3053,14 +3224,11 @@ function spawnSwarmChildren(ex, ey) {
 function emitWaveType(s, stageId, waveIdx) {
   /* 由畫面頂部產生指定類型嘅彈幕／雜魚
      ⚠️ waveIdx 係 #36 敵配 roll 用：入面會套用本關 roll 出嚟嘅數量／角色。
-        冇傳（null）就完全用原本 spawn 定義 —— S1 教學關走呢條路。
-        ⚠️ v0.35.0 #131：由 chunkId 改成 wave index（每波獨立 roll）。 */
+*/
   const roll = waveIdx != null ? enemyRollFor(waveIdx) : null;
   /* RNG 規則 4：tick() 路徑唔准用 Math.random()。
-     呢個 helper 令 emitWaveType 入面所有隨機（彈幕橫向擺位、初始角度、
-     散射速度）全部由 runSeed 決定 —— 同 seed → 同畫面，可完整複現。
      ⚠️ 實作時發現原本呢個函式有 5 處 Math.random()，全部未 seed 化，
-        令「同 seed 同波次」只保證咗波次組成，唔保證彈幕擺位。已修正。 */
+*/
   const jr = stageRngFor(runSeed, 12000 + lastStage);
   const cx = VIEW_W / 2;
   const bMul = bulletSpeedMul();
@@ -3078,13 +3246,12 @@ function emitWaveType(s, stageId, waveIdx) {
     case 'turret':
 /* v0.34.0 #126：splitter / rammer / lancer。
    ⚠️ #71 漏咗 emitWaveType() 嘅 case → switch 冇 default → 三種 type 落入空檔 → 嗰啲波次生成 0 隻敵人
-      （實測 S3 17.2% / S4 18.7% / S5 18.3% 空波）。加新 enemy type 一定要同時加 case。 */
+*/
     case 'splitter':
     case 'rammer':
     case 'lancer': {
       /* #36：角色 roll 有結果就用佢，冇就保留 chunk 原定類型。
-         count jitter 一併注入（注入 opt.count，唔改 opt 本身——waveQueue 係
-         每次入關重新 assemble 嘅，但仍然唔好污染原始定義）。 */
+*/
       const base = roll && roll.type ? Object.assign({}, s, { type: roll.type }) : Object.assign({}, s);
       if (roll && roll.add) base.count = Math.max(1, (s.count || 1) + roll.add);
       spawnGruntFormation(base);
@@ -3177,8 +3344,8 @@ function isMenuState(s) {
 }
 
 /* 觸控去重（v0.27.1）· 支援 Pointer Events 嘅瀏覽器一次實體觸控會派 pointerdown + touchstart
-   → 一次撳處理兩次 → 選單連跳兩級。
-   ⚠️ 去重**只喺選單畫面生效**（戰鬥中吞咗撳 = 玩家移唔到）。 */
+   ⚠️ 去重**只喺選單畫面生效**（戰鬥中吞咗撳 = 玩家移唔到）。 
+*/
 const MENU_TAP_DEDUP_MS = 120;   /* 同一個物理觸控嘅兩個事件相隔 < 10ms；人手連撳 > 150ms */
 const MENU_TAP_DEDUP_PX = 32;    /* 座標容差：同一個掣嘅兩次事件座標幾乎一樣 */
 /* ⚠️ 狀態用 object 容器（唔係 3 個 module 層 let）——
@@ -3203,6 +3370,8 @@ function handleMenuTap(clientX, clientY) {
   }
   const px = (clientX - rect.left) * VIEW_W / rect.width;
   const py = (clientY - rect.top)  * VIEW_H / rect.height;
+  /* v0.42.0 #153：答題中 —— 只處理答題掣，其餘撳觸一律吞掉（唔准移機／開火） */
+  if (quizOpen) { handleQuizTap(px, py); return true; }
   if (handleAudioPanelTap(px, py)) return true;
   if (fsm.cur === STATE.TITLE) { fsm.set(STATE.DIFF_SELECT); return true; }
   if (fsm.cur === STATE.DIFF_SELECT) {
@@ -3347,8 +3516,7 @@ function aimFromClient(clientX, clientY) {
 }
 
 /* PC 滑鼠：window 級 mousemove —— 唔依賴 canvas hover、唔使撳住左鍵。
-   舊實作只 listen canvas pointermove，部分瀏覽器／嵌入環境
-   無 buttons 時唔派 pointermove 去 canvas，導致一定要 click-drag。 */
+*/
 function onDesktopAimMove(e) {
   if (!isStage(fsm.cur) || !ship) return;
   /* iPad 合成 mouse：touch 進行中忽略，避免拖完彈一次 */
@@ -3404,7 +3572,7 @@ canvas.addEventListener('touchstart', (e) => {
   const t = e.touches[0];
   /* 只處理選單；戰鬥拖曳仍走 pointer。
      ⚠️ v0.27.1：用 isMenuState() 取代手寫 state 清單（原本漏咗 SKILL_PICK /
-        ELEMENT_PICK / ELEM_CHOICE，令呢啲畫面喺觸控裝置唔 preventDefault）。 */
+*/
   if (isMenuState(fsm.cur)) {
     if (handleMenuTap(t.clientX, t.clientY)) {
       e.preventDefault();
@@ -3448,7 +3616,7 @@ window.addEventListener('keydown', (e) => {
   }
   /* 用鍵盤揀難度
      ⚠️ 每個選單分支**必須 return**（action 會改 fsm.cur）——用 if 而唔係 else-if 會繼續落到
-        下一個 if 再執行一次 → 一次按鍵連跳兩級，玩家見唔到中間畫面。 */
+*/
   if (fsm.cur === STATE.DIFF_SELECT) {
     if (k === '1') selectDiffAndContinue(1);
     else if (k === '2') selectDiffAndContinue(2);
@@ -3554,8 +3722,7 @@ window.addEventListener('keyup', (e) => {
 
 /* 開局唯一入口：每次開一局喺呢度產生新 seed。
    ⚠️ 唔可以放喺 resetRunFresh() —— 嗰度只喺一局完結（goRetry / goTitle）時叫，
-   今次開局唔經過佢，會令 runSeed 永遠係 0（實測踩過）。
-   放喺呢度就保證「一局一次」，兩條路徑（首次開局 / 重試）都覆蓋到。 */
+*/
 function pickShipAndStart(id) {
   try {
     if (!id || !SHIPS[id]) {
@@ -3650,7 +3817,7 @@ function hitStyleCard(px, py) {
 function shipCardsLayout() {
   /* v0.21.2 卡加大 + 垂直帶加闊（白板手指易撳）· 卡高 96（多咗一行擺節奏／專屬技能／被動 → 3 秒認得出機體分別）。
      ⚠️ 機體 3 → 5 架 → **2 行 × 3 列** 網格，第 6 格留空。
-     ⚠️ 卡內容唔縮（sprite／機名／節奏／專屬技能／被動），觸控目標仍 ≥64px。 */
+*/
   const w = 96, h = 96, gap = 10;
   const total = w * 3 + gap * 2;          /* 3 列 */
   const startX = (VIEW_W - total) / 2;
@@ -3817,6 +3984,8 @@ function endFreezeClocks() {
   const gap = performance.now() - pausedAtMs;
   if (runStartMs   !== null) runStartMs   += gap;
   if (stageStartMs !== null) stageStartMs += gap;
+  /* v0.42.0 #153：答題期間分頁暫停 → gap 唔可以重複計入答題時間（否則段計時倒退） */
+  if (quizOpen) quizStartedAtMs += gap;
   pausedAtMs = null;
 }
 
@@ -3824,6 +3993,8 @@ function endFreezeClocks() {
 function enterPause(reason) {
   if (fsm.cur === STATE.PAUSED) return false;
   if (!isStage(fsm.cur)) return false;
+  /* v0.42.0 #153：答題中唔准手動暫停（PAUSED 分支唔畫場景 → 答題畫面會消失） */
+  if (quizOpen && (reason || 'manual') === 'manual') return false;
   beginFreezeClocks();
   fsm.prev = fsm.cur;
   pauseReason = reason || 'manual';
@@ -4073,7 +4244,7 @@ function trySkill() {
 
 /* 通用技能（#94/#95）· 跨機體通用嘅第二條主動能力，掣喺中間（中下）。
    ⚠️ 每局只揀一次（SKILL_PICK），揀完鎖死成局。⚠️ **唔係強化卡**（唔經 UPGRADES 池）。
-   ⚠️ CD 係**全局**（唔跟機體），三個都唔同（12/10/15 秒）→ 玩家唔會用「CD 最短」判斷邊個好。 */
+*/
 const MAGNET_RADIUS = 95;      /* 磁力場作用半徑（px） */
 const MAGNET_SLOW   = 0.08;    /* 磁力場內敵彈速度剩返 8%（近乎吸住） */
 const MAGNET_PULL   = 0.02;    /* 磁力場內敵彈每秒被拉近嘅距離（px/ms） */
@@ -4211,7 +4382,7 @@ function buildElemChoiceOffer() {
   const baseMaxed = baseLv >= ELEMENT_MAX_LV;
   /* 卡 1：基底升級（滿 L3 就變「專精」）。
      ⚠️ 已經攞咗「專精」就唔好再出基底卡 —— 嗰張卡揀咗都冇任何效果（死卡）。
-        改成出 3 張副元素卡，所以每次都係 3 張有得揀嘅卡。 */
+*/
   const wantBase = !(ship.elementMaster && baseMaxed);
   if (wantBase) {
     out.push({ kind:'base', elemId:base, lv:baseLv + 1, master: baseMaxed });
@@ -4288,8 +4459,8 @@ function tryBomb() {
 }
 function abilityBtns() {
   /* 觸控 ≥64×64，底部三個 —— 先判按鈕，避免同拖曳衝突。#95：左 = 機體專屬技能 / 中 = 通用技能 / 右 = 炸彈。
-     x = 8 / 128 / 248（完美對稱），y = VIEW_H − 72 = 408。
-     ⚠️ 炸彈仍然係全機共用（#88）。左掣 label 跟機體技能名（#90 可讀性規則）。 */
+     ⚠️ 炸彈仍然係全機共用（#88）。左掣 label 跟機體技能名（#90 可讀性規則）。 
+*/
   const w = 64, h = 64, m = 8;
   const c = ship ? SHIPS[ship.chassis] : null;
   const u = ship && ship.universalId ? UNIVERSAL_SKILLS[ship.universalId] : null;
@@ -4378,8 +4549,7 @@ const MISSILE_BURST_CAP = 6;     /* 爆散小彈同時存在上限，避免爆�
 
 /* v0.33.0 #123：形態卡 DPS 帶 —— 形態卡 × 機體嘅「每發傷害」乘數。
 ⚠️ **唔改射速**：每種形態嘅「節奏」就係佢嘅玩法身份；而 DPS 對「每發傷害」係線性 → 用傷害乘數校準，
-節奏特徵全部保留。⚠️ **laser**：DPS 由光束 tick 率（11.1/s）主導，完全唔受 fireRate 影響
-→ 用射速乘數 = 100% 冇效果 = 死卡。驗收線（每卡 5 機 ≥1.5×、max÷min ≤2×）見 PLAN.md #123。 */
+*/
 const FORM_DPS_MUL = {
   /* 激光：光束 tick 率固定（11.1/s），傷害 = 機體子彈傷害 × 0.35 */
   laser:     { A:   1.1149, B:   0.7619, C:   0.1651, D:   0.5736, E:   1.2345 },
@@ -4398,7 +4568,7 @@ function applyShotFormCosts(s) {
   const f = s.shotForm || 'bolt';
   /* v0.33.0 #123：形態卡 DPS 帶 —— 傷害乘數（表 = FORM_DPS_MUL）。
      ⚠️ 呢個欄位由 game logic 讀（spawnPlayerShot / fireLaser / laserTick），
-        所以每次 applyUpgrades() 都會全量重算 → 永遠同當前形態一致。 */
+*/
   s.formDmgMul = 1;
   const row = FORM_DPS_MUL[f];
   if (row) {
@@ -4407,8 +4577,7 @@ function applyShotFormCosts(s) {
   }
 /* v0.28.0：呢兩個射速乘數原本訂喺「壞咗嘅行為」上（迴力鏢／導彈打 boss 0 傷害 = 死卡），
 修正後強過其他形態卡 5–6 倍 → 變必揀卡。⚠️ v0.33.0 #123：**呢啲乘數刻意保留唔改** ——
-佢哋定嘅係每種形態嘅「節奏身份」；真正問題係用絕對乘數對付差 3.75 倍嘅機體射速
-→ 而家改用**傷害乘數（FORM_DPS_MUL）**校正，節奏不變。 */
+*/
   if (f === 'boomerang') s.fireRate *= 0.15;
   else if (f === 'missile') s.fireRate *= 0.07;
   else if (f === 'rail') s.fireRate *= 0.35;
@@ -4448,7 +4617,7 @@ function nearestEnemy(x, y) {
 }
 /** 追擊目標（慢速彈體用）：**場上有 boss 就鎖 boss，冇 boss 先追最近敵人**。
  *  ⚠️ boss 會橫向游走而雜魚永遠比 boss 近 → 每幀追「最近雜魚」= 100% 撞唔到 boss
- *     （v0.28.0 實機：form_miss 揀咗 92 秒 boss 血量一啲都冇跌）。⚠️ 只限 missile/boomerang。 */
+*/
 function bossOrNearest(x, y) {
   for (const e of enemies) {
     if (e.kind === 'spiral' && !e._dead) return e;
@@ -4463,8 +4632,7 @@ function pushPlayerBullet(b) {
 
 /* v3.11 #68：laser 持續光束（機身跟隨嘅光柱）。
    ⚠️ **真正持續**：shotForm === laser 时光柱常駐（唔靠射速維持），每幀線上判定，
-      同一敵人只計一次（_laserHitSet）。
-   ⚠️ 唔可以做成「開火時亮 120ms」——C 機發射間隔 200ms → 熄 80ms，閃到根本睇唔到。 */
+*/
 const LASER_W = 8;                 /* 光束半寬 */
 const LASER_LEN = 460;             /* 光束長度（畫面高 480，由機身向上） */
 const LASER_DMG_TICK_MS = 90;      /* 同一敵人最少隔幾多 ms 先可以再被打 */
@@ -4531,8 +4699,7 @@ function laserTick(ship, dtMs) {
       if (e.kind === 'spiral') {
         runScore += BOSS_SCORE * 0.05 * affScore * styScore;
         /* ⚠️ v0.27.2：boss 一定要經 killEnemy() → onBossDown()。
-           原本直接叫 onBossDown(e) → 冇爆炸特效、_dead 唔 set，
-           同一幀再中彈會叫第二次 onBossDown → 掉兩件裝備 + 分數雙計。 */
+*/
         if (e.hp <= 0) {
           if (killEnemy(e, { skipScore: true }) === 'boss') { onBossDown(e); return; }
         }
@@ -4587,12 +4754,8 @@ function onBossDown(e) {
 /* v3.11 #74：wave 連射計數（持續壓住 → 波越闊） */
 let waveShotCount = 0;
 /* ---------- 機體攻擊節奏（v0.25.0 · PLAN #87）----------
-   三架機嘅節奏差異全部喺呢層，唔掂操控層（白板學生唔使重新學操作），
-   亦都唔掂 6 種形態卡同 4 個 tag（#92「形態無關」原則）。
-     A 連射加速：連住唔停手，每 0.4 秒射速 +8%，上限 ×1.6；停手 0.4 秒回落。
-     B 齊射扇形：每 3 發普通之後，第 4 發變 3 發 ±20° 扇形。
-     C 重炮擊退：單發粗彈，命中會將雜魚打飛。
-   ⚠️ 每個常數都必須有 game logic 讀，否則就係死代碼。 */
+   ⚠️ 每個常數都必須有 game logic 讀，否則就係死代碼。 
+*/
 const RAMP_STEP_MS = 400;                 /* 每連住 0.4 秒升一級 */
 const RAMP_GAIN   = 0.08;                 /* 每級 +8% 射速 */
 const RAMP_MAX    = 1.6;                  /* 絕對上限（fr_s/fr_l 冇 cap，靠呢個兜住） */
@@ -4604,8 +4767,7 @@ const HEAVY_SCALE = 2.4;                  /* C 機粗彈 sprite 倍數（1.4 基
 const HEAVY_KNOCK = 3.2;                  /* 擊退初速（px/frame；衰減後總位移約 27px） */
 
 /* 遊戲時間（毫秒）—— 由主迴圈嘅固定時間步累加器行出嚟。
-   暫停 / 揀卡期間 tick() 唔行，所以呢個鐘會凍結；
-   對「玩家感受到幾耐」嚟講反而比真實時間更一致。 */
+*/
 let gameClockMs = 0;
 
 /* A 機連射加速：目前嘅射速倍數（1 = 未加速） */
@@ -4615,7 +4777,7 @@ function shipRampFactor() {
 }
 /* 每幀更新 A 機嘅連射計數：停手超過 0.4 秒就回落
    ⚠️ 連續性用**遊戲時間**（gameClockMs）判定，**唔用 wall-clock**：掉幀時 wall-clock 400ms
-   會誤判成「玩家停手」→ 內建瀏覽器節流到低 FPS 時 A 機永遠升唔到 ×1.6（招牌機制失效）。 */
+*/
 function tickShipRhythm(dtMs) {
   if (!ship || ship.chassis !== 'A') return;
   if (ship._lastFireGameMs && (gameClockMs - ship._lastFireGameMs) <= RAMP_STEP_MS) {
@@ -4637,7 +4799,7 @@ function applyKnockback(e, dirX, dirY, power) {
 
 /* D 機衛星（#93）· 機身帶 2 粒衛星跟機，衛星各自自動開火。
    ⚠️ 衛星彈**固定用普通彈（bolt）**，唔跟 6 種形態卡（#93 明文取捨）。
-   ⚠️ 跟隨用**限速插值**（唔係瞬移）。⚠️ 召回期間衛星收埋喺機身，射速 ×2。 */
+*/
 const SAT_COUNT      = 2;
 const SAT_ORBIT_R    = 26;      /* 公轉半徑（水平 px） */
 const SAT_ORBIT_RY   = 18;      /* 公轉半徑（垂直 px） */
@@ -4705,8 +4867,7 @@ function applySatelliteBonus(b, e) {
 }
 /* E 機「群傷」：同一發子彈命中 ≥2 隻敵人時，每隻額外 +1 傷。
    ⚠️ 回溯補傷害嗰隻**只喺 hp > 1 時候做** —— 唔會造成「血 ≤ 0 但冇走死亡分支」
-      嘅幽靈敵人（hp 跌到 0 但仍然留喺場上，唔會計分、唔會死）。
-   ⚠️ 當前目標嗰 +1 會令佢 hp 變 ≤ 0，之後嘅死亡分支會正常處理。 */
+*/
 function applyGroupBonus(b, e) {
   if (!b || !b._groupHits) return;
   const already = b._groupHits.length;
@@ -4721,8 +4882,7 @@ function applyGroupBonus(b, e) {
   }
 }
 /* v0.26.0 #97 護罩炮台：護盾**全向**食傷害，打穿咗先入肉。
-   與 `shield_e`（只擋正面朝下弧）唔同 —— 炮台係 360° 能量盾。
-   回傳 true = 呢一擊被護盾食咗（子彈唔入肉）。 */
+*/
 function applyTurretShield(b, e) {
   if (!e || !e.turret || !(e.turretShield > 0)) return false;
   /* ⚠️ 用 elementHitDamage() 而唔係 b.dmg —— 光 L2「破盾」要令護盾同埋入肉
@@ -4776,8 +4936,7 @@ function spawnPlayerShot() {
   const heavy = ship.chassis === 'C';
   /* v0.25.0 B 機齊射：每 3 發普通之後，第 4 發變 3 發 ±20° 扇形。
      ⚠️ 計數放喺最前面，連 laser / rail 都會計（節奏唔會被形態卡打斷）。
-     如果今次唔出實彈（laser / rail / 導彈已滿），齊射會「存起」，
-     下次出實彈時先兌現，唔會白白消失。 */
+*/
   if (ship.chassis === 'B') {
     ship._burstCount++;
     if (ship._burstCount >= SALVO_EVERY) {
@@ -4787,8 +4946,7 @@ function spawnPlayerShot() {
   }
 
   /* v3.11 #68：laser 係機身光束，**唔產生子彈實體**——
-     光束畫面喺 render 畫，傷害喺 fireLaser() 即時判定。
-     射速决定光束重連速度，所以高射速會連成一條實心光柱。 */
+*/
   if (form === 'laser') {
     fireLaser(ship);
     sfx('shoot');
@@ -4815,7 +4973,7 @@ function spawnPlayerShot() {
 
   /* v0.25.0 B 機齊射兌現：改成 3 發 ±20° 扇形。
      ⚠️ 放喺 laser / rail / 導彈上限之後，確保「存起」嘅齊射唔會被
-     唔出實彈嘅形態白白食掉。 */
+*/
   if (ship.chassis === 'B' && ship._burstReady) {
     ship._burstReady = false;
     n = SALVO_N;
@@ -4825,7 +4983,7 @@ function spawnPlayerShot() {
 
   /* v0.26.0 #93 E 機散射：每一發都散成 3 發 ±14° 扇形（**持續散射**，唔係 B 機間歇齊射）。
    ⚠️ n 用 max(SPREAD_N, bulletCount)，令「多彈」強化卡喺 E 機仍然有效（唔變死卡）。
-   ⚠️ 「收束」技能生效期間：散射收成單中線，傷害 ×3、彈速 ×1.6。 */
+*/
   let dmgMul = 1, spdMul = 1;
   if (ship.chassis === 'E') {
     if (isConvergeActive()) {
@@ -4869,8 +5027,8 @@ function spawnPlayerShot() {
       vx = Math.cos(a) * formSpd + (i - mid) * 0.04;
       vy = Math.sin(a) * formSpd;
       /* v0.28.0 死卡修正（射程）· maxLife 1800 + 轉向改「飛到畫面頂 y < 40 先轉」→
-         出程 832ms 到頂、返程 724ms 返到機身，夠往返 boss 高度（y 51–122）。
-         ⚠️ 原本 maxLife 1000 → 只飞到 y ≈ 158 → 永遠入唔到 boss（實機 0 傷害）。 */
+         ⚠️ 原本 maxLife 1000 → 只飞到 y ≈ 158 → 永遠入唔到 boss（實機 0 傷害）。 
+*/
       life = maxLife = 1800;
       phase = 0; /* 0 out, 1 return */
     } else if (form === 'missile') {
@@ -4960,7 +5118,7 @@ function tickPlayerBullets(dtMs) {
     const homeLv = (b.tags && b.tags.homing) || 0;
     /* v0.28.0：迴力鏢出程（phase 0）都會追，返程（phase 1）唔追（要返機身）。
        ⚠️ 追蹤目標改用 bossOrNearest()：boss 橫向游走，雜魚永遠比 boss 近，
-          慢速彈體每幀改追「最近嘅雜魚」就 100% 撞唔到 boss（實機 0 傷害）。 */
+*/
     const isTrackForm = b.form === 'missile' || (b.form === 'boomerang' && b.phase === 0);
     const wantHome = homeLv > 0 || isTrackForm;
     if (wantHome) {
@@ -4969,16 +5127,14 @@ function tickPlayerBullets(dtMs) {
         const tx = tgt.x - b.x, ty = tgt.y - b.y;
         const len = Math.hypot(tx, ty) || 1;
         /* v3.11 #70：導彈兩階段。
-           ① 鎖定期（發射後 MISSILE_LOCK_MS）慢速微追——逼玩家觀察彈道
-           ② 巡航期加速 + 轉角 ×2——真正嘅追擊武器 */
+*/
         const lockAge = b.t || 0;
         let turn;
         if (b.form === 'missile') {
           const locked = lockAge < MISSILE_LOCK_MS;
           turn = locked ? 0.0018 : 0.0070;
           /* ⚠️ 鎖定期減速**只做一次**（記錄原始速度）——
-             原本每幀乘 0.45，400ms = 24 幀 → 速度變 0.45^24 ≈ 0，
-             導彈完全停晒，所以「有時唔識追蹤」。改為一次性降到 45%。 */
+*/
           if (locked && b._lockSpd == null) {
             b._lockSpd = Math.hypot(b.vx, b.vy);
             const s2 = b._lockSpd * 0.45;
@@ -4988,7 +5144,7 @@ function tickPlayerBullets(dtMs) {
           }
           /* v0.28.0 死卡修正（巡航期加速）· 鎖定期一過就恢復速度（再 ×1.15）。
              ⚠️ #70 寫咗但冇實作 → `_lockSpd` 永久停喺 45%（0.109 px/ms）→ 飛到 boss 要 2826ms，
-                但導彈 `life` 只有 2200ms → **物理上飛唔到 boss**（實機 92 秒 boss 血量冇跌）。 */
+*/
           if (!locked && b._lockSpd != null && !b._lockRestored) {
             b._lockRestored = true;
             const cur = Math.hypot(b.vx, b.vy) || 1;
@@ -4998,8 +5154,7 @@ function tickPlayerBullets(dtMs) {
           }
         } else if (b.form === 'boomerang') {
           /* v0.28.0：迴力鏢出程弱追蹤（轉角 0.0045，比導彈巡航期 0.0070 慢一截，
-             保留「拋出去」嘅手感）—— boss 橫向游走 ±80px（133px/s），
-             純直線彈道 + 800ms 飛行延遲＝幾乎打唔中。 */
+*/
           turn = 0.0045;
         } else {
           turn = 0.0022 * Math.min(3, homeLv || 1);
@@ -5029,12 +5184,12 @@ function tickPlayerBullets(dtMs) {
     if (b.form === 'boomerang') {
       /* v0.28.0 死卡修正（射程）· 轉向條件改「飛到畫面頂 y < 40 先轉」（生命剩 25% 兜底）。
          ⚠️ 原本「生命過半」轉（maxLife 1000→550ms）→ 最高只飞到 y ≈ 158，boss 喺 y 51–122
-            → **物理上入唔到 boss**（實機 86.8 秒 boss 血量一啲都冇跌）。 */
+*/
       if (b.phase === 0 && (b.y < 40 || b.life < b.maxLife * 0.25)) {
         b.phase = 1;
         /* v3.11 #69：返程**唔再重置 _lastHit**。原本 `b._lastHit = null` 令返程可以再打同一隻
-   → 同一發子彈對同一目標計兩次傷害。改成用 _hitSet：返程打得中**其他**敵人，同一隻只打一次。
-   ⚠️ v0.28.0：_hitSet 已喺 spawn 初始化，呢行唔會再建立新嘅。 */
+   ⚠️ v0.28.0：_hitSet 已喺 spawn 初始化，呢行唔會再建立新嘅。 
+*/
         b._hitSet = b._hitSet || [];
       }
       if (b.phase === 1 && ship) {
@@ -5098,7 +5253,7 @@ function spawnMissileBurst(src) {
       dmg, pierceLeft: 0, _lastHit: null,
       /* v0.28.0：爆散**唔打 boss**（爆散係對群體嘅效果 #70，唔應該變成 boss DPS）。
          ⚠️ `Math.max(1, dmg×0.4)` 每粒最少 1 傷 → 喺 boss 身上爆 = 每發多 3 傷
-            （DPS 8.84，比其他形態卡強 5 倍）。同「連鎖閃電唔打 boss」一致。 */
+*/
       noBoss: true,
       life: 620, maxLife: 620, phase: 0, t: 0,
       tags: {}, ricochetLeft: 0, _splitDone: true, /* 唔再裂 */
@@ -5108,9 +5263,8 @@ function spawnMissileBurst(src) {
 
 /* 命中後 tag 效果；回傳是否應刪彈（true=刪） */
 /* ---------- 元素效果（v0.27.0 · PLAN #100 / #104）----------
-   元素層決定「命中之後發生咩事」，形態層決定「彈點樣飛」—— 兩層完全正交，
-   所以 5 形態 × 5 元素 = 25 種配對 **唔使任何配對特判**。
-   ⚠️ 副元素同基底元素走同一條 applyOneElement()，純粹疊加效果。 */
+   ⚠️ 副元素同基底元素走同一條 applyOneElement()，純粹疊加效果。 
+*/
 const ELEM_BURN_MS        = 2000;   /* 灼燒持續 */
 const ELEM_BURN_DPS       = 1;      /* 灼燒每秒傷害 */
 const ELEM_BURN_DPS_L2    = 1.5;    /* L2 灼燒傷害 */
@@ -5134,8 +5288,7 @@ const ELEM_MASTER_MUL     = 1.4;    /* 專精：基底元素傷害 +40% */
 
 /* 專精倍率：基底元素滿 L3 之后再升級 → 該元素所有傷害 ×1.4。
    ⚠️ 專精只可以落喺「基底元素」（副元素冇專精呢條路），
-      所以呢度只睇 elementA，唔睇 elementB。
-   ⚠️ 每個元素傷害出口都要經過呢度 —— 否則卡面寫住「+40%」但實際冇加 = 死卡。 */
+*/
 function elementMasterMul(elemId) {
   if (!ship || !ship.elementMaster) return 1;
   if (ship.elementA !== elemId) return 1;
@@ -5309,8 +5462,7 @@ function killEnemy(e, opts) {
   addTrauma(tier.trauma);
   hitStop(tier.stop);
   /* ⚠️ v0.27.2：boss 都要 set _dead。原本喺 `return 'boss'` 前就 return
-     → 死咗嘅 boss 仲留喺 enemies 入面：同一幀第二個傷害源再打中 → 第二次 onBossDown
-     → 掉兩件裝備 + 分數雙計。set 咗之後 tick 尾段 cull 會 splice 走。 */
+*/
   e._dead = true;
   if (isBoss) return 'boss';   /* boss 死亡流程特別，caller 處理 */
   if (!skipScore) {
@@ -5342,16 +5494,15 @@ function killEnemy(e, opts) {
 }
 
 /** 呢種子彈**命中之後唔會消失**？（v0.28.0 死卡修正：rail 射到頂 / boomerang 返嚟 / missile 追
- *  —— 原本都行 `b.pierceLeft > 0` 分支（ship.pierce 預設 0）→ 命中即刪彈 → 持續／追擊根本唔存在，
- *    實機 boss 血量 0 跌幅。⚠️ 命中唔死≠無限打同一隻（_hitSet，PLAN #69）。 */
+ *    實機 boss 血量 0 跌幅。⚠️ 命中唔死≠無限打同一隻（_hitSet，PLAN #69）。 
+*/
 function bulletSurvivesHit(b) {
   return !!b && (b.form === 'rail' || b.form === 'boomerang' || b.form === 'missile');
 }
 
 /* 玩家子彈 vs 敵人：命中判定（抽出嚟方便做行為測試）。
    ⚠️ v0.28.0 **死卡修正**：form_rail 判定用 `|b.y-e.y| < hh` → 只打中貼住機身嗰十幾像素 = **死卡**
-      （boss 永遠唔死 → STAGE_3 卡死 200+ 秒）→ 改成**一整條直欄**判定。
-   ⚠️ laser 唔喺呢度判（laserTick 自己處理）。 */
+*/
 function playerBulletHits(b, e, halfW) {
   if (b.form === 'rail') {
     if (Math.abs(b.x - e.x) >= 11) return false;   /* 柱闊（同原本 hw 一致） */
@@ -5393,11 +5544,11 @@ function onPlayerBulletHit(b, e) {
 }
 
 /* 對機體造成傷害：護盾 → 生命 → 保險 → 復活 → 死亡。
-   v3.11 #71 抽出成獨立函數，令新敵人（rammer 撞擊 / lancer 光束）
-   同原本嘅子彈／雜魚碰撞共用同一條死亡邏輯 —— 唔會兩邊走唔同分支。
-   回傳 true = 已死亡（呼叫者要即刻停低）。 */
+*/
 function damageShip(n) {
   if (!ship) return false;
+  /* v0.42.0 #153：答題恢復後 0.8 秒無敵（抖返第一層 · PLAN #153 §④） */
+  if (performance.now() < quizGraceUntil) return false;
   /* v0.29.0：盾擋 vs 真扣血 分兩檔 juice */
   const willHitHp = !(ship.shield > 0);
   const hf = willHitHp ? FEEL.hurt : FEEL.hurtShield;
@@ -5418,7 +5569,7 @@ function damageShip(n) {
   segHurt = true;
   /* v0.26.0 #94「過載護盾」：真係扣到血嗰刻清走所有敵彈 + 立即 +3 盾。
      ⚠️ 用 `_dead` 旗標而唔係 splice —— 喺碰撞迴圈內部 splice 會令外層迴圈索引錯位（漏檢一粒子彈）。
-     ⚠️ 窗口用完就收（universalActiveUntil = 0），冷卻照計。 */
+*/
   if (isOverloadArmed()) {
     universalActiveUntil = 0;
     for (const en of enemies) {
@@ -5470,6 +5621,12 @@ function damageShip(n) {
 function tick(dtMs) {
   /* 非遊戲狀態下凍結 */
   if (!isStage(fsm.cur)) return;
+  /* v0.42.0 #153：答題中 —— 物理停（唔行唔生波唔結算段目標）· 時間唔推走段計時 */
+  if (quizOpen) {
+    if (quizPhase === 3 && performance.now() >= quizCdUntil) closeQuiz();
+    return;
+  }
+  if (quizPending && openQuiz()) return;
   /* v0.25.0：遊戲時間鐘（A 機連射加速用遊戲時間判定連續性） */
   gameClockMs += dtMs;
 
@@ -5479,9 +5636,9 @@ function tick(dtMs) {
     while (waveCursor < waveQueue.length && waveQueue[waveCursor].at <= stageMs) {
       const w = waveQueue[waveCursor];
       /* v0.39.0 #150：段邊界 —— 關卡時間超過 SEG_T 就開新段（實測段長 4.5–8 秒）
-         → 先結算上一段（派發下一段回饋），再開新段（掛上回饋乘數）。
-         ⚠️ 順序：settle 要喺 spawn 之前（clear 目標要睇上一段有冇殘留敵人）。 */
-      if (!segGoal || stageMs - segStartAt > segCfg().segT) { settleSegment(); startSegment(stageMs, waveCursor); }
+         ⚠️ 順序：settle 要喺 spawn 之前（clear 目標要睇上一段有冇殘留敵人）。 
+*/
+      if (!segGoal || stageMs - segStartAt > segCfg().segT) { settleSegment(); startSegment(stageMs, waveCursor); maybeQuiz(); }
       /* v0.35.0 #131：傳 wave index（必須喺 waveCursor++ 之前傳，否則 index 錯位） */
       for (const s of w.spawn) emitWaveType(s, lastStage, waveCursor);
       waveCursor++;
@@ -5489,12 +5646,9 @@ function tick(dtMs) {
   }
 
   /* ---- P1-5：波次清完之後先召喚 boss ----
-     條件：波次佇列出齊 + 場上冇雜魚。
-     保險：如果雜魚一直清唔走（例如玩家唔理佢，任由佢飛出畫面），
-     8 秒後強制召喚，避免卡住成關。 */
+*/
   /* ---- #42 中斷事件：S3 波次過半觸發一次（#47 排程）----
-     中途暫停 → 揀完之後用 resumeEvent() 繞過 fsm.set() 返回同一關，
-     否則 onStateEnter 會重置場上實體（清子彈／敵機），玩家會死無辜。 */
+*/
   if (!eventFired && lastStage === EVENT_STAGE && stageStartMs
       && waveCursor >= Math.ceil(waveQueue.length / 2)) {
     eventFired = true;
@@ -5524,8 +5678,7 @@ function tick(dtMs) {
   }
 
   /* ---- 戰機移動（鍵盤優先，否則收斂到拖曳目標） ----
-     v0.25.0：移動速度受 C 機「過熱」技能影響（×0.6），
-     同時記低最後一次移動方向（A 機衝刺技能靠佢決定突進方向）。 */
+*/
   let vx = 0, vy = 0;
   if (InputState.keys.left)  vx -= 1;
   if (InputState.keys.right) vx += 1;
@@ -5562,8 +5715,7 @@ function tick(dtMs) {
 
 
   /* ---- 自動開火（PC／觸控都唔使撳射；只需移動） · v3.10 form+tag ----
-     v0.25.0 #87：A 機「連射加速」—— 實際射速 = 基礎射速 × 連射倍數（上限 ×1.6）。
-     連射倍數喺 tickShipRhythm() 更新：連住唔停手就愈嚟愈快，停手 0.4 秒就回落。 */
+*/
   tickShipRhythm(dtMs);
   /* v0.26.0 #93 D 機衛星：跟機 + 自動開火 */
   tickSatellites(dtMs);
@@ -5924,8 +6076,7 @@ function tick(dtMs) {
       if (playerBulletHits(b, e, halfW)) {
               /* 同一彈唔好每幀重複打同一隻 */
               /* v3.11 #69：同一子彈對同一敵人只打一次（_hitSet）。
-           對 rail（瞬發線）同 boomerang（去返都打）特別重要——否則
-           瞬發線每幀重複計分、迴力鏢返程對同一目標計兩次。 */
+*/
               if (b._hitSet && b._hitSet.indexOf(e) >= 0) continue;
               if (b.form === 'rail' && b._railHit && b._railHit.indexOf(e) >= 0) continue;
               if (e === b._lastHit && b.form !== 'boomerang') continue;
@@ -5989,13 +6140,12 @@ function tick(dtMs) {
     if (e.pending) continue; /* 預警未發射唔撞 */
     if (e._dead) continue;   /* v0.26.0 #94：已被標記清走（過載護盾）嘅唔再撞 */
     /* P1-5：雜魚有撞擊傷害 —— 撞到玩家會自己死。
-       冇呢條規則嘅話，最優策略就係完全唔理雜魚任由佢飛走，
-       「擊殺雜魚」變成冇誘因，等 P1-5 個設計目標失效。 */
+*/
     const isBody = (e.kind === 'grunt');
     const r = isBody ? 9 : 4;
     /* v0.36.0 #140：引信期嘅 bomber 唔撞人（保住「自爆型唔會撞到玩家扣血」invariant）。
        ⚠️ 唔可以淨係靠 bomber 停喺 24px：玩家行埋去一樣會撞到 → 引信期撞人要扣血，
-       變成「預警＝罚玩家」→ 公平性交換會反轉。e.fuse == null 對非 bomber 係 true（undefined）。 */
+*/
     if (e.fuse == null && Math.abs(e.x - ship.x) < 6 + r && Math.abs(e.y - ship.y) < 6 + r) {
       /* PLAN v2 #7：炸彈無敵時段 —— 施放後 1.5 秒內唔受傷。
          視覺上仍然清走嗰粒彈，等玩家見到擋成功咗。 */
@@ -6010,10 +6160,7 @@ function tick(dtMs) {
       if (damageShip(1)) return;   /* true = 已死，要即刻停低 tick */
     } else if (!isBody && !e._grazed) {
       /* ---- P1-6 擦彈判定 ----
-         用圓形距離（唔係上面嗰個方形），令斜向擦過都算數。
-         必須 `else if`：已經判中嘅彈唔可以同時當擦彈。
-         `_grazed` 保證每粒子彈只計一次 —— 一粒子彈喺 20px 圈內
-         大約停留 20–40 幀，冇呢個旗標會被重複計幾十次。 */
+*/
       const dx = e.x - ship.x, dy = e.y - ship.y;
       if (Math.hypot(dx, dy) < grazeRadius()) {
         e._grazed = true;
@@ -6046,8 +6193,7 @@ function tick(dtMs) {
   /* ---- 狀態列 ---- */
   const now = performance.now();
   /* v0.25.0：左掣由「聚焦」改成**每架機專屬技能**，
-     所以狀態列要跟機體顯示技能名同冷卻剩餘時間
-     （原本仲引用已刪嘅 isFocusActive / focusFactor / focusCDUntil → 每次 tick 都會 throw）。 */
+*/
   const sk = ship ? SHIPS[ship.chassis] : null;
   const skillName = sk ? sk.skillName : '技能';
   const skillState = isSkillActive()
@@ -6209,7 +6355,7 @@ function drawStageAffixFx() {
   if (!isStage(fsm.cur)) return;
   /* 停電：全畫面壓暗（#117：alpha 0.42 → 0.22，見 PLAN 已知落差 #13）。
    ⚠️ 繪製次序：暗幕喺 drawAbilityBtns / drawHudChips / drawGrazeMeter 之後
-      → 能力掣、關卡 chip、擦彈條都會被壓暗；只有 renderTail() 畫嘅音效掣 + 掃描線唔會。 */
+*/
   if (affDark) {
     ctx.fillStyle = 'rgba(0,0,20,' + (AFFIX_DARK_ALPHA * affDark).toFixed(3) + ')';
     ctx.fillRect(0, 0, VIEW_W, VIEW_H);
@@ -6229,8 +6375,7 @@ function drawStageAffixFx() {
   ctx.fillStyle = '#fff';
   ctx.font = 'bold 16px ui-monospace, monospace';
   /* ⚠️ v0.27.2 修正：唔可以 fillText(stageAffix.icon + ' ' + stageAffix.name)
-     —— stageAffix.icon 係**圖集 sprite key** → 玩家每關開場見到內部變數名。
-     改用 drawIconWithText：icon 畫 sprite，淨係得個名。 */
+*/
   drawIconWithText(stageAffix.icon, stageAffix.name, VIEW_W / 2, y - 6, 1.6,
                    'bold 16px ui-monospace, monospace', '#fff', 6);
   ctx.fillStyle = '#ffd56a';
@@ -6243,7 +6388,7 @@ function drawStageAffixFx() {
 
 /* 裝備掉落提示（v0.27.2）· 喺 CHOICE 畫面畫（boss 死即刻跳 CHOICE → 一定見到）。
    ⚠️ 原本喺戰鬥 HUD（y 82–104）→ 睇唔到 + 同詞綴橫幅 y 74–118 重疊。
-   ⚠️ icon 一律用圖集 sprite。 */
+*/
 function drawLootBanner() {
   if (!lootBanner) return;
   const y = 42;
@@ -6265,10 +6410,10 @@ function drawLootBanner() {
 /* ---------- 11. 繪製 ---------- */
 /* render() 收尾：所有畫面共用。
    ⚠️ 音效 UI 一定要畫喺每個狀態 —— 原本放喺戰鬥分支尾部，結果標題／難度／
-   結算畫面因為提早 return 完全畫唔到掣（實機踩過，靜態掃描捉唔到）。
-   抽出嚟做單一收尾，六條返回路徑 + 戰鬥尾都經過同一個函式。 */
+*/
 function renderTail() {
   drawAudioUi();
+  drawQuiz();
   drawScanlines(); drawFlash();
   ctx.restore();
 }
@@ -6313,8 +6458,7 @@ function render() {
 
   if (fsm.cur === STATE.TITLE) {
     /* v3.13：logo 由 VIEW_H/2−110 移近到 −92，並放大到 2.6。
-       原本 logo 底部（−110 + 35/2 ≈ −92）同標題頂（−48 − 24 ≈ −60）
-       之間有 32px 空隙 → logo 同標題斷開咗，唔似一個 lockup。 */
+*/
     drawSprite('logo_mark', VIEW_W/2, VIEW_H/2 - 92, 2.6);
     ctx.fillStyle = '#0ff';
     ctx.font = 'bold 24px monospace';
@@ -6327,7 +6471,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.41.0 · 壓力段 · 段目標難度可調', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.42.0 · 壓力段 · 段目標可調 · 答題', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -6723,9 +6867,8 @@ function render() {
       ctx.textAlign = 'center';
       drawIconPair(up.icon, up.icon2, x + cardW/2, y + 24, 2);
       /* 分類標籤（PLAN v3.8 #40）：卡片**左上**細章，令玩家睇得出 build 走向。
-         只係顯示，唔限制揀卡。顏色跟分類，方便一眼掃。
          ⚠️ 放左上唔放右上——右上已經有疊加次數「x2」（y+14 右對齊），
-         兩者會撞位（實作時踩過）。 */
+*/
       if (up.cat) {
         ctx.font = '9px monospace';
         ctx.fillStyle = CAT_COLOR[up.cat] || '#7a8';
@@ -6740,7 +6883,7 @@ function render() {
       ctx.fillStyle = '#bcd';
       /* v3.13：改用 measureText 逐字斷行。
    ⚠️ 之前靠「字元數」硬斷（每 9 字）—— 中文全形 ≈ 1em = 10px，9 字 = 90px 超出卡面可用寬度 ≈ 74px，
-      實測「子彈多穿過一個敵人」直接溢出卡框。emoji／全角標點寬度更加唔同，靠字元數一定會出事。 */
+*/
       const descLines = wrapText(ctx, up.desc, cardW - 14);
       for (let li = 0; li < Math.min(descLines.length, 2); li++) {
         ctx.fillText(descLines[li], x + cardW/2, y + 66 + li * 11);
@@ -6753,14 +6896,12 @@ function render() {
         ctx.fillText('x' + n, x + cardW - 6, y + 14);
       }
       /* ⚠️ v0.33.0 #124：原本呢度有個「轉職」黃色標籤（isFormTransferCard）——
-         變體 D（一局只出一次形態卡）之下，玩家永遠只會有一張形態卡 →
-         個標籤**永遠唔會出現** = 死代碼，已連帶移除 helper 一齊刪走。 */
+*/
       ctx.fillStyle = '#ff6';
       ctx.font = 'bold 10px monospace';
       ctx.textAlign = 'center';
       /* ⚠️ v0.27.2：原本寫「[N] 點擊」—— 但「點擊」係動作、「N」係鍵盤碼，
-         兩者溝埋一齊對觸控學生係誤導（以為要撳鍵 1）。而且呢行純浪費一整行。
-         改成淨係留編號 badge，鍵盤提示統一由畫面底部一句講（點左/中/右 或 按 1 2 3）。 */
+*/
       ctx.fillText('[' + (i+1) + ']', x + cardW/2, y + cardH - 8);
     }
     /* v0.27.2：三卡畫面統一底部提示：原本呢四個畫面完全冇操作提示（靠卡面「[N] 點擊」暗示），
@@ -6814,8 +6955,7 @@ function render() {
       ctx.fillStyle = '#ffd24a';
       ctx.font = 'bold 10px monospace';
       /* ⚠️ v0.27.2：原本寫「[N] 點擊」—— 但「點擊」係動作、「N」係鍵盤碼，
-         兩者溝埋一齊對觸控學生係誤導（以為要撳鍵 1）。而且呢行純浪費一整行。
-         改成淨係留編號 badge，鍵盤提示統一由畫面底部一句講（點左/中/右 或 按 1 2 3）。 */
+*/
       ctx.fillText('[' + (i+1) + ']', x + cardW/2, y + cardH - 8);
     }
     /* v0.27.2：三卡畫面統一底部提示：原本呢四個畫面完全冇操作提示（靠卡面「[N] 點擊」暗示），
@@ -6845,8 +6985,7 @@ function render() {
       const x = r.x, y = r.y;
       const grd = ctx.createLinearGradient(x, y, x, y + cardH);
       /* v3.13：原本係棕黃底（rgba(90,40,20)），同強化卡嘅青藍完全唔同世界，
-         玩家會以為係另一個系統（VISUAL_QUALITY_RUBRIC.md §6.1 判最弱狀態）。
-         而家改用同一套青藍底，事件嘅「特殊感」靠標題色 + 卡名色表達。 */
+*/
       grd.addColorStop(0, 'rgba(0,60,90,0.95)');
       grd.addColorStop(1, 'rgba(0,20,40,0.95)');
       ctx.fillStyle = grd;
@@ -6871,8 +7010,7 @@ function render() {
       ctx.fillStyle = '#ff6';
       ctx.font = 'bold 10px monospace';
       /* ⚠️ v0.27.2：原本寫「[N] 點擊」—— 但「點擊」係動作、「N」係鍵盤碼，
-         兩者溝埋一齊對觸控學生係誤導（以為要撳鍵 1）。而且呢行純浪費一整行。
-         改成淨係留編號 badge，鍵盤提示統一由畫面底部一句講（點左/中/右 或 按 1 2 3）。 */
+*/
       ctx.fillText('[' + (i+1) + ']', x + cardW/2, y + cardH - 8);
     }
     /* v0.27.2：三卡畫面統一底部提示：原本呢四個畫面完全冇操作提示（靠卡面「[N] 點擊」暗示），
@@ -6936,8 +7074,7 @@ function render() {
       ctx.fillStyle = '#ff6';
       ctx.font = 'bold 10px monospace';
       /* ⚠️ v0.27.2：原本寫「[N] 點擊」—— 但「點擊」係動作、「N」係鍵盤碼，
-         兩者溝埋一齊對觸控學生係誤導（以為要撳鍵 1）。而且呢行純浪費一整行。
-         改成淨係留編號 badge，鍵盤提示統一由畫面底部一句講（點左/中/右 或 按 1 2 3）。 */
+*/
       ctx.fillText('[' + (i+1) + ']', x + cardW/2, y + cardH - 8);
     }
     /* v0.27.2：三卡畫面統一底部提示：原本呢四個畫面完全冇操作提示（靠卡面「[N] 點擊」暗示），
@@ -6951,8 +7088,7 @@ function render() {
   }
 
   /* v3.11 #68：laser 持續光束（機身跟隨）。畫喺玩家子彈之前，
-     因為光束唔係實體 —— 佢係「機身向上延伸嘅一條光柱」。
-     繪製位置喺 render 開頭，獨立於 bullets 陣列。 */
+*/
   if (laserActive() && ship) {
     const lx = ship.x, ly = ship.y - 8;
     const top = Math.max(0, ly - LASER_LEN);
@@ -7019,8 +7155,8 @@ function render() {
       /* bolt 預設 */
       if (b.heavy) {
         /* v0.25.0 C 機重炮：同一粒彈 sprite 放大 + 白色描邊，
-           令學生一眼認出「呢架機嘅彈好粗」（零新 sprite、零新配色）。
-           ⚠️ 用 save/restore 包住，避免白色描邊漏去後面其他圖層。 */
+           ⚠️ 用 save/restore 包住，避免白色描邊漏去後面其他圖層。 
+*/
         ctx.save();
         const ok = drawPlayerBulletSprite('anim_bullet_p', 'bullet_p', b.x, b.y, HEAVY_SCALE);
         ctx.strokeStyle = '#fff';
@@ -7309,7 +7445,7 @@ function render() {
       const hpFrac = Math.max(0, Math.min(1, e.hp / totalHp));
       /* v0.30.0 #113：血條 e.y − 24 → **e.y − 18**（貼 sprite 頂；boss body 頂 = e.y − 13，血條高 5 → 底剛好貼實）。
          ⚠️ 原本 y 26–91 被頂部 HUD 中央帶（y 6–67）蓋住 → 學生睇唔到 boss 血量。
-         而家血條 y 32–87，完全喺 HUD 帶（≤31）之下。 */
+*/
       ctx.fillStyle = 'rgba(0,0,0,0.55)';
       ctx.fillRect(e.x - 18, e.y - 18, 36, 5);
       ctx.fillStyle = hpFrac > 0.5 ? '#0f6' : (hpFrac > 0.25 ? '#ff6' : '#f06');
@@ -7427,8 +7563,7 @@ function drawGrazeFx() {
 
 /* v0.39.0 #150：壓力段目標 chip（左上角）
  * ⚠️ 字級 12px（UI_STYLE_GUIDE 7 級）—— 唔可以用 9px：批判分析點名
- *    「擦彈 0 10 次回充」用 9px = 有目標但睇唔見（4K 白板距離冇人讀到）。
- * ⚠️ 位置 x 6 · y 34 —— 唔會撞 boss 血條（中央 x 78–242, y 32–87）。 */
+*/
 function drawSegmentChip() {
   if (!ship || !isStage(fsm.cur) || !segGoal) return;
   const x = 6, y = 34, w = 92, h = 18;
@@ -7471,8 +7606,7 @@ function drawSegmentChip() {
 function drawGrazeMeter() {
   if (!ship || !isStage(fsm.cur)) return;
   /* v0.26.0 #95：能量條由**底部中央搬到頂部**（底部俾通用技能掣霸咗）。
-     v0.30.0 #113：條 y 62 → **27**、文字 baseline 58 → **24** —— 原本條頂到 y 67 而 boss 血條
-     低到 y 26 → 相撞（學生睇唔到 boss 點死）。而家頂部中央帶只到 y 31。 */
+*/
   const w = 84, h = 5;
   const x = (VIEW_W - w) / 2, y = 27;
   ctx.fillStyle = 'rgba(0,0,0,0.55)';
@@ -7498,8 +7632,7 @@ function drawGrazeMeter() {
   drawSegmentChip();
   drawPauseBtn();
   /* v0.30.0 #113：關卡名標籤**搬咗入 drawHudChips()**，同節奏狀態合併成一行
-     （原本喺呢度獨立畫 y 6–22，令頂部中央蓋到 y 67，boss + 血條喺底下睇唔到）。
-     見 PLAN #113 同 drawHudChips() 入面嘅合併行。 */
+*/
   drawStageAffixFx();       /* v3.8 #43：詞綴橫幅 + 停電暗幕 */
   /* v0.27.0 #105：元素屏幕效果（火焰 vignette / 結冰覆蓋 / 雷閃 / 光爆 / 暗幕）。
      ⚠️ 畫喺遊戲層之上、HUD 之下 —— 玩家要見到效果，但唔可以蓋住讀數。 */
@@ -7539,11 +7672,12 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.41.0 已載入');
+console.log('[啟動] 末日救未來 v0.42.0 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */
 loadSegDiff();      /* v0.41.0 #152：讀段目標難度檔（預設標準） */
+loadQuizBank();     /* v0.42.0 #153：載入題庫（老師貼上優先 → 內置 questions.js） */
 console.log('[啟動] 音效 =', audioOn ? '開' : '關', '· 音樂檔', volBgm, '· 音效檔', volSfx,
   '· 段目標難度 =', SEG_DIFFS[segDiffIdx].name);
 hudEl.tip.textContent = '點擊畫面開始';
@@ -7551,8 +7685,7 @@ requestAnimationFrame(loop);
 
 /* v0.38.0 #143：白板側欄（DOM；canvas 零改動 → 縱向行為完全不變）
    ⚠️ 內容全部係寫死常量（冇用戶輸入）→ 可直接 innerHTML。
-   ⚠️ sprite 全部沿用現有圖集 → 零新圖、零新 palette。
-   ⚠️ 名稱同遊戲內 label 一致，行為描述要同 source 對得上。 */
+*/
 const WB_ENEMY = {
   grunt:['grunt','雜魚','撞到你會扣血'], elite:['elite','精英','血厚，要打耐啲'],
   dive:['dive','俯衝','落得好快，唔好企住'], sniper:['sniper','狙擊','有預警線，閃開'],
@@ -7635,6 +7768,11 @@ window.__dsf = {
   get hitStopUntil(){ return hitStopUntil; },
   get shipPop(){ return shipPop; },
   get trauma(){ return cam.trauma; },
+  /* v0.42.0 #153：答題系統（冒煙測試用） */
+  quiz: { get open(){ return quizOpen; }, get phase(){ return quizPhase; },
+          get count(){ return quizCount; }, get q(){ return quizQ; },
+          bank: () => quizBank.length, openQuiz, answerQuiz, nextQuiz, retryQuiz,
+          maybeQuiz, closeQuiz, geom: quizGeom },
 };
 </script>
 </body>

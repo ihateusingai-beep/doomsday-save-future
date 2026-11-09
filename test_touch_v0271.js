@@ -150,7 +150,9 @@ const MENU_DEPS = ['canvas', 'fsm', 'STATE', 'performance', 'isMenuState', 'isDu
                    'hitShipCard', 'pickShipAndStart',
                    'hitUniversalCard', 'applyPickedUniversal',
                    'hitElementCard', 'applyPickedElement',
-                   'hitElemChoiceCard', 'applyPickedElemChoice'];
+                   'hitElemChoiceCard', 'applyPickedElemChoice',
+                   /* v0.42.0 #153：答題輸入閘（quizOpen 時只處理答題掣） */
+                   'quizOpen', 'handleQuizTap'];
 {
   /* 造一個完整嘅 stub 環境 */
   const st = menuTapState;
@@ -183,6 +185,8 @@ const MENU_DEPS = ['canvas', 'fsm', 'STATE', 'performance', 'isMenuState', 'isDu
       e.applyPickedElement || ((i) => { fsm.set(STATE.SKILL_PICK); }),
       e.hitElemChoiceCard || (() => -1),             /* hitElemChoiceCard */
       e.applyPickedElemChoice || (noop),
+      false,                                         /* quizOpen */
+      () => false,                                   /* handleQuizTap */
     ];
     return handleMenuTap(cx, cy, ...deps);
   }

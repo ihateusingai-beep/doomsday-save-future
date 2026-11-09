@@ -277,7 +277,14 @@ console.log('\n=== 9. 玩家可見字串（禁 em dash）===');
  * ============================================================ */
 console.log('\n=== 10. RNG stream 獨立性 ===');
 function streamCheck(c) {
-  const segM = c.match(/stageRngFor\(runSeed,\s*(\d+)\s*\+\s*lastStage\s*\*\s*(\d+)\s*\+\s*segIndex\)/);
+  /* ⚠️ 段目標 stream 要喺 startSegment() 入面抽 —— 唔用全檔 first-match，
+     因為 v0.42.0 加咗答題 stream（14000 + lastStage * 10 + segIndex），
+     同一個 pattern → 全檔 first-match 會隨住函數擺位靜靜驗錯嘢。 */
+  /* ⚠️ 一定要喺**傳入嘅 c** 抽 block —— 唔可以用模組層級嘅 startBlk／quizBlk，
+     否則 mutation test 改壞 source 都影響唔到呢個檢查（→ 守門變 vacuous）。 */
+  const segBlk = block(c, /function startSegment\([\s\S]*?\n\}/);
+  const qBlk   = block(c, /function pickQuizQuestion\(\) \{[\s\S]*?\n\}/);
+  const segM = segBlk.match(/stageRngFor\(runSeed,\s*(\d+)\s*\+\s*lastStage\s*\*\s*(\d+)\s*\+\s*segIndex\)/);
   if (!segM) return { ok: false, info: '抽唔到段目標 stream 公式' };
   const segBase = Number(segM[1]), segMul = Number(segM[2]);
   const others = [];
@@ -289,12 +296,26 @@ function streamCheck(c) {
     const lo = o.base + 1, hi = o.base + 5;
     if (!(segHi < lo || segLo > hi)) overlap.push(o.base + ' (' + lo + '-' + hi + ')');
   }
-  return {
-    ok: overlap.length === 0 && segBase !== 9000 && segBase !== 11000 &&
-         segBase !== 7000 && segBase !== 12000 && segBase !== 5000,
-    info: '範圍 ' + segLo + '-' + segHi + ' · 其他 ' + others.map(o => o.base).join(',') +
-          (overlap.length ? ' · 撞：' + overlap.join('/') : ''),
-  };
+  let ok = overlap.length === 0 && segBase !== 9000 && segBase !== 11000 &&
+           segBase !== 7000 && segBase !== 12000 && segBase !== 5000;
+  let info = '段 ' + segLo + '-' + segHi + ' · 其他 ' + others.map(o => o.base).join(',') +
+             (overlap.length ? ' · 撞：' + overlap.join('/') : '');
+  /* v0.42.0 #153：答題 stream（14000 區段）· 一定要喺 pickQuizQuestion() 入面抽 */
+  const quizM = qBlk.match(/stageRngFor\(runSeed,\s*(\d+)\s*\+\s*lastStage\s*\*\s*(\d+)\s*\+\s*segIndex\)/);
+  if (!quizM) return { ok: false, info: info + ' · 抽唔到答題 stream 公式' };
+  const qBase = Number(quizM[1]), qMul = Number(quizM[2]);
+  const qLo = qBase + 1 * qMul + 0, qHi = qBase + 5 * qMul + 5;
+  const qOverlap = [];
+  if (!(qHi < segLo || qLo > segHi)) qOverlap.push('段 ' + segLo + '-' + segHi);
+  for (const o of others) {
+    const lo = o.base + 1, hi = o.base + 5;
+    if (!(qHi < lo || qLo > hi)) qOverlap.push(o.base + ' (' + lo + '-' + hi + ')');
+  }
+  if (qOverlap.length) ok = false;
+  if (qBase === segBase) ok = false;
+  info += ' · 答題 ' + qLo + '-' + qHi +
+          (qOverlap.length ? ' · 撞：' + qOverlap.join('/') : ' · 唔撞');
+  return { ok: ok, info: info };
 }
 {
   const sc = streamCheck(code);
@@ -423,8 +444,8 @@ console.log('\n=== 14. 還原驗證（mutation test · 證明守門唔係 vacuou
     ['chip 字級改返 9px', "ctx.font = '12px monospace';", "ctx.font = '9px monospace';"],
     ['段目標 stream 撞返詞綴 9000', '13000 + lastStage * 10 + segIndex', '9000 + lastStage * 10 + segIndex'],
     ['settle / spawn 順序倒轉',
-      'if (!segGoal || stageMs - segStartAt > segCfg().segT) { settleSegment(); startSegment(stageMs, waveCursor); }',
-      'if (!segGoal || stageMs - segStartAt > segCfg().segT) { startSegment(stageMs, waveCursor); settleSegment(); }'],
+      'if (!segGoal || stageMs - segStartAt > segCfg().segT) { settleSegment(); startSegment(stageMs, waveCursor); maybeQuiz(); }',
+      'if (!segGoal || stageMs - segStartAt > segCfg().segT) { startSegment(stageMs, waveCursor); settleSegment(); maybeQuiz(); }'],
     ['段目標變返 4 種（加一個 dead goal）',
       "const SEG_KEYS    = ['kill', 'clear', 'safe'];", "const SEG_KEYS    = ['kill', 'clear', 'safe', 'dead'];"],
     ['need 去掉「第一波敵人數」上限 → 純彈幕段都派「擊殺」＝死目標',

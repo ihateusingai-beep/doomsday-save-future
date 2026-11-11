@@ -86,8 +86,14 @@ check('★ 倒數結束會 closeQuiz()', /quizPhase === 3 && performance\.now\(\
 check('★ tick 會喺 pending 時開題', /if \(quizPending && openQuiz\(\)\) return;/.test(tickBlk));
 check('★ 唔用 STATE.PAUSED 做答題（fsm.cur 仍然係 STAGE_n）',
   !/quizOpen[\s\S]{0,120}fsm\.set\(STATE\.PAUSED\)/.test(code));
-check('★ 答題唔經狀態機 → 冇新 STATE',
-  !/STATE\.QUIZ/.test(code));
+/* ⚠️ v0.43.0 #154 新增咗 STATE.QUIZ_SUBJECT / STATE.QUIZ_UNIT ——
+   呢兩個係**前置分流畫面**（fsm 狀態）· 同答題 overlay（quizOpen flag）唔同層。
+   ⇒ 呢條断言改成：答題 engine 嘅函式**唔准**掂 STATE（overlay 仍然唔經狀態機）。 */
+const quizEngineFns = ['maybeQuiz', 'openQuiz', 'closeQuiz', 'answerQuiz', 'retryQuiz', 'nextQuiz',
+                       'pickQuizQuestion', 'loadQuizBank', 'validateQuizBank']
+  .map(n => { try { return block(code, new RegExp('function ' + n + '\\([\\s\\S]*?\\n\\}')); } catch (e) { return ''; } }).join('\n');
+check('★ 答題 engine 唔掂 STATE（overlay 唔經狀態機）',
+  !/STATE\./.test(quizEngineFns));
 
 /* ============================================================
  * 4. 觸發條件：segIndex % 3 === 2 · 每關 5 次上限
@@ -185,7 +191,7 @@ console.log('\n=== 10. 抽題 ===');
 const pickBlk = block(code, /function pickQuizQuestion\(\) \{[\s\S]*?\n\}/);
 check('★ 用 seeded rng（唔准 Math.random）', /stageRngFor\(runSeed, 14000 \+ lastStage \* 10 \+ segIndex\)/.test(pickBlk));
 check('★ 唔用 Math.random()', !/Math\.random\(\)/.test(pickBlk));
-check('★ 記住上一條 id，唔連續出同一條', /quizBank\[i\]\.id === quizLastId/.test(pickBlk));
+check('★ 記住上一條 id，唔連續出同一條', /pool\[i\]\.id === quizLastId/.test(pickBlk));
 
 /* ============================================================
  * 11. 答題 0 影響段目標（驗收線 1）
@@ -235,33 +241,49 @@ function sandbox(src, name, depNames, ctx, call) {
 /* --- 12b. pickQuizQuestion（可重現 + 唔連續重複）--- */
 {
   const bank = [
-    { id: 'a', subj: 'math', q: 'q', opts: ['1', '2'], a: 0 },
-    { id: 'b', subj: 'math', q: 'q', opts: ['1', '2'], a: 0 },
-    { id: 'c', subj: 'math', q: 'q', opts: ['1', '2'], a: 0 },
+    { id: 'a', subj: 'math', unit: 2, q: 'q', opts: ['1', '2'], a: 0 },
+    { id: 'b', subj: 'math', unit: 2, q: 'q', opts: ['1', '2'], a: 0 },
+    { id: 'c', subj: 'math', unit: 2, q: 'q', opts: ['1', '2'], a: 0 },
   ];
   /* 真 mulberry32（由 index.html 抽出嚟用，唔自己寫一個唔同嘅） */
   const mul = block(code, /function mulberry32\([\s\S]*?\n\}/);
   const srf = block(code, /function stageRngFor\(seed, stageId\) \{[\s\S]*?\n\}/);
+  /* ⚠️ v0.43.0 #154：pickQuizQuestion 會叫 quizPool()（科目 + 單元過濾）→ 必須一齊抽 */
+  const pool = block(code, /function quizPool\(subj, unit\) \{[\s\S]*?\n\}/);
   const pick = block(code, /function pickQuizQuestion\(\) \{[\s\S]*?\n\}/);
   const F = new Function('__c', `
     let quizBank = __c.bank, runSeed = __c.seed, lastStage = __c.stage, segIndex = __c.seg;
-    let quizLastId = __c.lastId;
-    ${mul}\n${srf}\n${pick}
+    let quizLastId = __c.lastId, quizSubj = __c.subj, quizUnit = __c.unit;
+    ${pool}\n${mul}\n${srf}\n${pick}
     const a = pickQuizQuestion();
     const b = pickQuizQuestion();
     return { a: a ? a.id : null, lastId: quizLastId, second: b ? b.id : null };
   `);
-  const r = F({ bank, seed: 12345, stage: 1, seg: 2, lastId: '' });
+  const base = { bank, seed: 12345, stage: 1, seg: 2, lastId: '', subj: 'all', unit: 0 };
+  const r = F(base);
   check('★ 抽到題目', r.a !== null, '· ' + r.a);
   check('★ 記住上一條 id（= 最後抽嗰條）', r.lastId === r.second, '· lastId=' + r.lastId + ' second=' + r.second);
   /* 固定 quizLastId = 會被抽到嗰條 → 必須改抽另一條 */
-  const r2 = F({ bank, seed: 12345, stage: 1, seg: 2, lastId: r.a });
+  const r2 = F(Object.assign({}, base, { lastId: r.a }));
   check('★ 唔連續出同一條', r2.a !== r.a, '· ' + r.a + ' → ' + r2.a);
   /* 同 seed → 同題（可重現） */
-  const r3 = F({ bank, seed: 12345, stage: 1, seg: 2, lastId: '' });
+  const r3 = F(base);
   check('★ 同 seed → 同題（可重現）', r3.a === r.a);
-  const r4 = F({ bank, seed: 12345, stage: 1, seg: 2, lastId: '' });
+  const r4 = F(base);
   check('★ 同一輸入 → 結果穩定', r4.a === r3.a && r4.lastId === r3.lastId);
+  /* v0.43.0 #154：科目 + 單元過濾 */
+  const bank2 = bank.concat([{ id: 'z', subj: 'chinese', unit: 1, q: 'q', opts: ['1', '2'], a: 0 }]);
+  const r5 = F(Object.assign({}, base, { subj: 'math', unit: 2 }));
+  check('★ 指定單元 → 抽到嘅題唔會 null', r5.a !== null, '· ' + r5.a);
+  /* 單元冇題 → 退回科目層（unit 0）· 唔會 null */
+  const r6 = F(Object.assign({}, base, { bank: bank2, subj: 'chinese', unit: 2 }));
+  check('★ 單元冇題 → 退回科目層全部（唔會 null）', r6.a !== null, '· ' + r6.a);
+  check('★ 退回之後只會抽該科目嘅題', r6.a === 'z', '· ' + r6.a);
+  const r7 = F(Object.assign({}, base, { subj: 'math', unit: 1 }));
+  check('★ 數學單元 1 冇題 → 退回數學全部（唔會 null）', r7.a !== null, '· ' + r7.a);
+  /* 真係一條都冇 → 返 null（唔會 crash） */
+  const r8 = F(Object.assign({}, base, { bank: [], subj: 'math', unit: 2 }));
+  check('★ 完全冇題 → 返 null（唔會 crash）', r8.a === null, '· ' + r8.a);
 }
 
 /* --- 12c. answerQuiz（答對派分 + CD 回充 + 唔派盾；答錯零懲罰）--- */
@@ -467,7 +489,7 @@ console.log('\n=== 14. 還原驗證（mutation test）===');
       !/ship\.hp/.test(ab),
       /stageRngFor\(runSeed, 14000 \+ lastStage \* 10 \+ segIndex\)/.test(pb),
       !/Math\.random\(\)/.test(pb),
-      /quizBank\[i\]\.id === quizLastId/.test(pb),
+      /pool\[i\]\.id === quizLastId/.test(pb),
       /rgba\(2,10,20,0\.82\)/.test(gb),
       /drawQuiz\(\);/.test(block(c, /function renderTail\(\) \{[\s\S]*?\n\}/)),
       (() => { const t = block(c, /function renderTail\(\) \{[\s\S]*?\n\}/);
@@ -513,7 +535,7 @@ console.log('\n=== 14. 還原驗證（mutation test）===');
       '    quizStreak = 0;', '    quizStreak = 0; runScore -= 100;'],
     ['答錯唔清連續', '    quizStreak = 0;\n    segMsg = ', '    segMsg = '],
     ['唔記住上一條 id（會連續出同一條）',
-      'for (let k = 0; k < quizBank.length && quizBank[i].id === quizLastId; k++) i = (i + 1) % quizBank.length;', ''],
+      'for (let k = 0; k < pool.length && pool[i].id === quizLastId; k++) i = (i + 1) % pool.length;', ''],
     ['段界唔觸發答題',
       'settleSegment(); startSegment(stageMs, waveCursor); maybeQuiz();',
       'settleSegment(); startSegment(stageMs, waveCursor);'],

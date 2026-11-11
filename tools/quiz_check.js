@@ -15,6 +15,15 @@ const SIMP_SET = new Set([...SIMP]);
 const CANTONESE = ['嘅', '咗', '喺', '唔', '冇', '咁', '啲', '俾', '咩', '乜', '睇', '係', '攞', '掂', '嘢', '佢', '哋', '哋'];
 /* 英文（側欄/介面守門：無英文） */
 const EN = /[A-Za-z]/;
+/* ⚠️ 中國數字（PLAN #154）：數學單元 1 嘅選項係「一二三四五六七八」——
+   唔加呢張映射表，數學「答案唯一」檢查會把中文數字當成「唔係數值」而全部誤報。 */
+const CN_NUM = { '一':1, '二':2, '三':3, '四':4, '五':5, '六':6, '七':7, '八':8 };
+const hasCN = (s) => Object.prototype.hasOwnProperty.call(CN_NUM, String(s).trim());
+/* 單元名（唯一真實來源喺 index.html 嘅 QUIZ_UNITS 表 · 呢度只做檢查用） */
+const UNIT_NAMES = {
+  chinese: ['詞語運用', '成語故事', '字形標點', '修辭手法'],
+  math:    ['中國數字', '四則運算', '分數小數', '應用圖形'],
+};
 
 let fails = 0;
 const bad = (msg) => { fails++; console.log('  ✗ ' + msg); };
@@ -72,10 +81,12 @@ for (const q of BANK) {
 for (const q of BANK) {
   if (!q || q.subj !== 'math' || !Array.isArray(q.opts)) continue;
   const num = (s) => {
-    const t = String(s).replace(/[^0-9.\/−]/g, '').replace('−', '-');
-    if (t === '') return null;
-    if (/^\d+\/\d+$/.test(t)) { const [a, b] = t.split('/').map(Number); return b === 0 ? null : a / b; }
-    const v = parseFloat(t);
+    const t = String(s).trim();
+    if (hasCN(t)) return CN_NUM[t];            /* 中國數字（一…八） */
+    const t2 = t.replace(/[^0-9.\/−]/g, '').replace('−', '-');
+    if (t2 === '') return null;
+    if (/^\d+\/\d+$/.test(t2)) { const [a, b] = t2.split('/').map(Number); return b === 0 ? null : a / b; }
+    const v = parseFloat(t2);
     return isNaN(v) ? null : v;
   };
   const vals = q.opts.map(num);
@@ -123,6 +134,66 @@ for (const q of BANK) {
     }
   }
   console.log('  分數題自動驗算：' + checked + ' 條');
+}
+/* 6d. 中國數字題（PLAN #154 單元 1）：答案自動驗算 + 方向檢查 */
+{
+  let checked = 0, cnQ = 0;
+  const pos = { 0: 0, 1: 0, 2: 0 };
+  for (const q of BANK) {
+    if (!q || !Array.isArray(q.tags) || q.tags.indexOf('中國數字') < 0) continue;
+    cnQ++;
+    if (!Array.isArray(q.opts) || q.opts.length !== 3) bad(q.id + ' · 中國數字題一定要 3 選');
+    const m = q.q.match(/「([0-9一二三四五六七八])」/);
+    if (!m) { bad(q.id + ' · 中國數字題抽唔到目標數字：' + q.q); continue; }
+    const ch = m[1];
+    const isCn = hasCN(ch);
+    const target = isCn ? CN_NUM[ch] : parseInt(ch, 10);
+    checked++;
+    if (target < 1 || target > 8) bad(q.id + ' · 目標數字 ' + target + ' 唔喺 1–8');
+    const ans = String(q.opts[q.a]).trim();
+    const ansIsCn = hasCN(ans);
+    const got = ansIsCn ? CN_NUM[ans] : parseFloat(ans);
+    if (isNaN(got) || got !== target) {
+      bad(q.id + ' · 答案錯：應該係 ' + target + '，但指咗「' + ans + '」');
+    }
+    /* 方向：題目俾阿拉伯數字 → 答案用中國數字；反之亦然 */
+    if (!isCn && !ansIsCn) bad(q.id + ' · 方向錯：題目係阿拉伯數字，答案應該用中國數字');
+    if (isCn && ansIsCn) bad(q.id + ' · 方向錯：題目係中國數字，答案應該用阿拉伯數字');
+    if (pos[q.a] !== undefined) pos[q.a]++;
+  }
+  console.log('  中國數字題自動驗算：' + checked + ' / ' + cnQ + ' 條');
+  /* 答案位置要平均分布 —— 全部擺同一個位 = 學生可以無腦揀一個掣 */
+  if (cnQ >= 3 && (pos[0] < 2 || pos[1] < 2 || pos[2] < 2)) {
+    bad('中國數字題答案位置分布不均（a ' + pos[0] + ' · b ' + pos[1] + ' · c ' + pos[2] + '）');
+  }
+}
+/* 7. unit 欄（PLAN #154）：喺 0–4 · 每個單元都要有題 · 1–4 加埋要等於全部 */
+{
+  for (const q of BANK) {
+    if (!q) continue;
+    if (typeof q.unit !== 'number' || !Number.isInteger(q.unit) || q.unit < 0 || q.unit > 4) {
+      bad(q.id + ' · unit 唔啱：' + q.unit);
+    }
+  }
+  const byUnit = {};
+  for (const q of BANK) {
+    if (!q) continue;
+    const k = q.subj + '/' + q.unit;
+    byUnit[k] = (byUnit[k] || 0) + 1;
+  }
+  for (const subj of ['chinese', 'math']) {
+    const tot = BANK.filter(q => q && q.subj === subj).length;
+    let sum = 0;
+    const parts = [];
+    for (let u = 1; u <= 4; u++) {
+      const n = byUnit[subj + '/' + u] || 0;
+      sum += n;
+      parts.push('單元' + u + ' ' + UNIT_NAMES[subj][u - 1] + ' ' + n);
+      if (n === 0) bad(subj + ' 單元 ' + u + '（' + UNIT_NAMES[subj][u - 1] + '）一條題都冇 → 會變成永遠冇題嘅範疇');
+    }
+    if (sum !== tot) bad(subj + '：單元 1–4 加埋 ' + sum + ' ≠ 全部 ' + tot + '（有題冇歸單元）');
+    console.log('  ' + (subj === 'chinese' ? '語文' : '數學') + '：全部 ' + tot + ' · ' + parts.join(' · '));
+  }
 }
 /* 7. 分佈 */
 const bySubj = {};

@@ -203,5 +203,90 @@ if (!bySubj.chinese || !bySubj.math) bad('科目唔齊全（要語文 + 數學�
 if (bySubj.chinese < 20) bad('語文題太少（' + bySubj.chinese + ' < 20）');
 if (bySubj.math < 20) bad('數學題太少（' + bySubj.math + ' < 20）');
 
+/* 8. 粵語語音稿（PLAN #155 · v0.44.0）
+ * ⚠️ **分欄位語言規則**：粵語口語檢查（嘅/咗/喺/唔/冇/咁/啲/俾/係/咩/乜/睇/攞/掂/嘢/佢/哋）
+ *    **只喺 say / whySay 兩個欄位豁免**（佢哋係 TTS 讀稿，永遠唔會顯示）。
+ *    ⚠️ 簡體字 / 英文 / 字數上限 **兩個欄位都要查** —— 唔可以放寬成個守門。
+ *    屏幕欄位（q / opts / why）嘅粵語檢查**照舊生效**（見上面 §4）。
+ */
+{
+  const LETTERS = 'ABCDEFGH';
+  const OP_WORD = { '+': '加', '−': '減', '×': '乘', '÷': '除以' };
+  const fracNorm = (s) => String(s).replace(/(\d+)\s*分之\s*(\d+)/g, '$1/$2');
+  const AR_NUM = { '1':'一', '2':'二', '3':'三', '4':'四', '5':'五', '6':'六', '7':'七', '8':'八' };
+  let cnLeak = 0, cnQ = 0;
+  for (const q of BANK) {
+    if (!q) continue;
+    const tag = q.id;
+    /* 8a. 欄位齊全 */
+    if (typeof q.say !== 'string' || !q.say) bad(tag + ' · say 缺失（粵語題目讀稿）');
+    if (typeof q.whySay !== 'string' || !q.whySay) bad(tag + ' · whySay 缺失（粵語解說讀稿）');
+    if (!q.say || !q.whySay) continue;
+    /* 8b. 字數上限（兩個欄位都要查） */
+    if (q.say.length > 40) bad(tag + ' · say ' + q.say.length + ' 字 > 40');
+    if (q.whySay.length > 60) bad(tag + ' · whySay ' + q.whySay.length + ' 字 > 60');
+    /* 8c. 簡體字（粵語稿一樣唔准簡體） */
+    for (const ch of q.say + q.whySay) {
+      if (SIMP_SET.has(ch)) bad(tag + ' · 粵語稿含簡體字：' + ch);
+    }
+    /* 8d. 英文：只准答案字母 A–H（字母係實體按鍵名 · 項目規則明文保留） */
+    for (const [nm, s] of [['say', q.say], ['whySay', q.whySay]]) {
+      const letters = [...new Set(s.match(/[A-Za-z]/g) || [])];
+      const other = letters.filter(l => LETTERS.indexOf(l) < 0);
+      if (other.length) bad(tag + ' · ' + nm + ' 含非答案英文字母：' + other.join(''));
+    }
+    /* 8e. 答案字母 + 答案內容（分數要正規化「X 分之 Y」→「X/Y」） */
+    const letter = LETTERS[q.a];
+    if (!q.whySay.includes(letter)) bad(tag + ' · whySay 冇答案字母 ' + letter);
+    const ansTxt = String(q.opts[q.a]);
+    if (!fracNorm(q.whySay).includes(fracNorm(ansTxt))) {
+      bad(tag + ' · whySay 冇答案內容「' + ansTxt + '」');
+    }
+    /* 8f. 運算詞一定要同題目一致（+加 · −減 · ×乘 · ÷除以） */
+    if (q.subj === 'math' && typeof q.q === 'string') {
+      for (const [sym, word] of Object.entries(OP_WORD)) {
+        if (q.q.indexOf(sym) >= 0 && q.say.indexOf(word) < 0) {
+          bad(tag + ' · 題目有「' + sym + '」但 say 冇讀「' + word + '」：' + q.say);
+        }
+      }
+      for (const [sym, word] of Object.entries(OP_WORD)) {
+        if (q.q.indexOf(sym) < 0 && q.say.indexOf(word) >= 0) {
+          bad(tag + ' · 題目冇「' + sym + '」但 say 讀咗「' + word + '」：' + q.say);
+        }
+      }
+    }
+    /* 8g. 中國數字題嘅 say 必須含「阿拉伯數字」；其他數學題唔加呢個前綴 */
+    const isCNq = /中國數字|阿拉伯數字/.test(q.q || '');
+    if (isCNq) {
+      cnQ++;
+      if (q.say.indexOf('阿拉伯數字') < 0) {
+        bad(tag + ' · 中國數字題嘅 say 冇「阿拉伯數字」（分唔到字形）：' + q.say);
+      }
+    } else if (q.subj === 'math' && q.say.indexOf('阿拉伯數字') >= 0) {
+      bad(tag + ' · 非中國數字題嘅 say 唔應該有「阿拉伯數字」前綴：' + q.say);
+    }
+    /* 8h. ⚠️ 同音洩漏：粵語入面「1」同「一」同音（jat1）·「6」同「六」同音（luk6）
+     *    答案選項如果係中國數字，而 say 讀出咗同一個數字 → 音頻等於**直接讀出答案**
+     *    ⇒ say 唔可以出現嗰個阿拉伯數字（由屏幕顯示個數字）。 */
+    const ansTrim = ansTxt.trim();
+    if (hasCN(ansTrim)) {
+      const digit = CN_NUM[ansTrim];
+      if (new RegExp('(^|[^0-9])' + digit + '([^0-9]|$)').test(q.say)) {
+        cnLeak++;
+        bad(tag + ' · ⚠️ 同音洩漏：答案「' + ansTrim + '」嘅讀音（' + AR_NUM[ansTrim] + '）出現喺 say：' + q.say);
+      }
+    }
+  }
+  console.log('  粵語稿：' + BANK.length + ' 條 · 中國數字題 ' + cnQ + ' 條 · 同音洩漏 ' + cnLeak + ' 條');
+}
+
+/* 8i. 語音稿總數（PLAN #155：用 web 語音合成 · 唔預生成音檔 → 冇音檔要檢查）
+ *    每題 2 段稿（say 題目 + whySay 解說）· 99 條 = 198 段。 */
+{
+  const total = BANK.reduce((n, q) => n + (q && q.say ? 1 : 0) + (q && q.whySay ? 1 : 0), 0);
+  console.log('  語音稿：' + total + ' 段（' + BANK.length + ' 題 × 2）');
+  if (total !== BANK.length * 2) bad('語音稿總數唔啱（應為 ' + BANK.length * 2 + '）');
+}
+
 console.log(fails === 0 ? '✓ 題庫全部通過' : '✗ ' + fails + ' 項失敗');
 process.exit(fails === 0 ? 0 : 1);

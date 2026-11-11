@@ -2664,8 +2664,8 @@ function settleSegment() {
  * ⚠️ 唔可以用 STATE.PAUSED 做答題：PAUSED 分支喺繪製場景之前 return → 暫停時場景全部唔畫。
 */
 const QUIZ_LS        = 'dsf.quizBank';
-const QUIZ_EVERY     = 3;      /* 每 3 段彈一條 */
-const QUIZ_MAX       = 5;      /* 每關上限 */
+const QUIZ_EVERY     = 1;      /* 每段彈一條（v0.44：為咗真係彈到 12 條 · 配合 QUIZ_MAX） */
+const QUIZ_MAX       = 12;     /* 每關上限（v0.43 係 5 · v0.44 加到 12） */
 const QUIZ_GRACE_MS  = 800;    /* 恢復後無敵（抖返） */
 const QUIZ_COUNTDOWN = 1200;   /* 3-2-1 倒數 */
 const QUIZ_SCORE     = 300;    /* 答對 base 分 */
@@ -2675,6 +2675,62 @@ let quizBank = [], quizOpen = false, quizPhase = 0, quizQ = null;
 let quizPick = -1, quizOk = false, quizStartedAtMs = 0;
 let quizGraceUntil = 0, quizStreak = 0, quizCount = 0, quizLastId = '';
 let quizPending = false, quizCdUntil = 0;
+
+/* ---------- v0.44.0 #155：粵語語音（用 web 本身嘅語音功能 · speechSynthesis）----------
+ * ⚠️ **唔預生成音檔**（用 web 本身嘅語音功能）→ repo 唔會多幾 MB 音檔、唔使 ffmpeg。
+ * ⚠️ **一定要用粵語 voice**（zh-HK / yue-Hant-HK）：粵語稿有「嘅/咗/啲/咩/冇/喺/佢」
+ *    呢啲**普通話冇嘅字**，用 zh-CN / zh-TW voice 讀會讀唔出或者讀錯 → **冇粵語 voice 就唔讀**
+ *    （靜靜跳過，唔阻答題、唔報錯、唔用錯語言讀）。
+ * ⚠️ 語音清單係**非同步**載入（getVoices() 第一次可能係空 → 靠 voiceschanged 補）。
+ * ⚠️ 冇音檔 → 老師貼上嘅題庫冇 say/whySay → 冇語音（正常）。
+ */
+const TTS_LANGS = ['yue-Hant-HK', 'zh-HK', 'zh-Hant-HK', 'zh-Hant-HK'];
+let ttsVoice = null, ttsNoVoiceWarned = false;
+/* 揀粵語 voice：先 exact match 語言 tag → 再退而求其次揀任何中文 voice */
+function ttsPickVoice() {
+  if (typeof speechSynthesis === 'undefined' || typeof SpeechSynthesisUtterance === 'undefined') return null;
+  const vs = speechSynthesis.getVoices();
+  if (!vs || !vs.length) return null;
+  for (const lang of TTS_LANGS) {
+    for (const v of vs) if (String(v.lang).toLowerCase() === lang) return v;
+  }
+  for (const v of vs) { const l = String(v.lang).toLowerCase(); if (l.indexOf('yue') === 0 || l.indexOf('zh-hk') === 0) return v; }
+  return null;
+}
+function ttsStop() {
+  if (typeof speechSynthesis === 'undefined') return;
+  try { speechSynthesis.cancel(); } catch (e) {}
+}
+function ttsBgm(quiet) {
+  if (!actx || !bgmGain) return;
+  bgmGain.gain.setTargetAtTime(quiet ? 0 : volToGain(volBgm), actx.currentTime, 0.05);
+}
+/* 讀一段粵語稿。冇 voice / 冇文字 / 靜音 → 靜靜跳過。 */
+function ttsSpeak(text) {
+  /* ⚠️ **唔跟 `audioOn` 總開關**：語音係**教學內容**（唔係音效）—— 遊戲預設靜音，
+     如果跟 audioOn → 新用戶開箱就冇聲 → 個功能睇落壞咗（靜靜失效）。
+     靜音方法：音訊面板將「音效・語音」拉去 0（音量跟 volSfx）。 */
+  if (!text) return;
+  if (typeof speechSynthesis === 'undefined' || typeof SpeechSynthesisUtterance === 'undefined') return;
+  if (!ttsVoice) ttsVoice = ttsPickVoice();
+  /* ⚠️ 冇粵語 voice 係「靜靜失效」嘅頭號原因 → 出一次 warning，令老師查得到原因 */
+  if (!ttsVoice) {
+    if (!ttsNoVoiceWarned) {
+      ttsNoVoiceWarned = true;
+      console.warn('[語音] 裝置冇粵語語音 → 唔讀出聲（Windows 要裝「Microsoft HiuGaai / HiuMaan (Hong Kong)」語音包）');
+    }
+    return;                     /* ⚠️ 冇粵語 voice → 唔用普通話讀粵語稿 */
+  }
+  try {
+    const u = new SpeechSynthesisUtterance(text);
+    u.voice = ttsVoice; u.lang = ttsVoice.lang;
+    u.rate = 0.95; u.pitch = 1; u.volume = volToGain(volSfx);   /* 跟「音效・語音」音量檔 */
+    speechSynthesis.cancel();
+    speechSynthesis.speak(u);
+    ttsBgm(true);
+    console.log('[語音] ' + ttsVoice.name + '（' + ttsVoice.lang + '）· ' + text);
+  } catch (e) { /* 靜靜跳過 */ }
+}
 
 /* ---------- v0.43.0 #154：科目 / 單元前置分流 ----------
  * ⚠️ 呢兩個係 **fsm 狀態**（前置分流畫面）· 同答題 overlay（quizOpen flag）唔同層。
@@ -2735,10 +2791,12 @@ function validateQuizBank(arr) {
     if (dup) continue;
     seen[q.id] = 1;
     /* ⚠️ unit 一定要保留（PLAN #154）—— 呢度重建成固定欄位清單，唔加 unit 就會被丟走（靜靜失效）。
-       老師貼上嘅舊題冇 unit → 0（全部）。 */
+       老師貼上嘅舊題冇 unit → 0（全部）。
+       ⚠️ say / whySay 一樣要保留（PLAN #155）—— 唔加就冇粵語語音（靜靜失效，唔會 crash）。 */
     good.push({ id:q.id, subj:q.subj, level:q.level|0,
                 unit:((q.unit|0) >= 1 && (q.unit|0) <= 4) ? (q.unit|0) : 0,
-                q:String(q.q||''), opts:q.opts.map(String), a:q.a, why:String(q.why||''), tags:(q.tags||[]).slice(0,6) });
+                q:String(q.q||''), opts:q.opts.map(String), a:q.a, why:String(q.why||''), tags:(q.tags||[]).slice(0,6),
+                say:String(q.say||''), whySay:String(q.whySay||'') });
   }
   return { good: good, bad: arr.length - good.length };
 }
@@ -2786,6 +2844,7 @@ function openQuiz() {
   quizQ = q; quizPick = -1; quizOk = false; quizPhase = 1;
   quizOpen = true; quizCount++;
   quizStartedAtMs = performance.now();
+  ttsSpeak(q.say);         /* v0.44：讀粵語題目（冇 voice / 冇稿就靜靜跳過） */
   console.log('[答題] 第 ' + quizCount + ' 條 · ' + q.id + ' · ' + q.q);
   return true;
 }
@@ -2796,11 +2855,13 @@ function closeQuiz() {
   if (runStartMs !== null) runStartMs += elapsed;
   quizGraceUntil = performance.now() + QUIZ_GRACE_MS;
   quizOpen = false; quizPhase = 0; quizQ = null; quizPick = -1;
+  ttsStop(); ttsBgm(false);   /* v0.44：停語音 + BGM 還原 */
   console.log('[答題] 結束 · 凍結 ' + Math.round(elapsed) + 'ms');
 }
 function answerQuiz(i) {
   if (quizPhase !== 1 || !quizQ) return;
   quizPick = i; quizOk = (i === quizQ.a); quizPhase = 2;
+  ttsSpeak(quizQ.whySay);    /* v0.44：讀粵語解說 */
   if (quizOk) {
     quizStreak++;
     const gain = Math.round(QUIZ_SCORE * quizStreak * (affScore || 1) * (styScore || 1));
@@ -2813,7 +2874,7 @@ function answerQuiz(i) {
     segMsg = '答錯（睇答案）'; segMsgT = 1.4; sfx('hit');
   }
 }
-function retryQuiz() { if (quizPhase === 2 && !quizOk) { quizPick = -1; quizOk = false; quizPhase = 1; } }
+function retryQuiz() { if (quizPhase === 2 && !quizOk) { quizPick = -1; quizOk = false; quizPhase = 1; ttsSpeak(quizQ.say); } }
 function nextQuiz()  { if (quizPhase === 2) { quizPhase = 3; quizCdUntil = performance.now() + QUIZ_COUNTDOWN; } }
 
 /* 答題 UI 幾何（320×480 座標 · 觸控目標 ≥64×64） */
@@ -6357,7 +6418,7 @@ function drawAudioUi() {
     step(minus, '−'); step(plus, '+');
   };
   row('音樂', volBgm, b.bgmMinus, b.bgmPlus);
-  row('音效', volSfx, b.sfxMinus, b.sfxPlus);
+  row('音效・語音', volSfx, b.sfxMinus, b.sfxPlus);   /* ⚠️ v0.44：粵語語音跟呢個音量檔 */
 
   /* v0.41.0 #152：段目標難度三檔 · 同一套 [−]/[+] 觸控詞彙（唔用滑條） */
   const midY3 = b.segMinus.y + b.segMinus.h / 2;
@@ -6487,7 +6548,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.43.0 · 壓力段 · 段目標可調 · 答題 · 分科目單元', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.44.0 · 壓力段 · 答題 12 條 · 粵語語音', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -7671,12 +7732,19 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.43.0 已載入');
+console.log('[啟動] 末日救未來 v0.44.0 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */
 loadSegDiff();      /* v0.41.0 #152：讀段目標難度檔（預設標準） */
 loadQuizBank();     /* v0.42.0 #153：載入題庫（老師貼上優先 → 內置 questions.js） */
+/* v0.44.0 #155：語音清單**非同步**載入（getVoices() 第一次可能係空）→ 靠 voiceschanged 補揀 voice */
+if (typeof speechSynthesis !== 'undefined') {
+  try {
+    speechSynthesis.addEventListener('voiceschanged', function () { ttsVoice = ttsPickVoice(); });
+  } catch (e) {}
+  ttsVoice = ttsPickVoice();
+}
 console.log('[啟動] 音效 =', audioOn ? '開' : '關', '· 音樂檔', volBgm, '· 音效檔', volSfx,
   '· 段目標難度 =', SEG_DIFFS[segDiffIdx].name);
 hudEl.tip.textContent = '點擊畫面開始';

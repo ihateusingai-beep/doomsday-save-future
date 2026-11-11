@@ -65,8 +65,10 @@ check('★ questions.js 存在', fs.existsSync(QBANK));
  * ============================================================ */
 console.log('\n=== 2. 答題常數（PLAN #153 §② 凍結）===');
 const consts = block(code, /const QUIZ_LS[\s\S]*?const QUIZ_PANEL[^\n]*/);
-check('★ 每 3 段彈一條', /const QUIZ_EVERY\s*=\s*3;/.test(consts));
-check('★ 每關上限 5 次', /const QUIZ_MAX\s*=\s*5;/.test(consts));
+/* ⚠️ v0.44.0 #155：答題密度改咗（QUIZ_EVERY 3→1 · QUIZ_MAX 5→12）
+ *    → 呢兩個常數嘅凍結值以 **PLAN #155** 為準（#153 嘅 3 / 5 已被 #155 取代）。 */
+check('★ 每段彈一條（v0.44 #155：QUIZ_EVERY = 1）', /const QUIZ_EVERY\s*=\s*1;/.test(consts));
+check('★ 每關上限 12 次（v0.44 #155：QUIZ_MAX = 12）', /const QUIZ_MAX\s*=\s*12;/.test(consts));
 check('★ 恢復後無敵 800ms', /const QUIZ_GRACE_MS\s*=\s*800;/.test(consts));
 check('★ 3-2-1 倒數 1200ms', /const QUIZ_COUNTDOWN\s*=\s*1200;/.test(consts));
 check('★ 答對 base 分 300', /const QUIZ_SCORE\s*=\s*300;/.test(consts));
@@ -100,7 +102,7 @@ check('★ 答題 engine 唔掂 STATE（overlay 唔經狀態機）',
  * ============================================================ */
 console.log('\n=== 4. 觸發條件 ===');
 const maybeBlk = block(code, /function maybeQuiz\(\) \{[\s\S]*?\n\}/);
-check('★ 每 3 段（segIndex % QUIZ_EVERY === 2）',
+check('★ 每段觸發（segIndex % QUIZ_EVERY === QUIZ_EVERY - 1 · v0.44 EVERY=1）',
   /segIndex % QUIZ_EVERY !== QUIZ_EVERY - 1/.test(maybeBlk));
 check('★ 每關上限（quizCount >= QUIZ_MAX 就唔彈）', /quizCount >= QUIZ_MAX/.test(maybeBlk));
 check('★ 冇題庫就唔彈 + 出提示（唔靜靜唔彈題）',
@@ -289,13 +291,14 @@ function sandbox(src, name, depNames, ctx, call) {
 /* --- 12c. answerQuiz（答對派分 + CD 回充 + 唔派盾；答錯零懲罰）--- */
 {
   const q = { id: 'm-1', subj: 'math', q: '1+1=?', opts: ['1', '2'], a: 1, why: 'w' };
+  /* ⚠️ v0.44 #155：answerQuiz 會叫 ttsSpeak（讀粵語解說）→ sandbox 要有 stub */
   const deps = ['quizPhase', 'quizQ', 'quizOk', 'quizPick', 'quizStreak', 'QUIZ_SCORE',
                 'affScore', 'styScore', 'runScore', 'skillCdUntil', 'bombCDUntil',
-                'segMsg', 'segMsgT', 'sfx'];
+                'segMsg', 'segMsgT', 'sfx', 'ttsSpeak'];
   const base = {
     quizPhase: 1, quizQ: q, quizOk: false, quizPick: -1, quizStreak: 0, QUIZ_SCORE: 300,
     affScore: 1, styScore: 1, runScore: 1000, skillCdUntil: 5000, bombCDUntil: 9000,
-    segMsg: '', segMsgT: 0, sfx: function () {},
+    segMsg: '', segMsgT: 0, sfx: function () {}, ttsSpeak: function () {},
   };
   const ok = sandbox(code, 'answerQuiz', deps, base, 'answerQuiz(1);');
   check('★ 答對 → quizOk=true / phase=2', ok.quizOk === true && ok.quizPhase === 2);
@@ -318,14 +321,17 @@ function sandbox(src, name, depNames, ctx, call) {
 
 /* --- 12d. closeQuiz（時間唔計入段計時 + 0.8 秒無敵）--- */
 {
+  /* ⚠️ v0.44 #155：closeQuiz 會叫 ttsStop / ttsBgm → sandbox 要有 stub */
   const deps = ['performance', 'quizStartedAtMs', 'stageStartMs', 'runStartMs',
-                'quizGraceUntil', 'QUIZ_GRACE_MS', 'quizOpen', 'quizPhase', 'quizQ', 'quizPick'];
+                'quizGraceUntil', 'QUIZ_GRACE_MS', 'quizOpen', 'quizPhase', 'quizQ', 'quizPick',
+                'ttsStop', 'ttsBgm'];
   let now = 100000;
   const r = sandbox(code, 'closeQuiz', deps, {
     performance: { now: () => now },
     quizStartedAtMs: 90000, stageStartMs: 5000, runStartMs: 2000,
     quizGraceUntil: 0, QUIZ_GRACE_MS: 800,
     quizOpen: true, quizPhase: 3, quizQ: { id: 'x' }, quizPick: 1,
+    ttsStop: function () {}, ttsBgm: function () {},
   }, 'closeQuiz();');
   check('★ 答題時間推走 stageStartMs（段目標唔會到期）', r.stageStartMs === 5000 + 10000, '· ' + r.stageStartMs);
   check('★ 答題時間推走 runStartMs（時間獎金唔會被扣）', r.runStartMs === 2000 + 10000, '· ' + r.runStartMs);
@@ -339,7 +345,7 @@ function sandbox(src, name, depNames, ctx, call) {
   const bank = [{ id: 'a', subj: 'math', q: 'q', opts: ['1', '2'], a: 0 }];
   const run = (segIndex, quizCount, bk) => {
     const F = new Function('__c', `
-      let segIndex = __c.segIndex, QUIZ_EVERY = 3, quizCount = __c.quizCount, QUIZ_MAX = 5;
+      let segIndex = __c.segIndex, QUIZ_EVERY = 1, quizCount = __c.quizCount, QUIZ_MAX = 12;
       let quizBank = __c.quizBank, segMsg = '', segMsgT = 0, quizPending = false;
       ${block(code, /function maybeQuiz\(\) \{[\s\S]*?\n\}/)}
       const r = maybeQuiz();
@@ -347,11 +353,12 @@ function sandbox(src, name, depNames, ctx, call) {
     `);
     return F({ segIndex, quizCount, quizBank: bk });
   };
-  check('★ segIndex=0（第一段）唔彈', run(0, 0, bank).r === false);
-  check('★ segIndex=2（第三段）彈', run(2, 0, bank).r === true && run(2, 0, bank).pending === true);
-  check('★ segIndex=5（第六段）彈', run(5, 0, bank).r === true);
-  check('★ segIndex=3 / 4 唔彈', run(3, 0, bank).r === false && run(4, 0, bank).r === false);
-  check('★ 每關 5 次上限：第 6 次唔彈', run(2, 5, bank).r === false);
+  /* ⚠️ v0.44 #155：QUIZ_EVERY = 1（每段都彈）· QUIZ_MAX = 12 */
+  check('★ segIndex=0（第一段）都彈（EVERY=1）', run(0, 0, bank).r === true);
+  check('★ segIndex=2 彈 + 設 pending', run(2, 0, bank).r === true && run(2, 0, bank).pending === true);
+  check('★ segIndex=5 彈', run(5, 0, bank).r === true);
+  check('★ 每關 12 次上限：第 13 次唔彈', run(2, 12, bank).r === false);
+  check('★ 未到上限（第 12 次）彈', run(2, 11, bank).r === true);
   const empty = run(2, 0, []);
   check('★ 冇題庫 → 唔彈 + 出提示', empty.r === false && empty.msg === '題庫未載入' && empty.msgT > 0);
 }
@@ -466,8 +473,9 @@ console.log('\n=== 14. 還原驗證（mutation test）===');
                       'pickQuizQuestion', 'loadQuizBank', 'validateQuizBank']
       .map(n => { try { return block(c, new RegExp('function ' + n + '\\([\\s\\S]*?\\n\\}')); } catch (e) { return ''; } }).join('\n');
     const rules = [
-      /const QUIZ_EVERY\s*=\s*3;/.test(consts2),
-      /const QUIZ_MAX\s*=\s*5;/.test(consts2),
+      /* ⚠️ v0.44.0 #155：答題密度改咗（EVERY 3→1 · MAX 5→12）· 凍結值以 PLAN #155 為準 */
+      /const QUIZ_EVERY\s*=\s*1;/.test(consts2),
+      /const QUIZ_MAX\s*=\s*12;/.test(consts2),
       /const QUIZ_GRACE_MS\s*=\s*800;/.test(consts2),
       /const QUIZ_COUNTDOWN\s*=\s*1200;/.test(consts2),
       /const QUIZ_SCORE\s*=\s*300;/.test(consts2),
@@ -505,8 +513,8 @@ console.log('\n=== 14. 還原驗證（mutation test）===');
   }
 
   const MUTANTS = [
-    ['每 3 段 → 每 4 段', 'const QUIZ_EVERY     = 3;', 'const QUIZ_EVERY     = 4;'],
-    ['每關上限 5 → 99', 'const QUIZ_MAX       = 5;', 'const QUIZ_MAX       = 99;'],
+    ['每段 → 每 2 段（v0.44 EVERY=1）', 'const QUIZ_EVERY     = 1;', 'const QUIZ_EVERY     = 2;'],
+    ['每關上限 12 → 99（v0.44 MAX=12）', 'const QUIZ_MAX       = 12;', 'const QUIZ_MAX       = 99;'],
     ['無敵 800ms → 0', 'const QUIZ_GRACE_MS  = 800;', 'const QUIZ_GRACE_MS  = 0;'],
     ['倒數 1200ms → 0', 'const QUIZ_COUNTDOWN = 1200;', 'const QUIZ_COUNTDOWN = 0;'],
     ['答對分 300 → 0', 'const QUIZ_SCORE     = 300;', 'const QUIZ_SCORE     = 0;'],

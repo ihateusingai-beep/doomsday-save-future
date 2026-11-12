@@ -42,8 +42,15 @@ for (const sid of [1, 2, 3, 4, 5]) {
     check('S1（教學關唔 roll）重複 chunk 敵配相同 = 100%（刻意設計）', same === 100, same.toFixed(1) + '%');
   } else {
     check('★ S' + sid + ' 重複 chunk 波對：敵配唔會全部一樣（< 100%）', same < 100, same.toFixed(1) + '%');
-    check('★ S' + sid + ' 波次間敵配多樣度 ≥ 70%（per-wave roll 生效）',
-      h[sid].uniqWavePct >= 70, h[sid].uniqWavePct.toFixed(1) + '%');
+    /* ⚠️ v0.45 #156：波次 ×3.7（7 → 26-32）· 「獨有敵配 / 波數」呢個**比例**會被稀釋
+     *    （波數多過敵配空間 ⇒ 比例必然跌，唔代表變化度變差）⇒ 改用**絕對值**守住真正嘅意圖：
+     *      S2 5.63 → 12.01 · S3 7.03 → 17.55 · S4 7.04 → 20.04 · S5 10.14 → 25.10 個/局
+     *    比例只留一個好鬆嘅地板（防離譜收窄 pool），唔再當主要守門。*/
+    const OLD_BASE = { 2: 5.63, 3: 7.03, 4: 7.04, 5: 10.14 };
+    check('★ S' + sid + ' 每局獨有敵配數 ≥ 舊基線（v0.43：' + OLD_BASE[sid] + ' · 變化度絕對值唔可以跌）',
+      h[sid].uniqComps >= OLD_BASE[sid], h[sid].uniqComps.toFixed(2) + ' 個/局');
+    check('★ S' + sid + ' 波次間敵配多樣度 ≥ 25%（比例地板 · 唔係主要守門）',
+      h[sid].uniqWavePct >= 25, h[sid].uniqWavePct.toFixed(1) + '%');
   }
 }
 

@@ -83,7 +83,10 @@ console.log('\n=== 1b. 版本行寬度 ===');
     for (const ch of line) units += (ch.codePointAt(0) > 0x2e80) ? 2 : 1;
     const px = units * 6.5;
     check('★ 版本行放得落 320px（唔會被切走）', px <= 320, '· ' + units + ' 單位 ≈ ' + px.toFixed(0) + 'px · 「' + line + '」');
-    check('★ 版本行係 v0.44.0', /v0\.44\.0/.test(line), '· ' + line);
+    /* ⚠️ 版本斷言用「>= 唔用 exact-equal」（版本會繼續升 · 唔應該因為升版就爆守門） */
+    const vm = line.match(/v(\d+)\.(\d+)\.(\d+)/);
+    const okVer = vm && (Number(vm[1]) > 0 || (Number(vm[1]) === 0 && Number(vm[2]) >= 45));
+    check('★ 版本行係 v0.45.0 或更新', !!okVer, '· ' + line);
   }
 }
 

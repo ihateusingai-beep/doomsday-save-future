@@ -1921,71 +1921,23 @@ function applyPickedStyle(idx) {
 }
 
 const STAGE_TABLE = {
-  /* waveCount = WAVE_TEMPLATES[n].length（唯一真相；死欄已清） */
-  1: { name:'維港起飛', targetSec:50, bossHp:80,  pattern:'A', waveCount:7 },
-  2: { name:'九龍煙柱', targetSec:55, bossHp:110, pattern:'B', waveCount:7 },
-  3: { name:'大氣層',   targetSec:60, bossHp:150, pattern:'C', waveCount:8 },
-  4: { name:'軌道殘骸', targetSec:65, bossHp:200, pattern:'D', waveCount:8 },
-  5: { name:'逃逸門',   targetSec:70, bossHp:300, pattern:'E', waveCount:11 },
+  /* waveCount = 每關波數（唯一真相）· 內容（敵種／數量）由 WAVE_CHUNKS 決定 */
+  /* ⚠️ v0.45 #156：波次數量 ×~3.7 · 段界綁波次 → 波數決定段數 → 每關 13-32 段（答題 12 條要彈得夠） */
+  1: { name:'維港起飛', targetSec:250, bossHp:80,  pattern:'A', waveCount:26 },
+  2: { name:'九龍煙柱', targetSec:250, bossHp:110, pattern:'B', waveCount:26 },
+  3: { name:'大氣層',   targetSec:260, bossHp:150, pattern:'C', waveCount:28 },
+  4: { name:'軌道殘骸', targetSec:270, bossHp:200, pattern:'D', waveCount:30 },
+  5: { name:'逃逸門',   targetSec:280, bossHp:300, pattern:'E', waveCount:32 },
 };
 
-/* WAVE_TEMPLATES：每關嘅**波次時間軸**（at = 毫秒）。內容（敵種／數量）由 WAVE_CHUNKS 決定。
-   ⚠️ 舊版呢度抄咗一份 spawn[]，係死數據而且已過期 → v0.39.0 #150 移除。 */
-const WAVE_TEMPLATES = {
-  1: [   /* 維港起飛 — 教學關：單排雜魚 + 輕量彈幕 */
-    { at: 1500},
-    { at: 4500},
-    { at: 7500},
-    { at:11000},
-    { at:15000},
-    { at:19000},
-    { at:23000},
-  ],
-  2: [   /* 九龍煙柱 — 扇形 + 短預警 */
-    { at: 1500},
-    { at: 5000},
-    { at: 9000},
-    { at:13000},
-    { at:17000},
-    { at:21000},
-    { at:25000},
-  ],
-  3: [   /* 大氣層 — dive + sniper */
-    { at: 1200},
-    { at: 5000},
-    { at: 8500},
-    { at:12500},
-    { at:16000},
-    { at:20000},
-    { at:24000},
-    { at:28000},
-  ],
-  4: [   /* 軌道殘骸 — elite + shield */
-    { at: 1200},
-    { at: 4500},
-    { at: 8500},
-    { at:13000},
-    { at:18000},
-    { at:22000},
-    { at:26000},
-    { at:30000},
-  ],
-  5: [   /* 逃逸門 — swarm + 全開 */
-    { at: 1200},
-    { at: 4200},
-    { at: 7500},
-    { at:11000},
-    { at:14500},
-    { at:19000},
-    { at:23000},
-    { at:27000},
-    { at:31000},
-    { at:35000},
-    { at:39000},
-  ],
-};
+/* v0.45 #156：波次**時間軸**（at = 毫秒）· 由 STAGE_TABLE[n].waveCount + WAVE_GAP 生成
+   ⚠️ 舊 WAVE_TEMPLATES（7/7/8/8/11 波 · 手打時間軸）已刪：關卡要拉長 3 倍（答題 12 條要彈得夠），
+      手打 26-32 個時間值易錯 ⇒ 改用生成器（waveCount 仍係唯一真相）。
+   ⚠️ WAVE_GAP 5100：> 硬檔 segT 5000（硬檔**每波**開新段）· < 簡單/標準 segT 8000（**每 2 波**開新段）
+      ⇒ 兩檔段密度差异保住（硬 26-32 段 vs 簡單 13-16 段）· 段界喺波次落嗰刻先檢查 ⇒ 波數 = 段數上限。*/
+const WAVE_GAP = 5100;
 
-/* 8b. 隨機波次（#34–#35 · #49）· at[] 由 WAVE_TEMPLATES 抽出 → waveCount 三者自動一致（#33）。
+/* 8b. 隨機波次（#34–#35 · #49）· at[] 由 STAGE_TABLE.waveCount 生成 → 波數自動一致（#33）。
    ⚠️ 玩法 random 全部走 seed，tick() 內**唔准**用 Math.random()（RNG 規則 4）。 */
 /* mulberry32：32 位種子 → [0,1) 序列。同 seed 必出完全相同序列。 */
 function mulberry32(a) {
@@ -2141,14 +2093,16 @@ const WAVE_CHUNKS = {
 /* 每關抽波池（#35：8–12 個 chunk，可跨關共用）。S1 用 slots：每槽鎖死類別同規模（教學順序，#49）。
    ⚠️ S1 七波冇 dive／elite／warn —— 俯衝教學喺 S3 先出現。 */
 const STAGE_RAND = {
+  /* ⚠️ v0.45 #156：S1 教學關嘅**逐步引入**順序（7 步循環用 · 波次 26 個）——
+     步 1 純雜魚 → 步 2 第一次彈幕 → 步 4 第一次被瞄準 → 步 6 彈幕升級（無 warn） */
   1: { slots: [
-        ['g_s'],                    // 1 波 1500  基本雜魚
-        ['sp_s'],                   // 2 波 4500  第一次彈幕
-        ['g_s','g_m'],              // 3 波 7500
-        ['ai_s','ai_s2'],           // 4 波 11000 第一次被瞄準
-        ['g_m','g_l'],              // 5 波 15000
-        ['sp_l','sp_l2'],           // 6 波 19000 彈幕升級（無 warn）
-        ['g_m','g_l'],              // 7 波 23000
+        ['g_s'],                    // 步 1  基本雜魚
+        ['sp_s'],                   // 步 2  第一次彈幕
+        ['g_s','g_m'],              // 步 3
+        ['ai_s','ai_s2'],           // 步 4  第一次被瞄準
+        ['g_m','g_l'],              // 步 5
+        ['sp_l','sp_l2'],           // 步 6  彈幕升級（無 warn）
+        ['g_m','g_l'],              // 步 7
      ] },
   2: { pool: ['g_m','g_l','g_xl','sp_s','sp_m','sp_l','sp_w','ai_s','ai_w','rg_s'] },
   3: { pool: ['mt_s','mt_m','mt_l','g_l','g_m','g_xl','rg_m','rg_l','sp_s','sp_m','ai_s','dv_s','sp_2','ram_1','mix_sp_ram','tu_1'] },
@@ -2156,10 +2110,12 @@ const STAGE_RAND = {
   5: { pool: ['mt_m','mt_l','g_xl','dv_l','el_1','el_2','sw_2','sw_3','sp_w','rg_l','mix_sw_sn','mix_sh_gr','sp_2','ram_2','ln_1','mix_sp_ram','md_gr','ch_2','bm_2','tu_1','tu_gr'] },
 };
 
-/* at[] 由 WAVE_TEMPLATES 動態抽出（單一真相，唔重複維護） */
+/* at[] 由 STAGE_TABLE[n].waveCount + WAVE_GAP 生成（單一真相，唔重複維護） */
 const STAGE_ATS = {};
-for (const k of Object.keys(WAVE_TEMPLATES)) {
-  STAGE_ATS[k] = WAVE_TEMPLATES[k].map(w => w.at);
+for (const k of Object.keys(STAGE_TABLE)) {
+  const ats = [];
+  for (let i = 0; i < STAGE_TABLE[k].waveCount; i++) ats.push(1500 + i * WAVE_GAP);
+  STAGE_ATS[k] = ats;
 }
 
 function pickChunkId(pool, rng, lastId) {
@@ -2179,7 +2135,9 @@ function assembleWaves(stageId, seed) {
   const out = [];
   let lastId = null;
   for (let i = 0; i < ats.length; i++) {
-    const rawPool = cfg.slots ? (cfg.slots[i] || cfg.slots[0]) : cfg.pool;
+    /* ⚠️ v0.45 #156：波次 ×~3.7 → slots 只有 7 個唔夠用 → **循環**取用（唔係 `slots[i] || slots[0]`，
+       否則第 8 波之後全部變第 1 波嘅池（純雜魚）· 教學關後半段會變單調） */
+    const rawPool = (cfg.slots && cfg.slots.length) ? cfg.slots[i % cfg.slots.length] : cfg.pool;
     /* #41 本關風格：改 pool 組成（重複 id = 加權），S1 教學關不動 */
     const pool = stylePool(stageId, rawPool);
     const id = pickChunkId(pool, rng, lastId);
@@ -6548,7 +6506,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.44.0 · 壓力段 · 答題 12 條 · 粵語語音', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.45.0 · 壓力段 · 答題 12 條 · 粵語語音', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -7732,7 +7690,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.44.0 已載入');
+console.log('[啟動] 末日救未來 v0.45.0 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */

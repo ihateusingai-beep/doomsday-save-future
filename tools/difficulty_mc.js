@@ -30,16 +30,27 @@ function harness(htmlPath, RUNS) {
   const obj = (re, name) => eval('(' + stripSemi(grab(re).replace('const ' + name + ' =', '')) + ')');
   const fn = (re) => eval('(' + grab(re) + ')');
 
-  const WAVE_TEMPLATES = obj(/const WAVE_TEMPLATES = \{[\s\S]*?\n\};/, 'WAVE_TEMPLATES');
   const STAGE_TABLE    = obj(/const STAGE_TABLE = \{[\s\S]*?\n\};/, 'STAGE_TABLE');
+  /* ⚠️ v0.45 #156：WAVE_TEMPLATES 已刪（時間軸改由 waveCount + WAVE_GAP 生成）
+     ⚠️ 呢個工具要**同時支援新舊 source**（用嚟做基線對比）⇒ 兩套都讀得到。*/
+  const HAS_WT        = /const WAVE_TEMPLATES = \{/.test(h);
+  const WAVE_GAP       = HAS_WT ? 0 : Number((h.match(/const WAVE_GAP\s*=\s*(\d+)/) || [])[1]);
   const WAVE_CHUNKS    = obj(/const WAVE_CHUNKS = \{[\s\S]*?\n\};/, 'WAVE_CHUNKS');
   const STAGE_RAND     = obj(/const STAGE_RAND = \{[\s\S]*?\n\};/, 'STAGE_RAND');
   const ENEMY_ROLL     = obj(/const ENEMY_ROLL = \{[\s\S]*?\n\};/, 'ENEMY_ROLL');
   const SPECIAL_TYPES  = eval('(' + stripSemi(grab(/const SPECIAL_TYPES = \[[^\]]*\];/).replace('const SPECIAL_TYPES =', '')) + ')');
 
-  /* STAGE_ATS：assembleWaves() 用（波次時間線，由 WAVE_TEMPLATES 推） */
-  const STAGE_ATS = {};
-  for (const k of Object.keys(WAVE_TEMPLATES)) STAGE_ATS[k] = WAVE_TEMPLATES[k].map(w => w.at);
+  /* STAGE_ATS：assembleWaves() 用（波次時間線）
+     · 舊 source → 由 WAVE_TEMPLATES 推 · 新 source → **由真 source 抽生成段**（唔手抄 · 免得工具同遊戲漂移） */
+  let STAGE_ATS;
+  if (HAS_WT) {
+    const WT = obj(/const WAVE_TEMPLATES = \{[\s\S]*?\n\};/, 'WAVE_TEMPLATES');
+    STAGE_ATS = {};
+    for (const k of Object.keys(WT)) STAGE_ATS[k] = WT[k].map(w => w.at);
+  } else {
+    STAGE_ATS = new Function('STAGE_TABLE', 'WAVE_GAP',
+      grab(/const STAGE_ATS = \{\};[\s\S]*?\n\}/) + '\nreturn STAGE_ATS;')(STAGE_TABLE, WAVE_GAP);
+  }
 
   /* 各敵種血量（由真 source 常數抽，唔手抄） */
   const HP = {};
@@ -77,6 +88,7 @@ function harness(htmlPath, RUNS) {
     let waves = 0, body = 0, proj = 0, threatHp = 0, wavesWithEmpty = 0;
     const typeCount = Object.create(null);
     let uniqPerRun = 0;
+    let uniqAbsPerRun = 0;   /* ⚠️ v0.45 #156：每局**獨有敵配嘅絕對數**（比例會被波數稀釋 · 絕對值先係真變化度） */
     let dupPairs = 0, dupSame = 0;
     const perWave = [];
 
@@ -123,6 +135,7 @@ function harness(htmlPath, RUNS) {
       waves += wv.length; body += runBody; proj += runProj; threatHp += runHp;
       wavesWithEmpty += runEmpty;
       uniqPerRun += comps.size / wv.length;
+      uniqAbsPerRun += comps.size;
     }
 
     const totalTypes = Object.values(typeCount).reduce((a, b) => a + b, 0) || 1;
@@ -136,6 +149,7 @@ function harness(htmlPath, RUNS) {
         .sort((a, b) => b[1] - a[1])
         .map(([k, v]) => [k, +(v / totalTypes * 100).toFixed(1)])),
       uniqWavePct: uniqPerRun / RUNS * 100,
+      uniqComps: uniqAbsPerRun / RUNS,
       dupPairSamePct: dupPairs ? dupSame / dupPairs * 100 : 0,
       perWave,
     };
@@ -172,6 +186,8 @@ const rows = [
   ['威脅血量/波', 'hpPerWave', 1],
   ['空波率%', 'emptyWavePct', 2],
   ['波次間敵配多樣度%', 'uniqWavePct', 1],
+  ['每局獨有敵配數', 'uniqComps', 2],
+  ['每關波數', 'waves', 1],
   ['重複波對相同%', 'dupPairSamePct', 2],
 ];
 const pad = (s, n) => String(s).padStart(n);

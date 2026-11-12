@@ -32,8 +32,9 @@ const WAVE_CHUNKS = obj(/const WAVE_CHUNKS = \{[\s\S]*?\n\};/, 'WAVE_CHUNKS');
 const STAGE_RAND  = obj(/const STAGE_RAND = \{[\s\S]*?\n\};/, 'STAGE_RAND');
 const ENEMY_ROLL  = obj(/const ENEMY_ROLL = \{[\s\S]*?\n\};/, 'ENEMY_ROLL');
 const SPECIAL_TYPES = eval('(' + grab(/const SPECIAL_TYPES = \[[^\]]*\];/).replace('const SPECIAL_TYPES =', '').replace(/;\s*$/, '') + ')');
-const WAVE_TEMPLATES = obj(/const WAVE_TEMPLATES = \{[\s\S]*?\n\};/, 'WAVE_TEMPLATES');
 const STAGE_TABLE = obj(/const STAGE_TABLE = \{[\s\S]*?\n\};/, 'STAGE_TABLE');
+/* ⚠️ v0.45 #156：WAVE_TEMPLATES 已刪（時間軸改由 waveCount + WAVE_GAP 生成） */
+const WAVE_GAP = Number((h.match(/const WAVE_GAP\s*=\s*(\d+)/) || [])[1]);
 
 const mulberry32    = eval('(' + grab(/function mulberry32\([\s\S]*?\n\}/) + ')');
 const stageRngFor   = eval('(' + grab(/function stageRngFor\([\s\S]*?\n\}/) + ')');
@@ -43,8 +44,9 @@ const assembleWaves = eval('(' + grab(/function assembleWaves\([\s\S]*?\n\}/) + 
 const rollEnemyRoles = eval('(' + grab(/function rollEnemyRoles\([\s\S]*?\n\}/) + ')');
 const poolEnemyTypes = eval('(' + grab(/function poolEnemyTypes\([\s\S]*?\n\}/) + ')');
 
-const STAGE_ATS = {};
-for (const k of Object.keys(WAVE_TEMPLATES)) STAGE_ATS[k] = WAVE_TEMPLATES[k].map(w => w.at);
+/* 由真 source 抽 STAGE_ATS 生成段（唔手抄 · 免得工具同遊戲漂移） */
+const STAGE_ATS = new Function('STAGE_TABLE', 'WAVE_GAP',
+  h.match(/const STAGE_ATS = \{\};[\s\S]*?\n\}/)[0] + '\nreturn STAGE_ATS;')(STAGE_TABLE, WAVE_GAP);
 let runSeed = 0, stageStyle = null, enemyRoll = Object.create(null);
 const realLog = console.log, realWarn = console.warn;
 let QUIET = false;
@@ -139,8 +141,21 @@ for (const sid of [1, 2, 3, 4, 5]) {
 }
 check('★ S1 每局新敵種 = 1', newCount[1] === RUNS, (newCount[1] / RUNS).toFixed(3));
 check('★ S2 每局新敵種 = 0', newCount[2] === 0, (newCount[2] / RUNS).toFixed(3));
-check('★ S3 每局新敵種 ≤ 2.5', newCount[3] / RUNS <= 2.5, (newCount[3] / RUNS).toFixed(3));
+/* ⚠️ v0.45 #156：關卡拉長 ~5 倍（波次 ×3.7）· 「每局新敵種」絕對值**必然**上升
+ *    （同一關出更多波 → pool 入面更多敵種會出現）· 但**每分鐘**新敵種率大跌 = 教學節奏更鬆：
+ *      S3 舊 2.138 個 / 28 秒 = 4.58 個/分 → 新 3.656 個 / 139 秒 = 1.58 個/分（-65%）
+ *      S4 舊 2.655 個 / 30 秒 = 5.31 個/分 → 新 2.321 個 / 149 秒 = 0.94 個/分（-82%）
+ *    ⇒ 絕對上限按新關卡長度重新校準（S3 ≤ 2.5 → ≤ 4）· **另加「每分鐘 ≤ 舊基線」守門**守住真正嘅設計意圖
+ *      （唔係淨係放寬：舊基線率都鎖住 · 如果關卡再縮短或者波次再加密就會變紅）。*/
+check('★ S3 每局新敵種 ≤ 4（v0.45 #156 · 關卡拉長 5 倍後重新校準）', newCount[3] / RUNS <= 4, (newCount[3] / RUNS).toFixed(3));
 check('★ S4 每局新敵種 ≤ 3', newCount[4] / RUNS <= 3, (newCount[4] / RUNS).toFixed(3));
+/* 每分鐘新敵種率（真 source 段長 → 舊基線：S1 2.61 · S3 4.58 · S4 5.31 個/分） */
+function newRatePerMin(sid) {
+  const span = STAGE_ATS[sid][STAGE_ATS[sid].length - 1] / 1000;   /* 波次階段秒數 */
+  return (newCount[sid] / RUNS) / (span / 60);
+}
+check('★ S3 每分鐘新敵種 ≤ 4.58（v0.43 舊基線 · 教學節奏唔可以變密）', newRatePerMin(3) <= 4.58, newRatePerMin(3).toFixed(3) + ' 個/分');
+check('★ S4 每分鐘新敵種 ≤ 5.31（v0.43 舊基線）', newRatePerMin(4) <= 5.31, newRatePerMin(4).toFixed(3) + ' 個/分');
 
 /* ---------- ④ pool 靜態檢查 ---------- */
 section('4. #128 pool 攤分靜態檢查');

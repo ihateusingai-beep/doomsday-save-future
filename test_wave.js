@@ -8,13 +8,14 @@ const end = h.indexOf('/* 波次產生佇列');
 const seg = h.slice(start, end);
 
 const st = h.match(/const STAGE_TABLE = \{[\s\S]*?\n\};/)[0];
-const wt = h.match(/const WAVE_TEMPLATES = \{[\s\S]*?\n\};/)[0];
+/* ⚠️ v0.45 #156：WAVE_TEMPLATES 已刪（時間軸改由 waveCount + WAVE_GAP 生成） */
+const gap = h.match(/const WAVE_GAP = \d+;/)[0];
 
 /* 剝走 console.* 陳述式（避免污染測試輸出） */
 const clean = seg.replace(/^\s*console\.(log|warn)\(.*?\);\s*$/gm, '');
 
-const code = st + '\n' + wt + '\n' + clean + '\n' +
-  'return { assembleWaves, WAVE_CHUNKS, STAGE_ATS, STAGE_RAND, STAGE_TABLE, WAVE_TEMPLATES };';
+const code = st + '\n' + gap + '\n' + clean + '\n' +
+  'return { assembleWaves, WAVE_CHUNKS, STAGE_ATS, STAGE_RAND, STAGE_TABLE };';
 const F = new Function(code)();
 
 let fails = 0;
@@ -46,7 +47,10 @@ for (const s of [2, 3, 4, 5]) {
 }
 
 console.log('\n=== 4. S1 教學類別鎖（#49）===');
-const S1_EXPECT = ['grunt', 'spray', 'grunt', 'aim', 'grunt', 'spray', 'grunt'];
+/* ⚠️ v0.45 #156：波次 7 → 26（S1 slots 循環用）· 教學類別鎖 = 7 步循環重覆到 waveCount */
+const S1_CYCLE = ['grunt', 'spray', 'grunt', 'aim', 'grunt', 'spray', 'grunt'];
+const S1_EXPECT = [];
+for (let i = 0; i < F.STAGE_TABLE[1].waveCount; i++) S1_EXPECT.push(S1_CYCLE[i % S1_CYCLE.length]);
 const S1_FORBID = ['dive', 'elite', 'swarm', 'shield', 'sniper', 'ring', 'meteor',
                    /* v0.26.0 #97 新敵人：S1 教學關一樣唔准出現 */
                    'medic', 'chaser', 'bomber', 'turret'];

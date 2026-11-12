@@ -40,8 +40,11 @@ const stripSemi = (s) => s.replace(/;\s*$/, '');
 const obj = (re, name) => eval('(' + stripSemi(grab(re).replace(new RegExp('const\\s+' + name + '\\s*=\\s*'), '')) + ')');
 
 /* ---------- 真 source ---------- */
-const WAVE_TEMPLATES = obj(/const WAVE_TEMPLATES = \{[\s\S]*?\n\};/, 'WAVE_TEMPLATES');
 const WAVE_CHUNKS    = obj(/const WAVE_CHUNKS = \{[\s\S]*?\n\};/, 'WAVE_CHUNKS');
+/* ⚠️ v0.45 #156：WAVE_TEMPLATES 已刪（時間軸改由 waveCount + WAVE_GAP 生成） */
+const STAGE_TABLE    = obj(/const STAGE_TABLE = \{[\s\S]*?\n\};/, 'STAGE_TABLE');
+const HAS_WT         = /const WAVE_TEMPLATES = \{/.test(h);
+const WAVE_GAP       = HAS_WT ? 0 : Number(cap(/const WAVE_GAP\s*=\s*(\d+)/, 1));
 const STAGE_RAND     = obj(/const STAGE_RAND = \{[\s\S]*?\n\};/, 'STAGE_RAND');
 const DIFFICULTY     = obj(/const DIFFICULTY = Object\.freeze\(\{[\s\S]*?\n\}\);/, 'DIFFICULTY');
 const AFFIX_DEFS     = obj(/const AFFIX_DEFS = \[[\s\S]*?\n\];/, 'AFFIX_DEFS');
@@ -79,9 +82,17 @@ const NEED_BASE = Number(cap(/Math\.min\(segCfg\(\)\.cap,\s*(\d+)\s*\+\s*segInde
 /* v0.41.0 #152：預設檔 = source 入面 segDiffIdx 嘅初值（唔硬編碼） */
 const DEFAULT_TIER = Number(cap(/let segDiffIdx\s*=\s*(\d+)/));
 
-/* STAGE_ATS（真 code 係由 WAVE_TEMPLATES 推） */
-const STAGE_ATS = {};
-for (const k of Object.keys(WAVE_TEMPLATES)) STAGE_ATS[k] = WAVE_TEMPLATES[k].map(w => w.at);
+/* STAGE_ATS（真 code 喺 index.html 內生成）
+   · 舊 source → 由 WAVE_TEMPLATES 推 · 新 source → **由真 source 抽**（唔手抄 · 免得工具同遊戲漂移） */
+let STAGE_ATS;
+if (HAS_WT) {
+  const WT = obj(/const WAVE_TEMPLATES = \{[\s\S]*?\n\};/, 'WAVE_TEMPLATES');
+  STAGE_ATS = {};
+  for (const k of Object.keys(WT)) STAGE_ATS[k] = WT[k].map(w => w.at);
+} else {
+  STAGE_ATS = new Function('STAGE_TABLE', 'WAVE_GAP',
+    grab(/const STAGE_ATS = \{\};[\s\S]*?\n\}/) + '\nreturn STAGE_ATS;')(STAGE_TABLE, WAVE_GAP);
+}
 
 /* ---------- 真波次組裝（每波實際 chunk） ---------- */
 function assembleWaves(stageId, seed) {

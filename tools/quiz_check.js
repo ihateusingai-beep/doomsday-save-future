@@ -77,13 +77,15 @@ for (const q of BANK) {
   }
   if (EN.test(all)) bad(q.id + ' · 內含英文');
 }
-/* 5. 數學答案唯一（把 opts 數值化，答案值唔可以同其他選項重複） */
+/* 5. 數學答案唯一（把 opts 數值化，答案值唔可以同其他選項重複）
+ * ⚠️ 圖形／名辨認題（opts 全係文字，例如「正方形／圓形」）→ 數值化全部 null
+ *    唔當 fail；唯一性已由 §2 opts 字串唔重複覆蓋。 */
 for (const q of BANK) {
   if (!q || q.subj !== 'math' || !Array.isArray(q.opts)) continue;
   const num = (s) => {
     const t = String(s).trim();
     if (hasCN(t)) return CN_NUM[t];            /* 中國數字（一…八） */
-    const t2 = t.replace(/[^0-9.\/−]/g, '').replace('−', '-');
+    const t2 = t.replace(/[^0-9.\\/−]/g, '').replace('−', '-');
     if (t2 === '') return null;
     if (/^\d+\/\d+$/.test(t2)) { const [a, b] = t2.split('/').map(Number); return b === 0 ? null : a / b; }
     const v = parseFloat(t2);
@@ -91,7 +93,11 @@ for (const q of BANK) {
   };
   const vals = q.opts.map(num);
   const av = vals[q.a];
-  if (av === null) { bad(q.id + ' · 答案選項唔係數值：' + q.opts[q.a]); continue; }
+  if (av === null) {
+    /* 全 opts 都唔係數值 = 名／圖形辨認 → OK；部分可數部分唔可 = 資料錯 */
+    if (vals.every(v => v === null)) continue;
+    bad(q.id + ' · 答案選項唔係數值：' + q.opts[q.a]); continue;
+  }
   const dup = vals.filter((v, i) => v !== null && i !== q.a && Math.abs(v - av) < 1e-9);
   if (dup.length) bad(q.id + ' · 答案唔唯一（另一個選項同值 ' + dup[0] + '）：' + q.opts.join('/'));
 }

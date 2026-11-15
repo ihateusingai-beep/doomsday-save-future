@@ -250,18 +250,18 @@ function sandbox(src, name, depNames, ctx, call) {
   /* 真 mulberry32（由 index.html 抽出嚟用，唔自己寫一個唔同嘅） */
   const mul = block(code, /function mulberry32\([\s\S]*?\n\}/);
   const srf = block(code, /function stageRngFor\(seed, stageId\) \{[\s\S]*?\n\}/);
-  /* ⚠️ v0.43.0 #154：pickQuizQuestion 會叫 quizPool()（科目 + 單元過濾）→ 必須一齊抽 */
-  const pool = block(code, /function quizPool\(subj, unit\) \{[\s\S]*?\n\}/);
-  const pick = block(code, /function pickQuizQuestion\(\) \{[\s\S]*?\n\}/);
-  const F = new Function('__c', `
-    let quizBank = __c.bank, runSeed = __c.seed, lastStage = __c.stage, segIndex = __c.seg;
-    let quizLastId = __c.lastId, quizSubj = __c.subj, quizUnit = __c.unit;
-    ${pool}\n${mul}\n${srf}\n${pick}
-    const a = pickQuizQuestion();
-    const b = pickQuizQuestion();
-    return { a: a ? a.id : null, lastId: quizLastId, second: b ? b.id : null };
-  `);
-  const base = { bank, seed: 12345, stage: 1, seg: 2, lastId: '', subj: 'all', unit: 0 };
+  /* ⚠️ v0.43.0 #154 / v0.46 #157：pickQuizQuestion 會叫 quizPool() → 必須一齊抽 */
+    const pool = block(code, /function quizPool\(subj, unit, cat\) \{[\s\S]*?\n\}/);
+    const pick = block(code, /function pickQuizQuestion\(\) \{[\s\S]*?\n\}/);
+    const F = new Function('__c', `
+      let quizBank = __c.bank, runSeed = __c.seed, lastStage = __c.stage, segIndex = __c.seg;
+      let quizLastId = __c.lastId, quizSubj = __c.subj, quizUnit = __c.unit, quizCat = __c.cat || 'all';
+      ${pool}\n${mul}\n${srf}\n${pick}
+      const a = pickQuizQuestion();
+      const b = pickQuizQuestion();
+      return { a: a ? a.id : null, lastId: quizLastId, second: b ? b.id : null };
+    `);
+    const base = { bank, seed: 12345, stage: 1, seg: 2, lastId: '', subj: 'all', unit: 0, cat: 'all' };
   const r = F(base);
   check('★ 抽到題目', r.a !== null, '· ' + r.a);
   check('★ 記住上一條 id（= 最後抽嗰條）', r.lastId === r.second, '· lastId=' + r.lastId + ' second=' + r.second);

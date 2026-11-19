@@ -154,7 +154,7 @@ check('★ 答對 → CD 全回充', /skillCdUntil = 0; bombCDUntil = 0;/.test(a
 check('★ ★ 答對 **唔派盾**（派盾會令「零傷」段目標變易 · R10）',
   !/shield/.test(ansBlk));
 check('★ 答錯 → 連續歸零', /quizStreak = 0;/.test(ansBlk));
-check('★ 答錯 → 唔扣血唔扣分（零懲罰）',
+check('★ 答錯 → 唔扣血唔扣分（軟代價唔扣已有資源）',
   !/ship\.hp/.test(ansBlk) && !/runScore -=/.test(ansBlk));
 check('★ 答錯可再試（retryQuiz）', /function retryQuiz\(\)/.test(code));
 check('★ 答完可以繼續（nextQuiz）', /function nextQuiz\(\)/.test(code));
@@ -288,17 +288,22 @@ function sandbox(src, name, depNames, ctx, call) {
   check('★ 完全冇題 → 返 null（唔會 crash）', r8.a === null, '· ' + r8.a);
 }
 
-/* --- 12c. answerQuiz（答對派分 + CD 回充 + 唔派盾；答錯零懲罰）--- */
+/* --- 12c. answerQuiz（答對派分 + CD 回充 + 唔派盾；答錯唔扣分）--- */
 {
   const q = { id: 'm-1', subj: 'math', q: '1+1=?', opts: ['1', '2'], a: 1, why: 'w' };
-  /* ⚠️ v0.44 #155：answerQuiz 會叫 ttsSpeak（讀粵語解說）→ sandbox 要有 stub */
-  const deps = ['quizPhase', 'quizQ', 'quizOk', 'quizPick', 'quizStreak', 'QUIZ_SCORE',
+  /* ⚠️ v0.44 #155：answerQuiz 會叫 ttsSpeak（讀粵語解說）→ sandbox 要有 stub
+     ⚠️ v0.47：再試半獎 / quizWrong / cont lock → 多啲依賴 */
+  const deps = ['quizPhase', 'quizQ', 'quizOk', 'quizPick', 'quizStreak', 'QUIZ_SCORE', 'QUIZ_RETRY_SCORE',
                 'affScore', 'styScore', 'runScore', 'skillCdUntil', 'bombCDUntil',
-                'segMsg', 'segMsgT', 'sfx', 'ttsSpeak'];
+                'segMsg', 'segMsgT', 'sfx', 'ttsSpeak', 'quizRetrying', 'quizMissedOnce', 'quizWrong',
+                'quizContLockUntil', 'QUIZ_CONT_LOCK_MS', 'performance'];
+  let now = 50000;
   const base = {
-    quizPhase: 1, quizQ: q, quizOk: false, quizPick: -1, quizStreak: 0, QUIZ_SCORE: 300,
+    quizPhase: 1, quizQ: q, quizOk: false, quizPick: -1, quizStreak: 0, QUIZ_SCORE: 300, QUIZ_RETRY_SCORE: 150,
     affScore: 1, styScore: 1, runScore: 1000, skillCdUntil: 5000, bombCDUntil: 9000,
     segMsg: '', segMsgT: 0, sfx: function () {}, ttsSpeak: function () {},
+    quizRetrying: false, quizMissedOnce: false, quizWrong: 0, quizContLockUntil: 0, QUIZ_CONT_LOCK_MS: 1800,
+    performance: { now: () => now },
   };
   const ok = sandbox(code, 'answerQuiz', deps, base, 'answerQuiz(1);');
   check('★ 答對 → quizOk=true / phase=2', ok.quizOk === true && ok.quizPhase === 2);
@@ -315,28 +320,48 @@ function sandbox(src, name, depNames, ctx, call) {
   const base3 = Object.assign({}, base, { quizStreak: 3 });
   const bad = sandbox(code, 'answerQuiz', deps, base3, 'answerQuiz(0);');
   check('★ 答錯 → 連續歸零', bad.quizStreak === 0);
-  check('★ 答錯 → 分數不變（零懲罰）', bad.runScore === 1000, '· ' + bad.runScore);
+  check('★ 答錯 → 分數不變（唔扣已有分）', bad.runScore === 1000, '· ' + bad.runScore);
   check('★ 答錯 → CD 唔回充（唔獎勵）', bad.skillCdUntil === 5000 && bad.bombCDUntil === 9000);
+  check('★ 答錯 → quizWrong +1', bad.quizWrong === 1, '· ' + bad.quizWrong);
+  check('★ 答錯 → 繼續鎖', bad.quizContLockUntil === now + 1800, '· ' + bad.quizContLockUntil);
+
+  const retryOk = sandbox(code, 'answerQuiz', deps,
+    Object.assign({}, base, { quizRetrying: true, quizStreak: 0, quizMissedOnce: true, quizWrong: 1 }),
+    'answerQuiz(1);');
+  check('★ 再試答對 → 半獎 150', retryOk.runScore === 1000 + 150, '· ' + retryOk.runScore);
+  check('★ 再試答對 → streak 唔加', retryOk.quizStreak === 0, '· ' + retryOk.quizStreak);
 }
 
-/* --- 12d. closeQuiz（時間唔計入段計時 + 0.8 秒無敵）--- */
+/* --- 12d. closeQuiz（時間唔計入段計時 + 答對先有 0.8 秒無敵）--- */
 {
-  /* ⚠️ v0.44 #155：closeQuiz 會叫 ttsStop / ttsBgm → sandbox 要有 stub */
+  /* ⚠️ v0.44 #155：closeQuiz 會叫 ttsStop / ttsBgm → sandbox 要有 stub
+     ⚠️ v0.47：grace 跟 quizOk */
   const deps = ['performance', 'quizStartedAtMs', 'stageStartMs', 'runStartMs',
                 'quizGraceUntil', 'QUIZ_GRACE_MS', 'quizOpen', 'quizPhase', 'quizQ', 'quizPick',
-                'ttsStop', 'ttsBgm'];
+                'quizOk', 'quizContLockUntil', 'quizRetrying', 'ttsStop', 'ttsBgm'];
   let now = 100000;
   const r = sandbox(code, 'closeQuiz', deps, {
     performance: { now: () => now },
     quizStartedAtMs: 90000, stageStartMs: 5000, runStartMs: 2000,
     quizGraceUntil: 0, QUIZ_GRACE_MS: 800,
-    quizOpen: true, quizPhase: 3, quizQ: { id: 'x' }, quizPick: 1,
+    quizOpen: true, quizPhase: 3, quizQ: { id: 'x' }, quizPick: 1, quizOk: true,
+    quizContLockUntil: 0, quizRetrying: false,
     ttsStop: function () {}, ttsBgm: function () {},
   }, 'closeQuiz();');
   check('★ 答題時間推走 stageStartMs（段目標唔會到期）', r.stageStartMs === 5000 + 10000, '· ' + r.stageStartMs);
   check('★ 答題時間推走 runStartMs（時間獎金唔會被扣）', r.runStartMs === 2000 + 10000, '· ' + r.runStartMs);
-  check('★ 恢復後 0.8 秒無敵', r.quizGraceUntil === 100000 + 800, '· ' + r.quizGraceUntil);
+  check('★ 答對關機 → 0.8 秒無敵', r.quizGraceUntil === 100000 + 800, '· ' + r.quizGraceUntil);
   check('★ 關閉後狀態清乾淨', r.quizOpen === false && r.quizPhase === 0 && r.quizQ === null);
+
+  const rBad = sandbox(code, 'closeQuiz', deps, {
+    performance: { now: () => now },
+    quizStartedAtMs: 90000, stageStartMs: 5000, runStartMs: 2000,
+    quizGraceUntil: 0, QUIZ_GRACE_MS: 800,
+    quizOpen: true, quizPhase: 3, quizQ: { id: 'x' }, quizPick: 0, quizOk: false,
+    quizContLockUntil: 111, quizRetrying: true,
+    ttsStop: function () {}, ttsBgm: function () {},
+  }, 'closeQuiz();');
+  check('★ 答錯關機 → 無無敵', rBad.quizGraceUntil === 0, '· ' + rBad.quizGraceUntil);
 }
 
 /* --- 12e. maybeQuiz（觸發節奏 + 上限）--- */
@@ -486,6 +511,7 @@ console.log('\n=== 14. 還原驗證（mutation test）===');
       /quizCount >= QUIZ_MAX/.test(mb),
       /stageStartMs \+= elapsed/.test(cb),
       /runStartMs \+= elapsed/.test(cb),
+      /quizGraceUntil = quizOk \? \(performance\.now\(\) \+ QUIZ_GRACE_MS\) : 0/.test(cb),
       /if \(quizOpen\) quizStartedAtMs \+= gap;/.test(fb),
       /performance\.now\(\) < quizGraceUntil\) return false;/.test(db),
       db.indexOf('quizGraceUntil') < db.indexOf('ship.hp -='),
@@ -539,9 +565,12 @@ console.log('\n=== 14. 還原驗證（mutation test）===');
     ['答對派盾（令「零傷」段目標變易）',
       '    skillCdUntil = 0; bombCDUntil = 0;',
       '    skillCdUntil = 0; bombCDUntil = 0; ship.shield += 1;'],
-    ['答錯扣分（零懲罰被破壞）',
+    ['答錯扣分（唔准扣已有分）',
       '    quizStreak = 0;', '    quizStreak = 0; runScore -= 100;'],
-    ['答錯唔清連續', '    quizStreak = 0;\n    segMsg = ', '    segMsg = '],
+    ['答錯唔清連續', '    quizStreak = 0;\n    quizContLockUntil', '    quizContLockUntil'],
+    ['答對關機無條件給無敵（答錯都有）',
+      '  quizGraceUntil = quizOk ? (performance.now() + QUIZ_GRACE_MS) : 0;',
+      '  quizGraceUntil = performance.now() + QUIZ_GRACE_MS;'],
     ['唔記住上一條 id（會連續出同一條）',
       'for (let k = 0; k < pool.length && pool[i].id === quizLastId; k++) i = (i + 1) % pool.length;', ''],
     ['段界唔觸發答題',

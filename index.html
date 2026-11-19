@@ -1198,6 +1198,11 @@ function drawHudChips() {
     }
     ctx.globalAlpha = 1;
   }
+  /* v0.47：答錯 HUD 小標（局內累計 · 全程有感覺） */
+  if (quizWrong > 0) {
+    ctx.font = '10px monospace'; ctx.fillStyle = '#f88'; ctx.textAlign = 'left';
+    ctx.fillText('錯' + quizWrong, 16 + ship.maxHp * 14 + 4, 24);
+  }
   for (let i = 0; i < Math.min(ship.shield, 5); i++) {
     drawSprite('ui_shield', VIEW_W - 16 - i * 14, 20, 1);
   }
@@ -1534,6 +1539,7 @@ function onStateEnter(s, from) {
   } else if (s === STATE.SHIP_SELECT) {
     /* 新的一局：重置分數同計時（保留已選難度） */
     runScore = 0;
+    quizWrong = 0; quizStreak = 0; quizCount = 0;
     runStartMs = null;
     stageStartMs = null;
     pausedAtMs = null;
@@ -2628,15 +2634,27 @@ function settleSegment() {
 const QUIZ_LS        = 'dsf.quizBank';
 const QUIZ_EVERY     = 1;      /* 每段彈一條（v0.44：為咗真係彈到 12 條 · 配合 QUIZ_MAX） */
 const QUIZ_MAX       = 12;     /* 每關上限（v0.43 係 5 · v0.44 加到 12） */
-const QUIZ_GRACE_MS  = 800;    /* 恢復後無敵（抖返） */
+const QUIZ_GRACE_MS  = 800;    /* 恢復後無敵（抖返 · 只答對先有） */
 const QUIZ_COUNTDOWN = 1200;   /* 3-2-1 倒數 */
-const QUIZ_SCORE     = 300;    /* 答對 base 分 */
+const QUIZ_SCORE     = 300;    /* 一次過答對 base 分 */
+const QUIZ_RETRY_SCORE = 150;  /* 再試答對半獎（v0.47 軟代價） */
+const QUIZ_CONT_LOCK_MS = 1800; /* 答錯後「繼續」鎖（強制睇答案） */
 const QUIZ_PANEL     = { x:16, y:60, w:288, h:360 };   /* 結果階段（多咗結果行 + 解說 + 掣） */
 const QUIZ_PANEL_Q   = { x:16, y:60, w:288, h:300 };   /* 問題階段（淨題目 + 選項 + 提示） */
 let quizBank = [], quizOpen = false, quizPhase = 0, quizQ = null;
 let quizPick = -1, quizOk = false, quizStartedAtMs = 0;
 let quizGraceUntil = 0, quizStreak = 0, quizCount = 0, quizLastId = '';
 let quizPending = false, quizCdUntil = 0;
+/* v0.47 軟代價：quizWrong=局內首次答錯累計 · quizMissedOnce=本條已計 · quizRetrying=再試中 */
+let quizWrong = 0, quizMissedOnce = false, quizRetrying = false, quizContLockUntil = 0;
+function quizCert() {
+  if (quizWrong <= 0) return { t: '金牌', c: '#ffd700' };
+  if (quizWrong <= 2) return { t: '銀牌', c: '#c0c0c0' };
+  return { t: '銅牌', c: '#cd7f32' };
+}
+function quizContLocked() {
+  return !quizOk && performance.now() < quizContLockUntil;
+}
 
 /* ---------- v0.44.0 #155：粵語語音（用 web 本身嘅語音功能 · speechSynthesis）----------
  * ⚠️ **唔預生成音檔**（用 web 本身嘅語音功能）→ repo 唔會多幾 MB 音檔、唔使 ffmpeg。
@@ -2828,40 +2846,63 @@ function openQuiz() {
   const q = pickQuizQuestion();
   if (!q) { segMsg = '題庫未載入'; segMsgT = 1.6; return false; }
   quizQ = q; quizPick = -1; quizOk = false; quizPhase = 1;
+  quizMissedOnce = false; quizRetrying = false; quizContLockUntil = 0;
   quizOpen = true; quizCount++;
   quizStartedAtMs = performance.now();
   ttsSpeak(q.say);         /* v0.44：讀粵語題目（冇 voice / 冇稿就靜靜跳過） */
   console.log('[答題] 第 ' + quizCount + ' 條 · ' + q.id + ' · ' + q.q);
   return true;
 }
-/* 答完 → 倒數 → 關閉：時間唔推走段計時 + 0.8 秒無敵（抖返三層） */
+/* 答完 → 倒數 → 關閉：時間唔推走段計時；答對先有 0.8 秒無敵（v0.47 答錯無 grace） */
 function closeQuiz() {
   const elapsed = performance.now() - quizStartedAtMs;
   if (stageStartMs !== null) stageStartMs += elapsed;
   if (runStartMs !== null) runStartMs += elapsed;
-  quizGraceUntil = performance.now() + QUIZ_GRACE_MS;
+  quizGraceUntil = quizOk ? (performance.now() + QUIZ_GRACE_MS) : 0;
   quizOpen = false; quizPhase = 0; quizQ = null; quizPick = -1;
+  quizContLockUntil = 0; quizRetrying = false;
   ttsStop(); ttsBgm(false);   /* v0.44：停語音 + BGM 還原 */
-  console.log('[答題] 結束 · 凍結 ' + Math.round(elapsed) + 'ms');
+  console.log('[答題] 結束 · 凍結 ' + Math.round(elapsed) + 'ms' + (quizOk ? ' · 有無敵' : ' · 無無敵'));
 }
 function answerQuiz(i) {
   if (quizPhase !== 1 || !quizQ) return;
   quizPick = i; quizOk = (i === quizQ.a); quizPhase = 2;
   ttsSpeak(quizQ.whySay);    /* v0.44：讀粵語解說 */
   if (quizOk) {
-    quizStreak++;
-    const gain = Math.round(QUIZ_SCORE * quizStreak * (affScore || 1) * (styScore || 1));
+    /* ⚠️ 再試答對：半獎 + streak 唔加（v0.47）；一次過先加 streak */
+    let gain;
+    if (quizRetrying) {
+      gain = Math.round(QUIZ_RETRY_SCORE * (affScore || 1) * (styScore || 1));
+      segMsg = '再試答對 +' + gain;
+    } else {
+      quizStreak++;
+      gain = Math.round(QUIZ_SCORE * quizStreak * (affScore || 1) * (styScore || 1));
+      segMsg = '答對 +' + gain;
+    }
     runScore += gain;
     /* ⚠️ 唔派盾 —— 擋盾唔算受傷（segHurt 只喺真扣血嗰刻 set）⇒ 派盾會令「零傷」段目標變易 */
     skillCdUntil = 0; bombCDUntil = 0;
-    segMsg = '答對 +' + gain; segMsgT = 1.4; sfx('pick');
+    quizRetrying = false; quizContLockUntil = 0;
+    segMsgT = 1.4; sfx('pick');
   } else {
+    if (!quizMissedOnce) { quizWrong++; quizMissedOnce = true; }
     quizStreak = 0;
+    quizContLockUntil = performance.now() + QUIZ_CONT_LOCK_MS;
     segMsg = '答錯（睇答案）'; segMsgT = 1.4; sfx('hit');
   }
 }
-function retryQuiz() { if (quizPhase === 2 && !quizOk) { quizPick = -1; quizOk = false; quizPhase = 1; ttsSpeak(quizQ.say); } }
-function nextQuiz()  { if (quizPhase === 2) { quizPhase = 3; quizCdUntil = performance.now() + QUIZ_COUNTDOWN; } }
+function retryQuiz() {
+  if (quizPhase === 2 && !quizOk) {
+    quizPick = -1; quizOk = false; quizPhase = 1;
+    quizRetrying = true; quizContLockUntil = 0;
+    ttsSpeak(quizQ.say);
+  }
+}
+function nextQuiz() {
+  if (quizPhase !== 2) return;
+  if (quizContLocked()) return;   /* 答錯鎖 1.8s · 強制睇答案 */
+  quizPhase = 3; quizCdUntil = performance.now() + QUIZ_COUNTDOWN;
+}
 
 /* 答題 UI 幾何（320×480 座標 · 觸控目標 ≥64×64） */
 const QUIZ_OPT_LW = 16;   /* 選項字母欄寬（"a." 兩字元 · monospace 12px ≈ 14.4px） */
@@ -2958,7 +2999,7 @@ function drawQuiz() {
     ctx.font = '14px monospace'; ctx.fillStyle = '#8ff';
     ctx.fillText('撳選項作答', p.x + p.w / 2, p.y + 256);
     ctx.font = '12px monospace'; ctx.fillStyle = '#89a';
-    ctx.fillText('第 ' + quizCount + ' / ' + QUIZ_MAX + ' 條 · 連續答對 ' + quizStreak + ' 次',
+    ctx.fillText('第 ' + quizCount + ' / ' + QUIZ_MAX + ' 條 · 連對 ' + quizStreak + ' · 錯 ' + quizWrong,
                  p.x + p.w / 2, p.y + 280);
   }
   if (quizPhase >= 2) {
@@ -2968,7 +3009,13 @@ function drawQuiz() {
     ctx.font = '12px monospace'; ctx.fillStyle = '#cde';
     const wl = wrapText(ctx, quizQ.why || '', p.w - 32).slice(0, 2);
     for (let i = 0; i < wl.length; i++) ctx.fillText(wl[i], p.x + p.w / 2, p.y + 270 + i * 13);
-    drawQuizBtn(quizBtnRect(g, 1), '繼續', '#4df5d0');
+    /* v0.47：答錯「繼續」鎖 1.8s · 顯示倒數 */
+    if (quizContLocked()) {
+      const sec = Math.max(1, Math.ceil((quizContLockUntil - performance.now()) / 1000));
+      drawQuizBtn(quizBtnRect(g, 1), '等 ' + sec, '#889');
+    } else {
+      drawQuizBtn(quizBtnRect(g, 1), '繼續', '#4df5d0');
+    }
     if (!quizOk) drawQuizBtn(quizBtnRect(g, 0), '再試', '#ffd166');
   }
   if (quizPhase === 3) {
@@ -6602,7 +6649,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.46.0 · 單元→科目→範疇', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.47.0 · 答錯軟代價', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -6929,6 +6976,11 @@ function render() {
     ctx.fillStyle = '#9ab';
     ctx.font = '12px monospace';
     ctx.fillText('難度 ' + diffName() + ' · 倒數第 ' + lastStage + ' 關', VIEW_W/2, VIEW_H/2 + 22);
+    /* v0.47：答錯金銀銅（局內累計） */
+    const qcFail = quizCert();
+    ctx.fillStyle = qcFail.c;
+    ctx.font = 'bold 14px monospace';
+    ctx.fillText(qcFail.t + ' · 答錯 ' + quizWrong + ' 次', VIEW_W/2, VIEW_H/2 + 42);
     drawEndBtns();
     renderTail();
     return;
@@ -6963,14 +7015,19 @@ function render() {
     ctx.fillText('全 5 關完成 · 用時 ' + finalRunSec.toFixed(1) + ' 秒', VIEW_W/2, VIEW_H/2 - 4);
     ctx.fillStyle = '#ff6';
     ctx.font = 'bold 16px monospace';
-    ctx.fillText('分數：' + scoreDisplay, VIEW_W/2, VIEW_H/2 + 28);
+    ctx.fillText('分數：' + scoreDisplay, VIEW_W/2, VIEW_H/2 + 24);
+    /* v0.47：金0／銀1–2／銅≥3 */
+    const qcWin = quizCert();
+    ctx.fillStyle = qcWin.c;
+    ctx.font = 'bold 16px monospace';
+    ctx.fillText(qcWin.t + ' · 答錯 ' + quizWrong + ' 次', VIEW_W/2, VIEW_H/2 + 46);
     ctx.font = '12px monospace';
     ctx.fillStyle = '#aaa';
     ctx.fillText('（擊殺 ' + Math.floor(runScore - grazeScoreTotal)
                + ' + 擦彈 ' + Math.floor(grazeScoreTotal) + '（' + grazeCount + ' 次）'
-               + ' + 時間獎金 ' + Math.floor(timeBonus) + '）', VIEW_W/2, VIEW_H/2 + 48);
+               + ' + 時間獎金 ' + Math.floor(timeBonus) + '）', VIEW_W/2, VIEW_H/2 + 66);
     ctx.fillStyle = '#ff6';
-    ctx.fillText(diffName() + ' 最佳：' + Math.floor(bestScore) + ' · ' + bestTime.toFixed(1) + ' 秒', VIEW_W/2, VIEW_H/2 + 72);
+    ctx.fillText(diffName() + ' 最佳：' + Math.floor(bestScore) + ' · ' + bestTime.toFixed(1) + ' 秒', VIEW_W/2, VIEW_H/2 + 86);
     drawEndBtns();
     renderTail();
     return;
@@ -7786,7 +7843,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.46.0 已載入');
+console.log('[啟動] 末日救未來 v0.47.0 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */
@@ -7892,8 +7949,10 @@ window.__dsf = {
   /* v0.42.0 #153：答題系統（冒煙測試用） */
   quiz: { get open(){ return quizOpen; }, get phase(){ return quizPhase; },
           get count(){ return quizCount; }, get q(){ return quizQ; },
+          get wrong(){ return quizWrong; }, get ok(){ return quizOk; },
+          get cert(){ return quizCert(); },
           bank: () => quizBank.length, openQuiz, answerQuiz, nextQuiz, retryQuiz,
-          maybeQuiz, closeQuiz, geom: quizGeom },
+          maybeQuiz, closeQuiz, geom: quizGeom, contLocked: quizContLocked },
   /* v0.43.0 #154：科目 / 單元分流（冒煙測試用） */
   quizFlow: { get subj(){ return quizSubj; }, get unit(){ return quizUnit; }, get cat(){ return quizCat; },
               pool: () => quizPool(quizSubj, quizUnit, quizCat).length,

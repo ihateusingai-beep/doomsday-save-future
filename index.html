@@ -2889,7 +2889,7 @@ const QUIZ_SUBJECTS = [
 ];
 /* 範疇顯示名 SSOT（PLAN #157）· questions.js 只帶 cat id */
 const QUIZ_CAT_NAMES = Object.freeze({
-  cnnum:'中國數字', arith:'四則運算', shape:'分辨圖形', frac:'分數小數', apply:'應用題',
+  cnnum:'中國數字', arith:'四則運算', shape:'分辨圖形', shapematch:'圖形配對', frac:'分數小數', apply:'應用題',
   words:'詞語運用', idiom:'成語故事', glyph:'字形標點', rhetoric:'修辭手法',
   mix:'綜合', all:'全部範疇'
 });
@@ -3251,9 +3251,12 @@ function drawQuiz() {
     }
     ctx.fillText(quizOptLetter(i), r.x + 6, oy);
     if (asShape) {
-      drawQuizShape(quizQ.opts[i], r.x + r.w / 2 + 2, r.y + r.h / 2 - 6, 40);
-      ctx.font = '10px monospace'; ctx.textAlign = 'center';
-      ctx.fillText(quizQ.opts[i], r.x + r.w / 2, r.y + r.h - 10);
+      const pure = quizQ.cat === 'shapematch'; /* 配對：純圖，唔顯示形名 */
+      drawQuizShape(quizQ.opts[i], r.x + r.w / 2 + 2, r.y + r.h / 2 - (pure ? 2 : 6), pure ? 44 : 40);
+      if (!pure) {
+        ctx.font = '10px monospace'; ctx.textAlign = 'center';
+        ctx.fillText(quizQ.opts[i], r.x + r.w / 2, r.y + r.h - 10);
+      }
     } else {
       for (let k = 0; k < ol.length; k++) ctx.fillText(ol[k], r.x + 6 + QUIZ_OPT_LW, oy + k * 16);
     }
@@ -6967,7 +6970,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.48.3 · 認形揀圖', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.49.0 · 圖形配對', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -8189,7 +8192,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.48.3 已載入');
+console.log('[啟動] 末日救未來 v0.49.0 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */

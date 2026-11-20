@@ -17,7 +17,7 @@ check('★ 難度後入 QUIZ_UNIT（唔係 SUBJECT）', /fsm\.set\(STATE\.QUIZ_U
   /function selectDiffAndContinue[\s\S]*?fsm\.set\(STATE\.QUIZ_UNIT\)/.test(html));
 check('★ selectQuizUnit → QUIZ_SUBJECT', /function selectQuizUnit[\s\S]*?fsm\.set\(STATE\.QUIZ_SUBJECT\)/.test(html));
 check('★ goAfterSubject / selectQuizCat 存在', /function goAfterSubject/.test(html) && /function selectQuizCat/.test(html));
-check('★ 版號 v0.46.0', /v0\.46\.0/.test(html));
+check('★ 版號 >= v0.46', /v0\.(4[6-9]|[5-9]\d)/.test(html));
 
 console.log('\n=== 2. 題庫 cat ===');
 const sb = { window: {} };
@@ -28,6 +28,12 @@ check('★ 全部有 cat', BANK.every(q => typeof q.cat === 'string' && q.cat), 
 const shapes = BANK.filter(q => q.cat === 'shape');
 check('★ shape ≥24 條', shapes.length >= 24, ' · ' + shapes.length);
 check('★ shape 全 unit=2', shapes.every(q => q.unit === 2));
+const sm = BANK.filter(q => q.cat === 'shapematch');
+check('★ shapematch 18 條', sm.length === 18, ' · ' + sm.length);
+check('★ shapematch 全 unit=2', sm.every(q => q.unit === 2));
+check('★ shapematch 全有 icon', sm.every(q => q.icon && q.opts.includes(q.icon)));
+check('★ shapematch q 哪個相同', sm.every(q => q.q === '哪個相同？'));
+
 const arith = BANK.filter(q => q.cat === 'arith');
 check('★ arith ≥10 條 unit2', arith.length >= 10 && arith.every(q => q.unit === 2), ' · ' + arith.length);
 
@@ -41,7 +47,7 @@ function pool(subj, unit, cat) {
   }
   return o;
 }
-check('★ U2 數學 all = arith+shape', pool('math', 2, 'all').length === pool('math', 2, 'arith').length + pool('math', 2, 'shape').length);
+check('★ U2 數學 all = arith+shape+shapematch', pool('math', 2, 'all').length === pool('math', 2, 'arith').length + pool('math', 2, 'shape').length + pool('math', 2, 'shapematch').length);
 check('★ U2 shape 池只有 shape', pool('math', 2, 'shape').every(q => q.cat === 'shape'));
 
 console.log('\n=== 3. validate 保留 cat（抽出 source）===');
@@ -57,7 +63,7 @@ console.log('\n=== 3. validate 保留 cat（抽出 source）===');
 console.log('\n=== 4. quizPool 三參 ===');
 check('★ quizPool(subj, unit, cat)', /function quizPool\(subj, unit, cat\)/.test(html));
 check('★ quizCatsAvailable', /function quizCatsAvailable/.test(html));
-check('★ QUIZ_CAT_NAMES 有 shape', /shape:'分辨圖形'/.test(html));
+check('★ QUIZ_CAT_NAMES 有 shape+shapematch', /shape:'分辨圖形'/.test(html) && /shapematch:'圖形配對'/.test(html));
 check('★ overlay quizScopeLabel 三截', /function quizScopeLabel[\s\S]*?單元/.test(html));
 
 console.log('\n=== 5. tools/quiz_check ===');

@@ -377,6 +377,7 @@ v0.39.0 先做「段目標由系統指定（seeded）+ 達標即刻改變下一�
 | 160 | **圖形題多圖少字**（v0.48.1 · 2026-11-20 · ✅） | shape 12→**36**；辨認+特性+題幹 icon；canvas `drawQuizShape`；選項圖大+字母；validate 保留 icon。守門 v043–v046/v044 計數放寬。 |
 | 161 | **圖形 Grok 生成圖**（v0.48.2 · 2026-11-20 · ✅） | `assets/shapes/{square,triangle,circle,rect,ellipse,hex}.png`；`drawQuizShape` 優先位圖 · vector fallback；Grok image。 |
 | 162 | **圖形只認形**（v0.48.3 · 2026-11-20 · ✅） | 用戶：數邊唔係學習內容。shape 全改「這是哪個圖形？」+ 題幹 icon + 三選一圖；刪數邊／數角／特性文字題。24 條。 |
+| 163 | **圖形配對 shapematch**（構思凍結 · 2026-11-20 · 未落地） | **定案**：分 cat `shapematch`（老師可淨開配對；唔同 `shape` 認形混池）。**題型**：題幹短句「哪個相同？」+ 目標大圖；三選一形圖（1 同款 + 2 干擾）；一點即答。**文案**：q 書面語短 · say「邊個同呢個一樣？」· why「兩個都是○形。」**題量**：6 形 × 3 干擾組 = **18** · unit=2 · math。**UI**：重用 `drawQuizShape` / PNG；選項可純圖（細名可關）。**P0**：QUIZ_CAT_NAMES + 題庫 18 + validate/pool · P1 老師預設 cat · P2 易混淆對加權。**唔做**：拖曳連線／多對多／一次 3 對／旋轉陷阱。等 `順序`/`P0` 先 code。 |
 
 ### 答題前置三層 · 單元→科目→範疇（v0.46.0 · PLAN #157 · 2026-11-15）
 

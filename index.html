@@ -3118,13 +3118,27 @@ function handleQuizTap(px, py) {
   }
   return true;
 }
-/* v0.48.1 圖形題：多圖少字 · 選項／題幹畫形 */
-const QUIZ_SHAPES = Object.freeze({
-  '正方形':1, '長方形':1, '三角形':1, '圓形':1, '橢圓形':1, '六邊形':1
+/* v0.48.2 圖形題：Grok 生成圖 assets/shapes/*.png · 失敗 fallback vector */
+const QUIZ_SHAPE_FILE = Object.freeze({
+  '正方形': 'square', '長方形': 'rect', '三角形': 'triangle',
+  '圓形': 'circle', '橢圓形': 'ellipse', '六邊形': 'hex'
 });
-function isQuizShapeName(s) { return !!(s && QUIZ_SHAPES[String(s)]); }
-function drawQuizShape(name, cx, cy, s) {
-  if (!isQuizShapeName(name)) return false;
+const QUIZ_SHAPES = QUIZ_SHAPE_FILE; /* name set */
+const quizShapeImg = Object.create(null);  /* key -> HTMLImageElement | null(fail) */
+let quizShapeReady = 0;
+function isQuizShapeName(s) { return !!(s && QUIZ_SHAPE_FILE[String(s)]); }
+function loadQuizShapeImgs() {
+  const keys = Object.keys(QUIZ_SHAPE_FILE);
+  for (let i = 0; i < keys.length; i++) {
+    const name = keys[i], file = QUIZ_SHAPE_FILE[name];
+    const im = new Image();
+    im.onload = function () { quizShapeImg[name] = im; quizShapeReady++; };
+    im.onerror = function () { quizShapeImg[name] = null; quizShapeReady++;
+      console.log('[答題] 圖形圖載入失敗 · ' + file + '.png → vector'); };
+    im.src = 'assets/shapes/' + file + '.png';
+  }
+}
+function drawQuizShapeVector(name, cx, cy, s) {
   const h2 = s * 0.5;
   ctx.save();
   ctx.translate(cx, cy);
@@ -3163,6 +3177,20 @@ function drawQuizShape(name, cx, cy, s) {
   ctx.restore();
   return true;
 }
+function drawQuizShape(name, cx, cy, s) {
+  if (!isQuizShapeName(name)) return false;
+  const im = quizShapeImg[name];
+  if (im && im.complete && im.naturalWidth > 0) {
+    const side = s * 1.35;
+    const prev = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(im, Math.round(cx - side / 2), Math.round(cy - side / 2), side, side);
+    ctx.imageSmoothingEnabled = prev;
+    return true;
+  }
+  return drawQuizShapeVector(name, cx, cy, s);
+}
+loadQuizShapeImgs();
 function quizOptsAreShapes(q) {
   return !!(q && q.opts && q.opts.length && q.opts.every(isQuizShapeName));
 }
@@ -6938,7 +6966,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.48.1 · 圖形多圖少字', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.48.2 · 圖形生成圖', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -8160,7 +8188,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.48.1 已載入');
+console.log('[啟動] 末日救未來 v0.48.2 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */
@@ -8253,6 +8281,7 @@ window.__dsf = {
   /* v0.29.0 gamedev-feel + v0.48 juice pack */
   FEEL, cam, addTrauma, hitStop, pulseShip, feelHitEnemy,
   spawnDebris, spawnWhiteFlash, noteCombo, comboPitchMul, startFinisher, finishBossDown,
+  drawQuizShape, isQuizShapeName, QUIZ_SHAPE_FILE,
   get comboLvl(){ return comboLvl; },
   get timeScale(){ return timeScale; },
   get camZoom(){ return camZoom; },

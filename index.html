@@ -604,6 +604,8 @@ function updateCam(dtMs) {
 /* 敵人中彈白閃（draw only；唔改 hitbox） */
 function feelHitEnemy(e, kind) {
   if (!e) return;
+  /* v0.48：純白 1 幀（真實時間）再交俾 hitFlash 淡出 */
+  e.hitWhiteUntil = performance.now() + FEEL.flashWhiteMs;
   e.hitFlash = 1;
   const t = (kind === 'laser') ? FEEL.hitLaser.trauma : FEEL.hitGrunt.trauma;
   if (t > 0) addTrauma(t);
@@ -627,6 +629,22 @@ const FEEL = Object.freeze({
   hurtShield: { trauma: 0.28, stop: 35, pop: 0.12, flash: 0.22 },
   bomb:       { trauma: 0.55, stop: 90, flash: 0.7, boom: 1.8 },
   die:        { trauma: 0.85, stop: 130, flash: 0.8, boom: 2.2 },
+  /* ---- v0.48 juice pack：全部可調數值集中呢度 ---- */
+  flashWhiteMs: 16,        /* 閃白：純白 1 幀（~16ms@60） */
+  debrisMin: 6,            /* 碎片：最少粒數 */
+  debrisMax: 10,           /* 碎片：最多粒數 */
+  debrisLifeMs: 600,       /* 碎片：0.6s 淡出 */
+  debrisSpd: 0.14,         /* 碎片：初速 */
+  debrisGrav: 0.00032,     /* 碎片：重力 */
+  trailLen: 12,            /* 拖尾：最近 N 個位置 */
+  squashWall: 0.70,        /* 擠壓：撞牆沿撞擊方向壓到 70% */
+  stretchFly: 1.20,        /* 拉伸：飛行沿速度方向拉到 120% */
+  deformDecay: 0.012,      /* 形變：每 ms 回彈係數 */
+  comboSemiMax: 12,        /* 連擊升調：最多半音級數 */
+  comboResetMs: 1000,      /* 連擊升調：中斷 1s 回原 */
+  finisherScale: 0.3,      /* 終結慢鏡：時間倍率 */
+  finisherZoom: 1.10,      /* 終結慢鏡：鏡頭推近 10% */
+  finisherMs: 600,         /* 終結慢鏡：持續 0.6s */
 });
 
 function spawnSparks(x, y, n, speed) {
@@ -643,6 +661,124 @@ function spawnBoom(x, y, power) {
   particles.push({ x, y, vx: 0, vy: 0, life: life, max: life, kind: 'boom', frame: 0 });
   spawnSparks(x, y, Math.round(10 * p), 0.18 * Math.min(1.6, p));
   screenFlash = Math.max(screenFlash, Math.min(0.95, 0.55 * p));
+}
+/* v0.48：擊破碎片 6–10 粒 · 重力下墜 · debrisLifeMs 淡出 */
+function spawnDebris(x, y, power) {
+  const p = (power == null || power < 0.5) ? 1 : power;
+  const nMin = FEEL.debrisMin, nMax = FEEL.debrisMax;
+  const n = Math.round((nMin + Math.floor(Math.random() * (nMax - nMin + 1))) * Math.min(1.4, p));
+  const life = FEEL.debrisLifeMs;
+  const cols = ['#ffd36a', '#ff9a4a', '#ffffff', '#ff6a8a', '#8ef'];
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const v = FEEL.debrisSpd * (0.45 + Math.random()) * Math.min(1.5, p);
+    pushParticle({
+      x: x + (Math.random() - 0.5) * 4,
+      y: y + (Math.random() - 0.5) * 4,
+      vx: Math.cos(a) * v,
+      vy: Math.sin(a) * v - 0.06,
+      life: life * (0.75 + Math.random() * 0.35),
+      max: life,
+      kind: 'debris',
+      size: 1.2 + Math.random() * 2.4 * Math.min(1.3, p),
+      rot: Math.random() * Math.PI * 2,
+      rv: (Math.random() - 0.5) * 0.02,
+      col: cols[i % cols.length],
+    });
+  }
+}
+/* v0.48：死亡前純白 1 幀閃（實體可能即刪，用粒子頂） */
+function spawnWhiteFlash(x, y, r) {
+  pushParticle({
+    x: x, y: y, vx: 0, vy: 0,
+    life: FEEL.flashWhiteMs, max: FEEL.flashWhiteMs,
+    kind: 'wflash', size: (r == null ? 14 : r),
+  });
+}
+/* v0.48 連擊升調 */
+let comboLvl = 0, comboAtMs = 0;
+function noteCombo() {
+  const now = performance.now();
+  if (now - comboAtMs > FEEL.comboResetMs) comboLvl = 0;
+  else comboLvl = Math.min(FEEL.comboSemiMax, comboLvl + 1);
+  comboAtMs = now;
+  return comboLvl;
+}
+function comboPitchMul() {
+  return Math.pow(2, comboLvl / 12);
+}
+function resetCombo() { comboLvl = 0; comboAtMs = 0; }
+/* v0.48 終結慢鏡 */
+let finisherUntil = 0;
+let timeScale = 1;
+let camZoom = 1;
+let pendingBossFin = null;   /* boss 死後等慢鏡完先轉場 */
+function startFinisher() {
+  if (REDUCED_MOTION) {
+    finisherUntil = 0; timeScale = 1; camZoom = 1;
+    return;
+  }
+  finisherUntil = performance.now() + FEEL.finisherMs;
+  timeScale = FEEL.finisherScale;
+  camZoom = FEEL.finisherZoom;
+}
+function tickFinisher(nowMs) {
+  if (finisherUntil <= 0) return;
+  if (nowMs >= finisherUntil) {
+    finisherUntil = 0;
+    timeScale = 1;
+    camZoom = 1;
+    if (pendingBossFin) {
+      const p = pendingBossFin; pendingBossFin = null;
+      finishBossDown(p);
+    }
+  } else {
+    timeScale = FEEL.finisherScale;
+    camZoom = FEEL.finisherZoom;
+  }
+}
+/* v0.48 形變 helper：另一軸反向補償，保持面積大致恆定 */
+function setDeform(target, alongX, amount) {
+  if (!target) return;
+  const a = amount;
+  const b = 1 / Math.max(0.35, a);
+  if (alongX) { target.sx = a; target.sy = b; }
+  else        { target.sy = a; target.sx = b; }
+}
+function decayDeform(target, dtMs) {
+  if (!target) return;
+  if (target.sx == null) target.sx = 1;
+  if (target.sy == null) target.sy = 1;
+  const k = Math.min(1, FEEL.deformDecay * dtMs);
+  target.sx += (1 - target.sx) * k;
+  target.sy += (1 - target.sy) * k;
+  if (Math.abs(target.sx - 1) < 0.01) target.sx = 1;
+  if (Math.abs(target.sy - 1) < 0.01) target.sy = 1;
+}
+function pushTrail(obj, x, y) {
+  if (!obj) return;
+  if (!obj.trailHist) obj.trailHist = [];
+  const hist = obj.trailHist;
+  const last = hist.length ? hist[hist.length - 1] : null;
+  if (last && Math.hypot(last.x - x, last.y - y) < 0.4) return; /* 停就唔加 */
+  hist.push({ x: x, y: y });
+  while (hist.length > FEEL.trailLen) hist.shift();
+}
+function clearTrail(obj) {
+  if (obj && obj.trailHist) obj.trailHist.length = 0;
+}
+function drawTrailHist(hist, col) {
+  if (!hist || hist.length < 2) return;
+  const n = hist.length;
+  for (let i = 0; i < n; i++) {
+    const t = (i + 1) / n;                 /* 越新越大越實 */
+    const p = hist[i];
+    const s = 0.6 + t * 2.2;
+    ctx.globalAlpha = 0.12 + t * 0.55;
+    ctx.fillStyle = col || '#6ef';
+    ctx.fillRect(p.x - s / 2, p.y - s / 2, s, s);
+  }
+  ctx.globalAlpha = 1;
 }
 
 /* ---------- v0.27.0 #105：元素粒子 + 屏幕效果 ----------
@@ -777,10 +913,11 @@ function tone(o) {
   if (voices >= MAX_VOICES) return;                       /* #55 聲音預算 */
   const t0 = actx.currentTime + (o.delay || 0);
   const dur = o.dur || 0.08;
+  const mul = (o.pitchMul && o.pitchMul > 0) ? o.pitchMul : 1;  /* v0.48 連擊升調 */
   const osc = actx.createOscillator();
   osc.type = o.type || 'square';
-  osc.frequency.setValueAtTime(o.f0, t0);
-  if (o.f1 != null) osc.frequency.exponentialRampToValueAtTime(Math.max(1, o.f1), t0 + dur);
+  osc.frequency.setValueAtTime(o.f0 * mul, t0);
+  if (o.f1 != null) osc.frequency.exponentialRampToValueAtTime(Math.max(1, o.f1 * mul), t0 + dur);
   const g = actx.createGain();
   g.gain.setValueAtTime(0.0001, t0);
   g.gain.exponentialRampToValueAtTime(Math.max(0.0001, o.gain || 0.12), t0 + (o.atk || 0.006));
@@ -816,11 +953,17 @@ function noise(o) {
 const SFX = {
   /* 開火：最高頻，節流 70ms，音量壓到極低（#55） */
   shoot() { tone({ type:'square', f0:1180, f1:760, dur:0.035, gain:0.028 }); },
-  /* 擊中：最頻繁，所以最短最輕 */
-  hit()   { noise({ fc:2600, fc1:1400, dur:0.035, gain:0.05, q:0.9 }); },
-  /* 擊殺：比擊中有明確音高下跌，製造「收埋咗」嘅滿足感 */
-  kill()  { tone({ type:'square', f0:640, f1:210, dur:0.11, gain:0.075 });
-            noise({ fc:1500, fc1:500, dur:0.08, gain:0.045 }); },
+  /* 擊中：最頻繁，所以最短最輕（v0.48：opts.pitchMul 連擊升調） */
+  hit(opts) {
+    const m = (opts && opts.pitchMul) || 1;
+    noise({ fc:2600 * m, fc1:1400 * m, dur:0.035, gain:0.05, q:0.9 });
+  },
+  /* 擊殺：比擊中有明確音高下跌；連擊升半音 */
+  kill(opts) {
+    const m = (opts && opts.pitchMul) || 1;
+    tone({ type:'square', f0:640, f1:210, dur:0.11, gain:0.075, pitchMul: m });
+    noise({ fc:1500 * m, fc1:500 * m, dur:0.08, gain:0.045 });
+  },
   /* 擦彈：獎勵聲要輕，唔可以蓋過危險提示 */
   graze() { tone({ type:'triangle', f0:2100, f1:2750, dur:0.045, gain:0.035 }); },
   /* 受傷：唯一要玩家「感覺到出事」嘅聲，低頻為主 */
@@ -847,7 +990,7 @@ const SFX = {
             noise({ filter:'lowpass', fc:900, fc1:120, dur:0.7, gain:0.09 }); },
 };
 /* 統一入口：開 / 關都安全；非發聲類音效套用 60ms 去重（#55） */
-function sfx(name) {
+function sfx(name, opts) {
   if (!actx || !audioOn) return;
   const fn = SFX[name];
   if (!fn) return;
@@ -855,7 +998,7 @@ function sfx(name) {
   const gap = name === 'shoot' ? SFX_THROTTLE_MS : 60;
   if (now - (sfxLastAt[name] || 0) < gap) return;
   sfxLastAt[name] = now;
-  fn();
+  fn(opts);
 }
 
 /* ---------- 開關 / 音量 ---------- */
@@ -1027,6 +1170,12 @@ function tickVfx(dtMs) {
     } else if (p.kind === 'frost') {
       /* 冰晶受重力下墜 */
       p.vy += 0.00012 * dtMs;
+    } else if (p.kind === 'debris') {
+      /* v0.48 碎片：重力下墜 + 旋轉 */
+      p.vy += FEEL.debrisGrav * dtMs;
+      p.rot = (p.rot || 0) + (p.rv || 0) * dtMs;
+    } else if (p.kind === 'wflash') {
+      p.vx = 0; p.vy = 0;
     } else if (p.kind === 'arc' || p.kind === 'glow' || p.kind === 'shade' || p.kind === 'trail') {
       /* 原地型：位置唔變，只係尺寸變化 */
       p.vx = 0; p.vy = 0;
@@ -1161,6 +1310,22 @@ function drawParticles() {
     } else if (p.kind === 'trail') {
       ctx.fillStyle = p.col || '#0ff';
       ctx.fillRect(p.x - 1, p.y - 1, 2, 2);
+    } else if (p.kind === 'debris') {
+      /* v0.48 碎片方塊（旋轉） */
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot || 0);
+      const s = p.size || 2;
+      ctx.fillStyle = p.col || '#ff9';
+      ctx.fillRect(-s / 2, -s / 2, s, s);
+      ctx.restore();
+    } else if (p.kind === 'wflash') {
+      /* v0.48 純白 1 幀 */
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size || 14, 0, Math.PI * 2);
+      ctx.fill();
     } else if (!drawSprite('spark', p.x, p.y, 1)) {
       ctx.fillStyle = '#ff6';
       ctx.fillRect(p.x - 1, p.y - 1, 2, 2);
@@ -4212,6 +4377,9 @@ function resetRunFresh() {
   cam.trauma = 0; cam.x = 0; cam.y = 0;
   hitStopUntil = 0;
   shipPop = 1;
+  /* v0.48 juice reset */
+  resetCombo();
+  finisherUntil = 0; timeScale = 1; camZoom = 1; pendingBossFin = null;
 }
 function goRetry() {
   resetRunFresh();
@@ -4974,11 +5142,23 @@ function spawnSplitterChildren(ex, ey) {
    ⚠️ 原本呢段內嵌喺碰撞迴圈，只有行子彈嘅路徑行到；光束冇子彈所以行唔到。 */
 function onBossDown(e) {
   console.log('[擊破] boss @', (performance.now()/1000).toFixed(2));
-  sfx('kill');
+  noteCombo();
+  sfx('kill', { pitchMul: comboPitchMul() });
   runScore += BOSS_SCORE * affScore * styScore;
   runKills++;
   rollLoot(lastStage);            /* #44 boss 死必掉 1 件裝備（零選擇） */
-  if (lastStage >= STAGES.length) {
+  /* v0.48 finisher slowmo: delay transition */
+  const payload = { stage: lastStage };
+  if (REDUCED_MOTION) {
+    finishBossDown(payload);
+  } else {
+    pendingBossFin = payload;
+    startFinisher();
+  }
+}
+function finishBossDown(p) {
+  const stage = (p && p.stage != null) ? p.stage : lastStage;
+  if (stage >= STAGES.length) {
     fsm.set(STATE.VICTORY);
   } else {
     fsm.set(STATE.CHOICE);
@@ -5328,6 +5508,8 @@ function tickPlayerBullets(dtMs) {
 
     b.t = (b.t || 0) + dtMs;
 
+    /* v0.48 trail hist */
+    pushTrail(b, b.x, b.y);
     /* v0.27.0 #105 拖尾：玩家子彈按元素色留殘影。
        ⚠️ 每 45ms 先留一粒（唔係每幀）—— 粒子上限 260，唔可以濺到拖慢低 FPS 裝置。 */
     const elNow = currentElement();
@@ -5677,7 +5859,10 @@ function killEnemy(e, opts) {
   /* v0.29.0 kill tier：elite / boss 更大 boom + trauma + hit-stop；grunt 細 */
   const isBoss = e.kind === 'spiral';
   const tier = isBoss ? FEEL.killBoss : (e.elite ? FEEL.killElite : FEEL.killGrunt);
+  /* v0.48: white 1f + debris */
+  spawnWhiteFlash(e.x, e.y, isBoss ? 28 : (e.elite ? 18 : 12));
   spawnBoom(e.x, e.y, tier.boom || 1);
+  spawnDebris(e.x, e.y, tier.boom || 1);
   if (tier.flash) screenFlash = Math.max(screenFlash, tier.flash);
   addTrauma(tier.trauma);
   hitStop(tier.stop);
@@ -5698,7 +5883,9 @@ function killEnemy(e, opts) {
   if (ship && ship.universalId === 'recover') {
     ship._recoverUntil = gameClockMs + RECOVER_MS;
   }
-  sfx(e.elite ? 'kill' : 'hit');
+  /* v0.48 combo pitch */
+  noteCombo();
+  sfx(e.elite ? 'kill' : 'hit', { pitchMul: comboPitchMul() });
   /* v0.27.0 元素爆發：燒死 / 吞噬標記死時爆發（專精元素傷害 +40%） */
   if (e.burnBoom) elementBoom(e.x, e.y, ELEM_BURN_BOOM_R, ELEM_BURN_BOOM_DMG * elementMasterMul('fire'), 'fire');
   if (e.markT > 0 && e.darkBoom) elementBoom(e.x, e.y, ELEM_DARK_BOOM_R, ELEM_DARK_BOOM_DMG * elementMasterMul('dark'), 'dark');
@@ -5900,6 +6087,8 @@ function tick(dtMs) {
   if (InputState.keys.up)    vy -= 1;
   if (InputState.keys.down)  vy += 1;
   const moveMul = isOverheatActive() ? 0.6 : 1;
+  const prevX = ship.x, prevY = ship.y;
+  let moving = false;
   if (vx || vy) {
     InputState.device = 'key';
     const len = Math.hypot(vx, vy);
@@ -5910,6 +6099,7 @@ function tick(dtMs) {
     ship._lastDy = vy / len;
     InputState.targetX = ship.x;
     InputState.targetY = ship.y;
+    moving = true;
   } else {
     const step = ship.speed * moveMul * DRAG_SPEED_MULT * (dtMs / 16.67);
     const dx = InputState.targetX - ship.x;
@@ -5921,9 +6111,31 @@ function tick(dtMs) {
       ship.y += dy * k;
       ship._lastDx = dx / d;
       ship._lastDy = dy / d;
+      moving = true;
     }
     ship.x = clamp(ship.x, 8, VIEW_W - 8);
     ship.y = clamp(ship.y, 8, PLAY_BOTTOM);
+  }
+  /* v0.48 squash/stretch + ship trail */
+  {
+    const hitL = ship.x <= 8 + 0.01;
+    const hitR = ship.x >= VIEW_W - 8 - 0.01;
+    const hitT = ship.y <= 8 + 0.01;
+    const hitB = ship.y >= PLAY_BOTTOM - 0.01;
+    const stuckX = Math.abs(ship.x - prevX) < 0.001 && Math.abs(ship._lastDx || 0) > 0.3;
+    const stuckY = Math.abs(ship.y - prevY) < 0.001 && Math.abs(ship._lastDy || 0) > 0.3;
+    if ((hitL || hitR) && (moving || stuckX)) {
+      setDeform(ship, true, FEEL.squashWall);
+    } else if ((hitT || hitB) && (moving || stuckY)) {
+      setDeform(ship, false, FEEL.squashWall);
+    } else if (moving) {
+      const adx = Math.abs(ship._lastDx || 0), ady = Math.abs(ship._lastDy || 0);
+      setDeform(ship, adx >= ady, FEEL.stretchFly);
+    } else {
+      decayDeform(ship, dtMs);
+    }
+    if (moving) pushTrail(ship, ship.x, ship.y);
+    else clearTrail(ship);
   }
 
 
@@ -6600,7 +6812,14 @@ function renderTail() {
 function render() {
   const shakeX = cam.x;
   const shakeY = cam.y;
+  const z = camZoom || 1;
   ctx.save();
+  /* v0.48 finisher zoom about center, then trauma offset */
+  if (z !== 1) {
+    ctx.translate(VIEW_W / 2, VIEW_H / 2);
+    ctx.scale(z, z);
+    ctx.translate(-VIEW_W / 2, -VIEW_H / 2);
+  }
   ctx.translate(shakeX, shakeY);
   animT = performance.now();
 
@@ -6649,7 +6868,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.47.0 · 答錯軟代價', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.48.0 · juice 6招', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -7290,6 +7509,11 @@ function render() {
   for (const b of bullets) {
     if (b.owner === 'player') {
       const f = b.form || 'bolt';
+      /* v0.48 draw trail hist */
+      if (f !== 'rail' && f !== 'laser') {
+        const elC = currentElement();
+        drawTrailHist(b.trailHist, (elC && elC.color) || '#6ef');
+      }
       /* v0.37.0 #141：玩家子彈退後（光束類唔減 —— 畫面一兩條、係瞄準用嘅資訊） */
       ctx.globalAlpha = (f === 'rail' || f === 'laser') ? 1 : PLAYER_BULLET_ALPHA;
       if (f === 'rail') {
@@ -7406,8 +7630,16 @@ function render() {
         ctx.lineWidth = 1;
         ctx.stroke();
       }
-      /* v0.29.1：中彈白閃（hitFlash 1→0；只畫 overlay） */
-      if (e.hitFlash > 0) {
+      /* v0.48 pure white 1f then hitFlash fade */
+      if (performance.now() < (e.hitWhiteUntil || 0)) {
+        ctx.save();
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, R + 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      } else if (e.hitFlash > 0) {
         ctx.save();
         ctx.globalAlpha = Math.min(0.7, e.hitFlash * 0.65);
         ctx.fillStyle = '#ffffff';
@@ -7607,7 +7839,13 @@ function render() {
         ctx.fillStyle = '#f06';
         ctx.beginPath(); ctx.arc(e.x, e.y, 12, 0, Math.PI * 2); ctx.fill();
       }
-      if (e.hitFlash > 0) {
+      if (performance.now() < (e.hitWhiteUntil || 0)) {
+        ctx.save();
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(e.x, e.y, 18, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      } else if (e.hitFlash > 0) {
         ctx.save();
         ctx.globalAlpha = Math.min(0.65, e.hitFlash * 0.55);
         ctx.fillStyle = '#ffffff';
@@ -7666,35 +7904,42 @@ function render() {
         ctx.stroke();
       }
     }
-    /* 推進器焰 */
+    /* v0.48 ship trail */
+    drawTrailHist(ship.trailHist, '#4df5d0');
+    /* 推進器焰 + body under sx/sy deform */
     const thName = (Math.floor(performance.now() / 80) % 2) ? 'thrust_1' : 'thrust_0';
+    const shipSx = (ship.sx == null ? 1 : ship.sx);
+    const shipSy = (ship.sy == null ? 1 : ship.sy);
     const shipScale = 2.1 * shipPop;
-    drawSprite(thName, ship.x, ship.y + 12 * shipPop, 1.6 * shipPop);
     if (ship.shield > 0) {
       ctx.strokeStyle = 'rgba(0,255,255,' + (0.35 + 0.25*Math.sin(performance.now()/120)).toFixed(2) + ')';
       ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.arc(ship.x, ship.y, 13 * shipPop, 0, Math.PI * 2); ctx.stroke();
     }
     const sn = SHIP_SPRITE[ship.chassis] || 'ship_a';
-    /* v0.29.0：i-frame blink（55ms 半透明）+ shipPop squash scale */
+    /* v0.29.0 i-frame blink + v0.48 directional squash */
     const prevA = ctx.globalAlpha;
     if (isIFramed()) {
       const on = (Math.floor(performance.now() / 55) % 2) === 0;
       ctx.globalAlpha = on ? 1 : 0.28;
     }
-    /* v3.13：ship_a 有動畫幀（引擎閃爍），其他機體靜態（anim 冇對應就自動退化） */
+    ctx.save();
+    ctx.translate(ship.x, ship.y);
+    ctx.scale(shipSx, shipSy);
+    drawSprite(thName, 0, 12 * shipPop, 1.6 * shipPop);
     const drawnShip = ship.chassis === 'A'
-      ? drawSpriteAnim('anim_ship_a', sn, ship.x, ship.y, shipScale, animT)
-      : drawSprite(sn, ship.x, ship.y, shipScale);
+      ? drawSpriteAnim('anim_ship_a', sn, 0, 0, shipScale, animT)
+      : drawSprite(sn, 0, 0, shipScale);
     if (!drawnShip) {
       ctx.fillStyle = '#0ff';
       ctx.beginPath();
-      ctx.moveTo(ship.x, ship.y - 8 * shipPop);
-      ctx.lineTo(ship.x - 6 * shipPop, ship.y + 6 * shipPop);
-      ctx.lineTo(ship.x + 6 * shipPop, ship.y + 6 * shipPop);
+      ctx.moveTo(0, -8 * shipPop);
+      ctx.lineTo(-6 * shipPop, 6 * shipPop);
+      ctx.lineTo(6 * shipPop, 6 * shipPop);
       ctx.closePath();
       ctx.fill();
     }
+    ctx.restore();
     ctx.globalAlpha = prevA;
     if (isSkillActive()) {
       ctx.strokeStyle = 'rgba(255,255,0,0.6)';
@@ -7818,7 +8063,9 @@ function loop(nowMs) {
   let dt = nowMs - lastFrame;
   if (dt > MAX_FRAME_MS) dt = MAX_FRAME_MS;       /* cap huge gap (e.g., un-blur) */
   lastFrame = nowMs;
-  accMs += dt;
+  tickFinisher(nowMs);
+  /* v0.48 finisher: slow game clock via timeScale (hit-stop still freezes) */
+  accMs += dt * (timeScale > 0 ? timeScale : 1);
   while (accMs >= FIXED_DT_MS) {
     /* v0.29.0 hit-stop：sim 凍結（丟棄累加步），VFX／cam 仍用 real-time 衰減 */
     if (nowMs < hitStopUntil) {
@@ -7843,7 +8090,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.47.0 已載入');
+console.log('[啟動] 末日救未來 v0.48.0 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */
@@ -7933,8 +8180,13 @@ window.__dsf = {
   seenUpgradeIds: () => seenUpgradeIds,
   /* 測試用：強制指定某張卡（實機驗證 form_rail 修正用） */
   upgrades: UPGRADES,
-  /* v0.29.0 gamedev-feel */
+  /* v0.29.0 gamedev-feel + v0.48 juice pack */
   FEEL, cam, addTrauma, hitStop, pulseShip, feelHitEnemy,
+  spawnDebris, spawnWhiteFlash, noteCombo, comboPitchMul, startFinisher, finishBossDown,
+  get comboLvl(){ return comboLvl; },
+  get timeScale(){ return timeScale; },
+  get camZoom(){ return camZoom; },
+  get finisherUntil(){ return finisherUntil; },
   /* v0.31.0 效能：背景 gradient 快取（測試用：分配計數 + 像素比對） */
   bgGradient, theme: STAGE_THEME, viewW: VIEW_W, viewH: VIEW_H,
   /* v0.31.0 可讀性：測試用：強制指定詞綴（停電暗幕對比度實測用） */

@@ -56,7 +56,12 @@ check('★ 新局重置 quizWrong', /quizWrong = 0; quizStreak = 0; quizCount = 
 check('★ HUD 錯 N', /fillText\('錯' \+ quizWrong/.test(code));
 check('★ 勝利畫 cert', /qcWin\.t \+ ' · 答錯 ' \+ quizWrong/.test(code));
 check('★ 失敗畫 cert', /qcFail\.t \+ ' · 答錯 ' \+ quizWrong/.test(code));
-check('★ 版號 v0.47.0', /v0\.47\.0/.test(h));
+{
+  const m = h.match(/末日救未來 v(\d+)\.(\d+)\.(\d+) 已載入/);
+  const ver = m ? [+m[1], +m[2], +m[3]] : null;
+  check('★ 版號 >= v0.47.0', !!ver && (ver[0] > 0 || ver[1] > 47 || (ver[1] === 47 && ver[2] >= 0)),
+        ver ? ver.join('.') : '—');
+}
 check('★ 答錯仍唔扣血', !/ship\.hp\s*-=/.test(block(code, /function answerQuiz\(i\) \{[\s\S]*?\n\}/)));
 check('★ 答錯仍唔扣分', !/runScore\s*-=/.test(block(code, /function answerQuiz\(i\) \{[\s\S]*?\n\}/)));
 

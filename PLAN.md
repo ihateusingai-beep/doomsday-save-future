@@ -376,6 +376,7 @@ v0.39.0 先做「段目標由系統指定（seeded）+ 達標即刻改變下一�
 | 159 | **juice 6招包**（v0.48 · 2026-11-20 · P0 · ✅ 已落地） | **用戶**：提升遊戲性 8 招 audit 後 順序做缺／半齊。**已有**：頓幀 hitStop、震屏 trauma。**新加**：①閃白 1 幀 `hitWhiteUntil`/`wflash` ②碎片 `spawnDebris` 6–10·0.6s ③拖尾 12 點 hist ④擠壓拉伸 squash0.7/stretch1.2 ⑤連擊升調 +1 半音 max12·1s reset ⑥終結慢鏡 0.3×·zoom1.1·0.6s 延 boss 轉場。**數值**：全進 `FEEL`。守門 `test_feel.js`。版號 **v0.48.0**。 |
 | 160 | **圖形題多圖少字**（v0.48.1 · 2026-11-20 · ✅） | shape 12→**36**；辨認+特性+題幹 icon；canvas `drawQuizShape`；選項圖大+字母；validate 保留 icon。守門 v043–v046/v044 計數放寬。 |
 | 161 | **圖形 Grok 生成圖**（v0.48.2 · 2026-11-20 · ✅） | `assets/shapes/{square,triangle,circle,rect,ellipse,hex}.png`；`drawQuizShape` 優先位圖 · vector fallback；Grok image。 |
+| 162 | **圖形只認形**（v0.48.3 · 2026-11-20 · ✅） | 用戶：數邊唔係學習內容。shape 全改「這是哪個圖形？」+ 題幹 icon + 三選一圖；刪數邊／數角／特性文字題。24 條。 |
 
 ### 答題前置三層 · 單元→科目→範疇（v0.46.0 · PLAN #157 · 2026-11-15）
 

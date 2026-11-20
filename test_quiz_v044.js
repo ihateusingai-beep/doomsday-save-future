@@ -103,7 +103,7 @@ console.log('\n=== 2. 粵語稿欄位（say / whySay）===');
   const CN_NUM = { '一':1, '二':2, '三':3, '四':4, '五':5, '六':6, '七':7, '八':8 };
   const OP_WORD = { '+': '加', '−': '減', '×': '乘', '÷': '除以' };
 
-  check('★ 題庫 111 條', BANK.length === 111, '· ' + BANK.length);
+  check('★ 題庫 ≥111 條', BANK.length >= 111, '· ' + BANK.length);
   let noSay = 0, noWhy = 0, longSay = 0, longWhy = 0, badLetter = 0, badAns = 0;
   let opBad = 0, leak = 0, cnNoPrefix = 0, cnPrefix = 0, enBad = 0, cnQ = 0;
   for (const q of BANK) {
@@ -141,7 +141,7 @@ console.log('\n=== 2. 粵語稿欄位（say / whySay）===');
   check('★ 中國數字題嘅 say 一定含「阿拉伯數字」', cnNoPrefix === 0, '· 缺 ' + cnNoPrefix + ' / ' + cnQ);
   check('★ 非中國數字題嘅 say 唔加「阿拉伯數字」前綴', cnPrefix === 0, '· 多 ' + cnPrefix);
   check('★ ⚠️ 冇同音洩漏（答案唔可以出現喺 say 嘅讀音入面）', leak === 0, '· 洩 ' + leak);
-  check('★ 稿總數 = 111 × 2 = 222 段', BANK.filter(q => q.say && q.whySay).length * 2 === 222);
+  check('★ 稿總數 = N × 2 段', BANK.filter(q => q.say && q.whySay).length * 2 === BANK.length * 2, '· ' + (BANK.filter(q => q.say && q.whySay).length * 2));
 }
 
 /* ============================================================
@@ -233,8 +233,8 @@ console.log('\n=== 5. 行為測試（真 source 抽出嚟跑）===');
   new Function('window', fs.readFileSync(QBANK, 'utf8'))(sb.window);
   const r = F({ bank: sb.window.DSF_QUIZ_BANK });
   const withSay = r.good.filter(q => q.say && q.whySay).length;
-  check('★ 真跑 validateQuizBank → 111 條都仲有 say/whySay', withSay === 111, '· ' + withSay);
-  check('★ 真跑 validateQuizBank → 一條都冇丟', r.good.length === 111, '· ' + r.good.length);
+  check('★ 真跑 validateQuizBank → 全部都仲有 say/whySay', withSay === r.good.length && withSay >= 111, '· ' + withSay);
+  check('★ 真跑 validateQuizBank → 一條都冇丟', r.good.length === sb.window.DSF_QUIZ_BANK.length && r.bad === 0, '· ' + r.good.length + '/' + sb.window.DSF_QUIZ_BANK.length);
 }
 /* --- 5b. openQuiz / answerQuiz 真係叫 ttsSpeak --- */
 {

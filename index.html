@@ -2962,7 +2962,8 @@ function validateQuizBank(arr) {
                 unit:((q.unit|0) >= 1 && (q.unit|0) <= 4) ? (q.unit|0) : 0,
                 cat:(typeof q.cat === 'string' && q.cat) ? q.cat : 'mix',
                 q:String(q.q||''), opts:q.opts.map(String), a:q.a, why:String(q.why||''), tags:(q.tags||[]).slice(0,6),
-                say:String(q.say||''), whySay:String(q.whySay||'') });
+                say:String(q.say||''), whySay:String(q.whySay||''),
+                icon:(typeof q.icon === 'string') ? q.icon : '' });
   }
   return { good: good, bad: arr.length - good.length };
 }
@@ -3080,9 +3081,12 @@ function quizScopeLabel() {
   return u + ' · ' + sub + ' · ' + c;
 }
 function quizGeom() {
-  const p = (quizPhase >= 2 ? QUIZ_PANEL : QUIZ_PANEL_Q), cw = 120, ch = 72, gap = 16, bw = 120;
+  const p = (quizPhase >= 2 ? QUIZ_PANEL : QUIZ_PANEL_Q);
+  const shape = quizOptsAreShapes(quizQ);
+  const cw = 120, ch = shape ? 90 : 72, gap = 14, bw = 120;
+  const oy = p.y + (quizQ && quizQ.icon ? 96 : 82);
   return { p: p, cw: cw, ch: ch, gap: gap,
-           gx: p.x + (p.w - (cw * 2 + gap)) / 2, oy: p.y + 82,
+           gx: p.x + (p.w - (cw * 2 + gap)) / 2, oy: oy,
            bx: p.x + (p.w - (bw * 2 + gap)) / 2, by: p.y + 292, bw: bw, bh: 64 };
 }
 function quizOptRect(g, i) {
@@ -3114,6 +3118,54 @@ function handleQuizTap(px, py) {
   }
   return true;
 }
+/* v0.48.1 圖形題：多圖少字 · 選項／題幹畫形 */
+const QUIZ_SHAPES = Object.freeze({
+  '正方形':1, '長方形':1, '三角形':1, '圓形':1, '橢圓形':1, '六邊形':1
+});
+function isQuizShapeName(s) { return !!(s && QUIZ_SHAPES[String(s)]); }
+function drawQuizShape(name, cx, cy, s) {
+  if (!isQuizShapeName(name)) return false;
+  const h2 = s * 0.5;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.lineWidth = Math.max(2, s * 0.08);
+  ctx.strokeStyle = '#4df5d0';
+  ctx.fillStyle = 'rgba(77,245,208,0.28)';
+  ctx.lineJoin = 'round';
+  if (name === '正方形') {
+    const a = h2 * 1.15;
+    ctx.beginPath(); ctx.rect(-a/2, -a/2, a, a); ctx.fill(); ctx.stroke();
+  } else if (name === '長方形') {
+    const w = h2 * 1.7, hh = h2 * 1.0;
+    ctx.beginPath(); ctx.rect(-w/2, -hh/2, w, hh); ctx.fill(); ctx.stroke();
+  } else if (name === '三角形') {
+    ctx.beginPath();
+    ctx.moveTo(0, -h2 * 0.95);
+    ctx.lineTo(h2 * 0.95, h2 * 0.75);
+    ctx.lineTo(-h2 * 0.95, h2 * 0.75);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+  } else if (name === '圓形') {
+    ctx.beginPath(); ctx.arc(0, 0, h2 * 0.85, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  } else if (name === '橢圓形') {
+    ctx.beginPath();
+    if (ctx.ellipse) ctx.ellipse(0, 0, h2 * 1.05, h2 * 0.62, 0, 0, Math.PI * 2);
+    else { ctx.scale(1.05, 0.62); ctx.arc(0, 0, h2, 0, Math.PI * 2); }
+    ctx.fill(); ctx.stroke();
+  } else if (name === '六邊形') {
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = -Math.PI / 2 + i * Math.PI / 3;
+      const x = Math.cos(a) * h2 * 0.9, y = Math.sin(a) * h2 * 0.9;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+  }
+  ctx.restore();
+  return true;
+}
+function quizOptsAreShapes(q) {
+  return !!(q && q.opts && q.opts.length && q.opts.every(isQuizShapeName));
+}
 function drawQuizBtn(r, label, col) {
   ctx.fillStyle = 'rgba(0,50,70,0.95)'; ctx.fillRect(r.x, r.y, r.w, r.h);
   ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.strokeRect(r.x, r.y, r.w, r.h);
@@ -3137,9 +3189,13 @@ function drawQuiz() {
   ctx.font = 'bold 12px monospace'; ctx.fillStyle = '#4df5d0';
   ctx.fillText(quizScopeLabel(), p.x + p.w / 2, p.y + 18);
   ctx.font = '14px monospace'; ctx.fillStyle = '#eaf6ff';
-  const ql = wrapText(ctx, quizQ.q, p.w - 32).slice(0, 3);
-  for (let i = 0; i < ql.length; i++) ctx.fillText(ql[i], p.x + p.w / 2, p.y + 42 + i * 16);
+  const stemY = quizQ.icon ? (p.y + 38) : (p.y + 42);
+  const ql = wrapText(ctx, quizQ.q, p.w - 32).slice(0, quizQ.icon ? 2 : 3);
+  for (let i = 0; i < ql.length; i++) ctx.fillText(ql[i], p.x + p.w / 2, stemY + i * 15);
+  /* v0.48.1 題幹圖（數邊／數角時睇圖） */
+  if (quizQ.icon) drawQuizShape(quizQ.icon, p.x + p.w / 2, p.y + 72, 34);
   const n = quizQ.opts.length;
+  const shapeOpts = quizOptsAreShapes(quizQ);
   for (let i = 0; i < n; i++) {
     const r = quizOptRect(g, i);
     const right = quizPhase >= 2 && i === quizQ.a;
@@ -3149,15 +3205,29 @@ function drawQuiz() {
     else if (picked) { bg = 'rgba(95,22,32,0.95)'; bd = '#f88'; fg = '#fff'; }
     ctx.fillStyle = bg; ctx.fillRect(r.x, r.y, r.w, r.h);
     ctx.strokeStyle = bd; ctx.lineWidth = 2; ctx.strokeRect(r.x, r.y, r.w, r.h);
-    ctx.fillStyle = fg; ctx.font = '12px monospace';
-    /* ⚠️ 字母標示（PLAN #154）：唔可以用 wrapText 前綴 ——
-       wrapText 嘅 atoms 唔含空格 → "a. 一隻" 會變 "a.一隻"（冇空格）。
-       ⇒ 字母獨立畫（固定欄寬 16px）· 文字左對齊 + 懸掛縮排。 */
-    const ol = wrapText(ctx, quizQ.opts[i], r.w - 12 - QUIZ_OPT_LW).slice(0, 3);
-    const oy = r.y + r.h / 2 - (ol.length - 1) * 8;
+    ctx.fillStyle = fg;
+    /* ⚠️ 字母標示（PLAN #154）：字母獨立畫 · 圖形選項畫大圖 + 小字名
+       ⚠️ 字母 fillText 必須單一呼叫（test_quiz_v043 mutant 改呢行） */
     ctx.textAlign = 'left';
+    let oy = r.y + r.h / 2;
+    let ol = null;
+    const asShape = shapeOpts || isQuizShapeName(quizQ.opts[i]);
+    if (asShape) {
+      ctx.font = 'bold 14px monospace';
+      oy = r.y + 14;
+    } else {
+      ctx.font = '12px monospace';
+      ol = wrapText(ctx, quizQ.opts[i], r.w - 12 - QUIZ_OPT_LW).slice(0, 3);
+      oy = r.y + r.h / 2 - (ol.length - 1) * 8;
+    }
     ctx.fillText(quizOptLetter(i), r.x + 6, oy);
-    for (let k = 0; k < ol.length; k++) ctx.fillText(ol[k], r.x + 6 + QUIZ_OPT_LW, oy + k * 16);
+    if (asShape) {
+      drawQuizShape(quizQ.opts[i], r.x + r.w / 2 + 2, r.y + r.h / 2 - 6, 40);
+      ctx.font = '10px monospace'; ctx.textAlign = 'center';
+      ctx.fillText(quizQ.opts[i], r.x + r.w / 2, r.y + r.h - 10);
+    } else {
+      for (let k = 0; k < ol.length; k++) ctx.fillText(ol[k], r.x + 6 + QUIZ_OPT_LW, oy + k * 16);
+    }
     ctx.textAlign = 'center';
   }
   if (quizPhase === 1) {
@@ -6868,7 +6938,7 @@ function render() {
     ctx.fillStyle = '#cde';
     ctx.fillText('在人類滅亡之前飛得過去', VIEW_W/2, VIEW_H/2 - 28);
     ctx.fillStyle = '#6af';
-    ctx.fillText('v0.48.0 · juice 6招', VIEW_W/2, VIEW_H/2 - 12);
+    ctx.fillText('v0.48.1 · 圖形多圖少字', VIEW_W/2, VIEW_H/2 - 12);
     drawSprite('ship_a', VIEW_W/2 - 50, VIEW_H/2 + 52, 3);
     drawSprite('ship_b', VIEW_W/2, VIEW_H/2 + 56, 3);
     drawSprite('ship_c', VIEW_W/2 + 50, VIEW_H/2 + 52, 3);
@@ -8090,7 +8160,7 @@ function loop(nowMs) {
 
 /* ---------- 13. 初始設定 ---------- */
 hudEl.state.textContent = `狀態：${stateLabel(fsm.cur)}`;
-console.log('[啟動] 末日救未來 v0.48.0 已載入');
+console.log('[啟動] 末日救未來 v0.48.1 已載入');
 console.log('[啟動] 初始狀態 =', stateLabel(fsm.cur), '· 難度', diffName());
 console.log('[啟動] 視窗 =', window.innerWidth, 'x', window.innerHeight, '· 像素比 =', window.devicePixelRatio, '· 開發者模式 =', DEBUG, '· 無敵 =', GOD);
 loadAudioPrefs();   /* v3.9 #52：讀音效偏好。⚠️ 唔會建立 AudioContext（#56），只係讀數值 */
